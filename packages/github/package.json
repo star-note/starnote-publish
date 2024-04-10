@@ -1,6 +1,6 @@
 {
   "name": "@starnote/publish-github",
-  "version": "0.6.8",
+  "version": "1.0.0",
   "description": "辰记发布Github SDK",
   "scripts": {
     "lint": "eslint . --max-warnings 0",
@@ -26,7 +26,6 @@
     "@babel/core": "^7.21.8",
     "@babel/preset-env": "^7.21.5",
     "@babel/preset-typescript": "^7.21.5",
-    "@types/puppeteer": "^7.0.4",
     "babel-loader": "^9.1.2",
     "clean-webpack-plugin": "^4.0.0",
     "typescript": "^5.0.4"

@@ -42,12 +42,11 @@ const config = {
   },
 
   mode: 'production',
-  devtool: 'cheap-module-source-map',
 
   plugins: [
-    new CleanWebpackPlugin({
-      cleanAfterEveryBuildPatterns: ['dist'],
-    }),
+    // new CleanWebpackPlugin({
+    //   cleanAfterEveryBuildPatterns: ['dist'],
+    // }),
     new webpack.optimize.AggressiveMergingPlugin(),
   ],
 

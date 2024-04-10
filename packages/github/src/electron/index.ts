@@ -1,6 +1,6 @@
 import { Config, DomType, Task, TaskLine } from '@repo/global/src/types';
 import { taskLine } from '@repo/global/src/taskLine';
-import { PublishConfigs } from '..';
+// import { PublishConfigs } from '..';
 
 export const getForm = (note): Config[] => [
   {
@@ -227,5 +227,5 @@ export const getTasks = ({
 export const elecPublish = (page: TaskLine['page'], postProcess: TaskLine['postProcess'], payload: TaskLine['payload']) =>
   taskLine({
     page, postProcess, payload, getForm, getTasks,
-    key: PublishConfigs.key,
+    key: 'github',
   });
