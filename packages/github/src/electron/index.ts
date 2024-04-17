@@ -1,6 +1,5 @@
 import { Config, DomType, Task, TaskLine } from '@repo/global/src/types';
 import { taskLine } from '@repo/global/src/taskLine';
-// import { PublishConfigs } from '..';
 
 export const getForm = (note): Config[] => [
   {

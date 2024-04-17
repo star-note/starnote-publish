@@ -7,7 +7,7 @@ import {
 // 各端所需的配置信息及发布方法
 // 名字必须$publish_开头，后面必须与配置的key相同
 // eslint-disable-next-line @typescript-eslint/naming-convention
-export const PublishConfigs = {
+export const $publish_github = {
   key: 'github',
   label: 'Github',
   logo: 'github', // 可直接访问的logo公网地址；或者内置图片config中、这里为key
@@ -19,7 +19,7 @@ export const PublishConfigs = {
     getForm: electronForm,
     // publish: taskLine,
   }, // 桌面端发布的配置及方法
-  server: {}, // 服务器端发布的配置及方法
+  server: {}, // 服务器端发布的配置及方法，对应node文件夹
   author: {
     name: 'ludejun',
     email: 'ludejun@live.cn',
