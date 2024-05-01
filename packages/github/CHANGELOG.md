@@ -1,5 +1,11 @@
 # @starnote/publish-github
 
+## 1.0.2
+
+### Patch Changes
+
+- 更改打包方式，修复生产包问题
+
 ## 1.0.1
 
 ### Patch Changes

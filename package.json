@@ -8,7 +8,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "changeset": "npx changeset",
     "version-packages": "npx changeset version",
-    "release": "pnpm build & pnpm release:only",
+    "release": "pnpm build && pnpm release:only",
     "release:only": "npx changeset publish --registry=https://registry.npmjs.com"
   },
   "devDependencies": {
