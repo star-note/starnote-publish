@@ -1,0 +1,219 @@
+{
+  "platform": "wechat",
+  "version": "1.0.0",
+  "minCore": "0.1.0",
+  "issuedAt": "2026-10-19T00:00:00.000Z",
+  "urls": {
+    "home": "https://mp.weixin.qq.com/",
+    "help": "https://mp.weixin.qq.com/",
+    "edit": "https://mp.weixin.qq.com/cgi-bin/appmsg?t=media/appmsg_edit&action=edit&type=77&appmsgid={id}&token={token}&lang=zh_CN",
+    "drafts": "https://mp.weixin.qq.com/cgi-bin/appmsg?begin=0&count=10&type=77&action=list_card&token={token}&lang=zh_CN",
+    "verify": "https://mp.weixin.qq.com/"
+  },
+  "selectors": {},
+  "session": {
+    "loginUrl": "https://mp.weixin.qq.com/",
+    "allowedHosts": [
+      "mp.weixin.qq.com"
+    ],
+    "success": {
+      "urlMatch": "^https://mp\\.weixin\\.qq\\.com/cgi-bin/home\\?[^#]*\\btoken=\\d+",
+      "cookies": [
+        {
+          "name": "slave_sid",
+          "domain": "mp.weixin.qq.com"
+        }
+      ]
+    },
+    "check": {
+      "url": "https://mp.weixin.qq.com/",
+      "format": "text",
+      "uid": "user_name\\s*:\\s*[\"']([^\"']+)[\"']",
+      "nickname": "nick_name\\s*:\\s*[\"']([^\"']*)[\"']",
+      "avatar": "head_img\\s*:\\s*[\"'](https://[^\"']+)[\"']"
+    },
+    "fetchPage": "https://mp.weixin.qq.com/robots.txt"
+  },
+  "endpoints": {
+    "home": {
+      "method": "GET",
+      "url": "https://mp.weixin.qq.com/",
+      "format": "text",
+      "resultRegex": {
+        "token": "window\\.wx\\.commonData[\\s\\S]*?\\bt\\s*:\\s*[\"'](\\d+)[\"']|[?&]token=(\\d+)",
+        "ticket": "\\bticket\\s*:\\s*[\"']([0-9a-zA-Z]+)[\"']",
+        "userName": "user_name\\s*:\\s*[\"']([^\"']+)[\"']",
+        "time": "\\btime\\s*:\\s*[\"'](\\d+)[\"']",
+        "nickname": "nick_name\\s*:\\s*[\"']([^\"']*)[\"']"
+      }
+    },
+    "uploadImageByUrl": {
+      "method": "POST",
+      "url": "https://mp.weixin.qq.com/cgi-bin/uploadimg2cdn?lang=zh_CN&token={token}&t={random}",
+      "bodyType": "form",
+      "fields": {
+        "url": "imgurl",
+        "token": "token"
+      },
+      "static": {
+        "t": "ajax-editor-upload-img",
+        "lang": "zh_CN",
+        "f": "json",
+        "ajax": "1"
+      },
+      "ok": {
+        "path": "errcode",
+        "equals": 0
+      },
+      "result": {
+        "url": "url",
+        "fileId": "file_id"
+      },
+      "note": "外链按 URL 转存（MultiPost / Wechatsync old）；失败时改为下载后走 uploadImage"
+    },
+    "uploadImage": {
+      "method": "POST",
+      "url": "https://mp.weixin.qq.com/cgi-bin/filetransfer?action=upload_material&f=json&scene=8&writetype=doublewrite&groupid=1&ticket_id={userName}&ticket={ticket}&svr_time={time}&token={token}&lang=zh_CN&seq={seq}&t={random}",
+      "bodyType": "multipart",
+      "fields": {
+        "file": "file"
+      },
+      "ok": {
+        "path": "base_resp.err_msg",
+        "equals": "ok"
+      },
+      "result": {
+        "url": "cdn_url",
+        "fileId": "content"
+      },
+      "note": "下载后上传（Wechatsync v2 / MultiPost）；另有 type / id / name / size 等可选字段未带"
+    },
+    "saveAppmsg": {
+      "method": "POST",
+      "url": "https://mp.weixin.qq.com/cgi-bin/operate_appmsg?t=ajax-response&sub=create&type=77&token={token}&lang=zh_CN",
+      "bodyType": "form",
+      "fields": {
+        "token": "token",
+        "random": "random",
+        "title": "title0",
+        "author": "author0",
+        "digest": "digest0",
+        "content": "content0",
+        "sourceUrl": "sourceurl0",
+        "coverFileId": "fileid0",
+        "coverUrl": "cdn_url0",
+        "openComment": "need_open_comment0",
+        "autoDigest": "auto_gen_digest0",
+        "coverUrl235": "cdn_235_1_url0"
+      },
+      "static": {
+        "lang": "zh_CN",
+        "f": "json",
+        "ajax": "1",
+        "AppMsgId": "",
+        "count": "1",
+        "data_seq": "0",
+        "operate_from": "Chrome",
+        "isnew": "0",
+        "writerid0": "0",
+        "fileid0": "",
+        "auto_gen_digest0": "0",
+        "need_open_comment0": "1",
+        "only_fans_can_comment0": "0",
+        "cdn_url0": "",
+        "cdn_235_1_url0": "",
+        "cdn_1_1_url0": "",
+        "show_cover_pic0": "0",
+        "copyright_type0": "0",
+        "can_reward0": "0",
+        "is_video_recommend0": "-1",
+        "share_page_type0": "0",
+        "share_imageinfo0": "{\"list\":[]}",
+        "dot0": "{}",
+        "categories_list0": "[]",
+        "fee0": "0",
+        "is_share_copyright0": "0",
+        "cdn_url_back0": "",
+        "crop_list0": ""
+      },
+      "ok": {
+        "path": "base_resp.ret",
+        "equals": 0
+      },
+      "result": {
+        "id": "appMsgId"
+      }
+    },
+    "publish": {
+      "method": "POST",
+      "url": "https://mp.weixin.qq.com/cgi-bin/masssend",
+      "signed": true,
+      "note": "发表 / 群发不做：需要管理员扫码确认，由用户本人在后台完成"
+    }
+  },
+  "errors": {
+    "relogin": {
+      "status": [
+        401,
+        403
+      ],
+      "codePath": "base_resp.ret",
+      "codes": [
+        200003
+      ]
+    },
+    "rateLimit": {
+      "status": [
+        429
+      ],
+      "codePath": "base_resp.ret",
+      "codes": [
+        200013
+      ]
+    },
+    "challenge": {
+      "codePath": "base_resp.ret",
+      "codes": [
+        -6,
+        -8
+      ]
+    }
+  },
+  "limits": {
+    "titleMax": 64,
+    "summaryMax": 120,
+    "authorMax": 16
+  },
+  "flags": {
+    "disabled": false
+  },
+  "unverified": [
+    "首页 HTML 里 wx.commonData 的 t（token）/ ticket / user_name / time / nick_name 正则（来自 Wechatsync v2、MultiPost）",
+    "uploadimg2cdn 按 URL 转存是否仍可用（Wechatsync v2 已改为下载后 filetransfer）",
+    "filetransfer 成功判定 base_resp.err_msg = ok、返回 cdn_url / content(fileid)",
+    "封面：只填 cdn_url0 / cdn_235_1_url0，没有调 cropimage 裁剪；后台是否要求裁剪或强制封面",
+    "频率限制 ret 200013（源码里没有）；登录失效只确认了 200003",
+    "fetchPage 用 mp.weixin.qq.com/robots.txt 作为同源页面是否可行",
+    "登录成功判定：跳转 cgi-bin/home?…token=（参数顺序）或 cookie slave_sid",
+    "需要验证码：base_resp.ret -6 / -8（Wechatsync v2）",
+    "节奏参数（步骤间隔、最小发文间隔、每日上限）是产品取值，不是平台公布的限制",
+    "点「发表」并完成管理员扫码后跳到 cgi-bin/appmsgpublish（发表记录）；拿不到文章链接"
+  ],
+  "pacing": {
+    "minDelayMs": 800,
+    "maxDelayMs": 3000,
+    "minPostIntervalMin": 10,
+    "dailyMax": 5,
+    "postRequests": [
+      "POST ^https://mp\\.weixin\\.qq\\.com/cgi-bin/operate_appmsg"
+    ],
+    "backoff": {
+      "baseMs": 2000,
+      "maxMs": 60000,
+      "retries": 2
+    }
+  },
+  "published": {
+    "urlMatch": "^https://mp\\.weixin\\.qq\\.com/cgi-bin/appmsgpublish\\?"
+  }
+}

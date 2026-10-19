@@ -1,0 +1,48 @@
+{
+  "source": "https://github.com/konsheng/Sensitive-lexicon",
+  "ref": "main@2026-08-17",
+  "categories": {
+    "porn": {
+      "files": ["色情类型.txt", "色情词库.txt"],
+      "raw": 1233,
+      "kept": 478,
+      "default": true
+    },
+    "violence": {
+      "files": ["暴恐词库.txt", "涉枪涉爆.txt"],
+      "raw": 615,
+      "kept": 577,
+      "default": true
+    },
+    "politics": {
+      "files": ["政治类型.txt", "反动词库.txt"],
+      "raw": 883,
+      "kept": 750,
+      "default": true
+    },
+    "corruption": {
+      "files": ["贪腐词库.txt"],
+      "raw": 244,
+      "kept": 161,
+      "default": true
+    },
+    "other": {
+      "files": ["补充词库.txt", "其他词库.txt", "COVID-19词库.txt"],
+      "raw": 1298,
+      "kept": 1063,
+      "default": true
+    },
+    "ad": {
+      "files": ["广告类型.txt"],
+      "raw": 123,
+      "kept": 95,
+      "default": false
+    },
+    "livelihood": {
+      "files": ["民生词库.txt"],
+      "raw": 571,
+      "kept": 313,
+      "default": false
+    }
+  }
+}

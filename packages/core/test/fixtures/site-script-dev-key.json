@@ -1,0 +1,12 @@
+{
+  "kid": "dev-2026-10",
+  "note": "开发密钥：只用于签本地默认站点脚本和测试；生产密钥只在离线签名流程里，不进仓库。",
+  "alg": "Ed25519",
+  "publicKey": "JwLsn8OOo-4pSfGQh79tkaulQkbxmgNT3bnOrym7py0",
+  "privateJwk": {
+    "crv": "Ed25519",
+    "d": "LsvKkLB6fq2UAV2dDzbXDsUuZys0Nc66qNtruLGbixw",
+    "x": "JwLsn8OOo-4pSfGQh79tkaulQkbxmgNT3bnOrym7py0",
+    "kty": "OKP"
+  }
+}

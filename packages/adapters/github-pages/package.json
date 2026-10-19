@@ -1,0 +1,48 @@
+{
+  "name": "@starnote/publish-github-pages",
+  "version": "0.1.0",
+  "description": "StarNote publish adapter for GitHub Pages: commits front matter + HTML (and images) to a template repository with the Git Data API.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./web": {
+      "types": "./dist/web.d.ts",
+      "import": "./dist/web.js",
+      "default": "./dist/web.js"
+    },
+    "./electron": {
+      "types": "./dist/electron.d.ts",
+      "import": "./dist/electron.js",
+      "default": "./dist/electron.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ../../.. packages/adapters/github-pages"
+  },
+  "dependencies": {
+    "@starnote/publish-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "zod": "^3.25.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.1.0"
+  },
+  "license": "UNLICENSED"
+}

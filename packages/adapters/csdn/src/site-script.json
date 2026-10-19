@@ -1,0 +1,156 @@
+{
+  "platform": "csdn",
+  "version": "1.0.0",
+  "minCore": "0.1.0",
+  "issuedAt": "2026-10-19T00:00:00.000Z",
+  "urls": {
+    "home": "https://mp.csdn.net/",
+    "help": "https://mp.csdn.net/",
+    "editor": "https://editor.csdn.net/md/",
+    "verify": "https://mp.csdn.net/"
+  },
+  "selectors": {
+    "title": ".article-bar__title input",
+    "editor": ".editor__inner"
+  },
+  "waits": {
+    "editor": {
+      "selector": ".editor__inner",
+      "timeoutMs": 20000
+    }
+  },
+  "session": {
+    "loginUrl": "https://passport.csdn.net/login?code=applets",
+    "allowedHosts": [
+      "csdn.net",
+      "csdnimg.cn",
+      "open.weixin.qq.com",
+      "graph.qq.com",
+      "api.weibo.com",
+      "github.com"
+    ],
+    "success": {
+      "cookies": [
+        {
+          "name": "UserToken",
+          "domain": "csdn.net"
+        }
+      ]
+    },
+    "check": {
+      "url": "https://me.csdn.net/api/user/show",
+      "ok": {
+        "path": "code",
+        "equals": 200
+      },
+      "uid": "data.csdnid",
+      "nickname": "data.nickname",
+      "avatar": "data.avatarurl",
+      "reloginStatus": [
+        401,
+        403
+      ]
+    },
+    "fetchPage": "https://editor.csdn.net/robots.txt"
+  },
+  "endpoints": {
+    "saveArticle": {
+      "method": "POST",
+      "url": "https://bizapi.csdn.net/blog-console-api/v3/mdeditor/saveArticle",
+      "signed": true,
+      "note": "需要 x-ca-signature（前端 JS 里的 HMAC 密钥），我们不计算：改为打开编辑器预填，由用户点发布"
+    },
+    "imagePolicy": {
+      "method": "GET",
+      "url": "https://imgservice.csdn.net/direct/v1.0/image/obs/upload?type=blog&rtype=blog_picture&x-image-template=standard&x-image-app=direct_blog&x-image-dir=direct&x-image-suffix={suffix}",
+      "ok": {
+        "path": "code",
+        "equals": 200
+      },
+      "result": {
+        "host": "data.host",
+        "key": "data.filePath",
+        "policy": "data.policy",
+        "signature": "data.signature",
+        "AccessKeyId": "data.accessId",
+        "callbackUrl": "data.callbackUrl",
+        "callbackBody": "data.callbackBody",
+        "callbackBodyType": "data.callbackBodyType",
+        "x:rtype": "data.customParam.rtype",
+        "x:filePath": "data.customParam.filePath",
+        "x:isAudit": "data.customParam.isAudit",
+        "x:x-image-app": "data.customParam.x-image-app",
+        "x:type": "data.customParam.type",
+        "x:x-image-suffix": "data.customParam.x-image-suffix",
+        "x:username": "data.customParam.username"
+      }
+    },
+    "imageUpload": {
+      "method": "POST",
+      "url": "{+host}",
+      "bodyType": "multipart",
+      "ok": {
+        "path": "code",
+        "equals": 200
+      },
+      "result": {
+        "url": "data.imageUrl"
+      }
+    }
+  },
+  "errors": {
+    "relogin": {
+      "status": [
+        401,
+        403
+      ]
+    },
+    "rateLimit": {
+      "status": [
+        429
+      ],
+      "codePath": "code",
+      "codes": [
+        429
+      ]
+    },
+    "challenge": {
+      "textMatch": "安全验证|滑块|captcha",
+      "urlMatch": "passport\\.csdn\\.net/.*(verify|captcha)"
+    }
+  },
+  "limits": {
+    "titleMin": 5,
+    "titleMax": 100,
+    "tagsMax": 5
+  },
+  "flags": {
+    "disabled": false
+  },
+  "unverified": [
+    "检查接口 me.csdn.net/api/user/show（旧接口，可能已下线；getBaseInfo 需要签名不能用）",
+    "登录页 passport.csdn.net/login 与登录成功 cookie UserToken",
+    "编辑器选择器 .article-bar__title input / .editor__inner，合成 paste 事件能否触发 CSDN 的外链图片转存",
+    "imgservice 取上传策略只需 cookie；从 editor.csdn.net 页面跨域请求是否被 CORS 放行",
+    "fetchPage 用 editor.csdn.net/robots.txt 作为同源页面是否可行",
+    "验证 / 风控：安全验证文本或 passport 验证页（待核实）",
+    "节奏参数（步骤间隔、最小发文间隔、每日上限）是产品取值，不是平台公布的限制",
+    "发布成功页 mp.csdn.net/mp_blog/creation/success/{id}，文章链接格式"
+  ],
+  "pacing": {
+    "minDelayMs": 1000,
+    "maxDelayMs": 3000,
+    "minPostIntervalMin": 30,
+    "dailyMax": 5,
+    "postRequests": [],
+    "backoff": {
+      "baseMs": 2000,
+      "maxMs": 60000,
+      "retries": 2
+    }
+  },
+  "published": {
+    "urlMatch": "^https://mp\\.csdn\\.net/mp_blog/creation/success/(\\d+)",
+    "articleUrl": "https://blog.csdn.net/article/details/{id}"
+  }
+}

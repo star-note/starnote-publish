@@ -1,0 +1,39 @@
+{
+  "name": "@starnote/publish-devto",
+  "version": "0.1.0",
+  "description": "StarNote publish adapter for DEV (Forem API): Markdown, 4 tags, canonical back to 辰记, create and update.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ../../.. packages/adapters/devto"
+  },
+  "dependencies": {
+    "@starnote/publish-core": "workspace:*",
+    "@starnote/publish-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "zod": "^3.25.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.1.0"
+  },
+  "license": "UNLICENSED"
+}

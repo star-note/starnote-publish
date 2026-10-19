@@ -1,0 +1,50 @@
+{
+  "$comment": "Golden cases shared by the SDK (packages/core/test/compliance.test.ts) and the backend's minimal Python port (starnote-api/tests/test_compliance_rules.py, SPEC-r8 §12.9). `expect` lists the deterministic items as `rule:field` (sorted); AI-only verdicts are not part of it.",
+  "cases": [
+    {
+      "name": "zhihu: contact details, qr prompt and ad-law words",
+      "input": { "platform": "zhihu", "title": "全网第一的笔记法", "text": "加微信 abc12345 领取资料，扫码进群。史上最低价。", "tags": ["a", "b", "c", "d"] },
+      "expect": ["ad-law:body", "ad-law:title", "contact:body", "qrcode:body", "tag-count:tags"]
+    },
+    {
+      "name": "xiaohongshu: forbidden external link and e-mail",
+      "input": { "platform": "xiaohongshu", "text": "详情见 https://example.com/post ，联系 me@example.com", "links": ["https://example.com/post"] },
+      "expect": ["contact:body", "external-link:body"]
+    },
+    {
+      "name": "wechat: stripped link, title over limit, summary over limit",
+      "input": { "platform": "wechat", "title": "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五", "summary": "摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要摘要", "text": "参考 https://example.org/a 。" },
+      "expect": ["external-link:body", "summary-length:summary", "title-length:title"]
+    },
+    {
+      "name": "chenji: ordinal 第一章 is not a claim; AI label missing in text",
+      "input": { "platform": "chenji", "text": "第一章 开始。这是最好的一天。", "aiAssisted": true },
+      "expect": ["ad-law:body", "ai-label:body"]
+    },
+    {
+      "name": "chenji: AI declared already, label off warns",
+      "input": { "platform": "chenji", "text": "正文。本文部分内容由 AI 辅助生成。", "aiAssisted": true, "aiLabel": false },
+      "expect": ["ai-label:body"]
+    },
+    {
+      "name": "x: body over 280 and no ad-law list overseas",
+      "input": { "platform": "x", "text": "最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好最好" },
+      "expect": ["body-length:body"]
+    },
+    {
+      "name": "learned rules: keyword hit on juejin, other platform's rule ignored, semantic asks AI",
+      "input": { "platform": "juejin", "text": "文末有我的公众号二维码，关注领资料。", "extraRules": [
+        { "id": "r1", "platform": "juejin", "category": "contact", "pattern": { "type": "keyword", "value": "公众号二维码" }, "suggestion": "删掉二维码引导", "confidence": 0.9, "source": "global" },
+        { "id": "r2", "platform": "zhihu", "category": "contact", "pattern": { "type": "keyword", "value": "关注领资料" }, "suggestion": "x", "confidence": 0.9 },
+        { "id": "r3", "platform": "juejin", "category": "sensitive", "pattern": { "type": "semantic", "value": "引导关注公众号" }, "suggestion": "改成介绍内容本身", "confidence": 0.75 },
+        { "id": "r4", "platform": "*", "category": "ad-law", "pattern": { "type": "regex", "value": "领(?:取)?资料" }, "suggestion": "去掉利益引导", "confidence": 0.8 }
+      ] },
+      "expect": ["learned:body", "learned:body", "learned:body"]
+    },
+    {
+      "name": "clean article on devto",
+      "input": { "platform": "devto", "title": "Hello", "text": "A plain article.", "tags": ["a"] },
+      "expect": []
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "name": "@starnote/publish-core",
+  "version": "0.1.0",
+  "description": "StarNote publish SDK core: Tiptap JSON → HTML/Markdown/TOC, the Adapter contract, createPublisher and zod → antd form helpers.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./platforms.json": "./dist/platforms.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup && node scripts/emit-platforms-json.mjs",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ../.. packages/core"
+  },
+  "dependencies": {
+    "@starnote/moderation": "workspace:*"
+  },
+  "peerDependencies": {
+    "zod": "^3.25.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.1.0"
+  },
+  "license": "UNLICENSED"
+}

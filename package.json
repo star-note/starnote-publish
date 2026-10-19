@@ -1,28 +1,35 @@
 {
   "name": "starnote-publish",
   "private": true,
+  "version": "0.0.0",
+  "description": "辰记 StarNote publishing SDK: Tiptap JSON conversion, the multi-platform adapter contract and the chenji adapter.",
+  "type": "module",
+  "packageManager": "pnpm@10.19.0",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
-    "build": "turbo build",
-    "dev": "turbo dev",
-    "lint": "turbo lint",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "changeset": "npx changeset",
-    "version-packages": "npx changeset version",
-    "release": "pnpm build && pnpm release:only",
-    "release:only": "npx changeset publish --registry=https://registry.npmjs.com"
+    "build": "pnpm -r --filter './packages/**' run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r --filter './packages/**' run typecheck",
+    "changeset": "changeset",
+    "version-packages": "changeset version"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "^0.5.0",
-    "@changesets/cli": "^2.27.1",
-    "@repo/eslint-config": "workspace:*",
-    "@repo/typescript-config": "workspace:*",
-    "changeset": "^0.2.6",
-    "prettier": "^3.2.5",
-    "turbo": "latest",
-    "webpack-cli": "^5.1.4"
-  },
-  "packageManager": "pnpm@8.9.0",
-  "engines": {
-    "node": ">=18"
+    "@changesets/cli": "^2.29.0",
+    "@eslint/js": "^9.30.0",
+    "eslint": "^9.30.0",
+    "eslint-config-prettier": "^10.1.0",
+    "prettier": "^3.6.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.40.0",
+    "vitest": "^3.2.0",
+    "zod": "^4.1.0"
   }
 }
