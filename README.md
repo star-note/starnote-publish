@@ -13,6 +13,9 @@
 | `@starnote/publish-blogger` / `-wordpress-com` / `-tumblr` / `-reddit` / `-mastodon` | `packages/adapters/{blogger,wordpress-com,tumblr,reddit,mastodon}` | 官方 OAuth + 官方接口：浏览器 / 桌面渲染请求体。桌面端令牌加密存本机、主进程直接发；网页令牌只在页面内存（`MemoryCredentialStore`），随 `credential` 经辰记 API 转发一次、不保存；打开「云端代发」才存服务器。网页授权流程见 kit 的 `startWebAuthorization` / `completeWebAuthorization` |
 | `@starnote/publish-bluesky` | `packages/adapters/bluesky` | atproto OAuth（公开客户端，PKCE + PAR + DPoP）：网页在页面内直接授权并发到 PDS（`./oauth`），桌面端由主进程完成；服务器不参与，不支持云端代发 |
 | `@starnote/publish-instagram` | `packages/adapters/instagram` | 交接：手机用 Web Share 把图片 + 文案交给系统分享面板，电脑下载图片 + 复制文案；`handoff.files` |
+| `@starnote/publish-zhihu` / `-juejin` / `-csdn` / `-wechat-mp` | `packages/adapters/{zhihu,juejin,csdn,wechat-mp}` | 登录态平台（桌面端）：`.` 入口只有声明、渲染与预览；`./electron` 用 `ctx.sessionFetch` 在账号会话里发请求。默认**交接**（填好标题正文、由用户点发布，进桌面端「发布台」）；公众号个人号只存进后台。易变部分放在签名站点脚本 `site-script.signed.json` |
+| `@starnote/platform-logos` | `packages/logos` | 全部平台 logo 的唯一来源：`logoOf(key)`、`platformMeta(key)`（注册表字段 + logo），资源内联，`SOURCES.md` 记来源与许可 |
+| `@starnote/moderation` | `packages/moderation` | 敏感词打码：`maskText` / `maskHtml`（预览高亮 `mark.sn-masked`，正式输出 `**`），MIT 词库，归一化与白名单 |
 
 ### 入口与端
 
@@ -33,7 +36,10 @@ pnpm test        # vitest
 pnpm lint        # eslint (typescript-eslint) + prettier config
 pnpm typecheck   # tsc --noEmit per package
 pnpm changeset   # record a change (changesets is set up; nothing is published)
+node scripts/sign-site-scripts.mjs [--check|--key <file>]   # 给登录态平台的站点脚本签名（默认开发密钥）
 ```
+
+`pnpm build` 还会生成 `packages/core/dist/platforms.json`（注册表的 JSON，FastAPI 读）与各包 `dist/`。starnote-web / mobile / shared / desktop 以 `link:` 引用这些包，改完要重新 `pnpm build`。
 
 `zod` is a **peer dependency** (`^3.25 || ^4`): the host app brings its own copy so schemas are instances of the same class the form layer uses.
 
@@ -45,10 +51,14 @@ The packages are not on npm; link them from `starnote-web/package.json`:
 {
   "dependencies": {
     "@starnote/publish-core": "link:../starnote-publish/packages/core",
-    "@starnote/publish-chenji": "link:../starnote-publish/packages/adapters/chenji"
+    "@starnote/publish-chenji": "link:../starnote-publish/packages/adapters/chenji",
+    "@starnote/platform-logos": "link:../starnote-publish/packages/logos",
+    "@starnote/moderation": "link:../starnote-publish/packages/moderation"
   }
 }
 ```
+
+网页端把每个平台适配器都 link 了一份（见 `starnote-web/package.json`）；手机端只需 core、chenji 与 shared。
 
 Run `pnpm build` here first so `dist/` exists — `exports` point at `dist/index.js` and `dist/index.d.ts`.
 
@@ -175,21 +185,19 @@ Adapters that automate third-party sites depend on selectors and flows that brea
 
 ```
 packages/core/src
-  convert.ts    Tiptap JSON → html / markdown / text / toc / images / title / summary
-  publisher.ts  createPublisher: validation, event stamping, needInput/answer, done|failed guarantee
-  schema.ts     commonSchema, zodToAntdRules, zodFieldMeta, formatZodError (zod 3.25+ and zod 4)
-  types.ts      Doc, PublishEvent, Adapter, PublishContext, PublishJob, JobResult …
-  content.ts    ContentKind, ArticleContent / ImageSetContent / VideoContent / ShortTextContent
-  runtime.ts    RuntimeSupport, HostEnv, RuntimeGuide, planRuntime, planPlatforms, resolveRuntimes
-  binding.ts    CredentialKind/Store, BindingSpec, AccountRef, BindingDriver (bind/status/unbind), SecretVault
-  report.ts     ReportItem, mergeReports
-  platforms.ts  PLATFORMS registry
-  insights.ts   stats / engage types (no implementation yet)
-  define.ts     defineAdapter
-packages/adapters/chenji/src/index.ts   chenjiAdapter, chenjiSchema, guessCategory
-packages/adapters/github-pages/src
-  index.ts      browser-safe exports        shared/{layout,schema,render,site,git,github,binding,adapter,token}.ts
-  web.ts / electron.ts                    client adapters (token source differs); server-side publishing is Python
+  convert.ts / wechat.ts / mobile.ts   Tiptap JSON → 博客 HTML、公众号内联 HTML、手机端适配（图片 max-width、表格滚动）
+  mask.ts / condense.ts / themes.ts    打码（接 @starnote/moderation）、摘编、文章主题 token（与 shared/styles 同一套）
+  publisher.ts                         createPublisher：校验、事件、needInput / answer、取消、report 合并、done|failed 保证
+  runtime.ts / platforms.ts            RuntimeSupport、planRuntime / planPlatforms；PLATFORMS 注册表（51 个平台：端、绑定、
+                                       内容类型、rules、mobileFirst、stage…）→ 构建时导出 dist/platforms.json
+  binding.ts / desktop-session.ts      凭据声明（token / oauth / cookie…）、桌面登录态会话声明
+  site-script.ts                       签名站点脚本（ed25519）校验、过期、回落随包副本
+  compliance.ts / rules.ts / learned.ts checkCompliance（确定性规则 + 学习规则 extraRules）；golden 用例与 FastAPI 共享
+  session-client.ts / session-adapter.ts / render-steps.ts   登录态平台的公共请求与渲染步骤
+  content.ts / report.ts / insights.ts / define.ts / schema.ts / types.ts
+packages/adapters/<platform>/          每平台一个包；kit/ 是公用件（块降级、错误映射、截断、OAuth 工具）
+packages/logos · packages/moderation   logo 与打码（见上表）
+scripts/sign-site-scripts.mjs          站点脚本签名；开发密钥在 packages/core/test/fixtures/
 ```
 
 ## 微信公众号 HTML（`convertWechat`）
