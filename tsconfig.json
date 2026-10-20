@@ -1,3 +1,14 @@
 {
-  "extends": "@repo/typescript-config/base.json"
+  "files": [],
+  "references": [
+    {
+      "path": "packages/core"
+    },
+    {
+      "path": "packages/adapters/chenji"
+    },
+    {
+      "path": "packages/adapters/github-pages"
+    }
+  ]
 }

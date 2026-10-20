@@ -1,0 +1,270 @@
+export { convert, convertFor, escapeHtml, headingId, slugify } from './convert';
+// 敏感词自动打码 (optional conversion step, on by default) and phone-first output for `mobileFirst` platforms.
+export {
+  maskHtml,
+  maskPreviewHtml,
+  maskReport,
+  maskText,
+  maskTree,
+  resolveMask,
+  type ConvertMask,
+  type MaskSummary,
+} from './mask';
+export { mobileHtml, mobileOptionsFor, type MobileOptions, type MobileResult } from './mobile';
+export { createPublisher, UNKNOWN_PLATFORM } from './publisher';
+export {
+  commonSchema,
+  formatZodError,
+  zodFieldMeta,
+  zodToAntdRules,
+  type AntdRule,
+  type CommonForm,
+  type FieldMeta,
+  type FieldType,
+} from './schema';
+export { COVER_VARIANT_SIZES } from './types';
+export type {
+  Adapter,
+  AdapterCapabilities,
+  AdapterPreview,
+  CommonFormShape,
+  ConvertOptions,
+  CoverVariantKey,
+  CoverVariants,
+  CreatePublisherOptions,
+  Doc,
+  JobResult,
+  NeedInputRequest,
+  PlatformResult,
+  PrefillContext,
+  PublishContext,
+  PublishEvent,
+  PublishEventAction,
+  PublishEventInput,
+  PublishHandoff,
+  PublishJob,
+  PublishOptions,
+  PublishOutput,
+  PublishState,
+  Publisher,
+  Runtime,
+  TiptapJSON,
+  TiptapMark,
+  TocItem,
+} from './types';
+export { variantOf } from './convert';
+export {
+  convertWechat,
+  rgba,
+  wechatDivider,
+  WECHAT_CODE_THEME,
+  WECHAT_DIVIDER_VARIANTS,
+  type WechatHighlight,
+  type WechatOptions,
+  type WechatResult,
+} from './wechat';
+
+// SPEC-r8 §12: content kinds, runtimes & guides, binding, report, platform registry, stats / engage types.
+export {
+  articleContent,
+  CONTENT_KINDS,
+  type ArticleContent,
+  type ContentKind,
+  type ImageSetContent,
+  type MediaAsset,
+  type PublishContent,
+  type ShortTextContent,
+  type VideoContent,
+} from './content';
+export {
+  DEFAULT_GUIDE_LINKS,
+  normalizeRuntime,
+  planPlatforms,
+  planRuntime,
+  resolveRuntimes,
+  runtimeList,
+  type GuideKind,
+  type HandoffVia,
+  type HostEnv,
+  type PlanOptions,
+  type PlanTarget,
+  type RuntimeGuide,
+  type RuntimeMode,
+  type RuntimeNeed,
+  type RuntimePlan,
+  type RuntimeSupport,
+} from './runtime';
+export { defineAdapter, type AdapterDefinition } from './define';
+export {
+  CREDENTIAL_STORES,
+  needsBinding,
+  type AccountRef,
+  type AccountState,
+  type AccountStatus,
+  type BindContext,
+  type BindingDriver,
+  type BindingSpec,
+  type CredentialKind,
+  type CredentialStore,
+  type SecretVault,
+  type UnbindResult,
+} from './binding';
+export { mergeReports, type ReportItem, type ReportKind } from './report';
+export {
+  isPlatformKey,
+  listPlatforms,
+  PLATFORM_KEYS,
+  PLATFORMS,
+  platformMeta,
+  type MonetizationModel,
+  type PlatformKey,
+  type PlatformMeta,
+  type PlatformPhase,
+  type PlatformRegion,
+  type PlatformStage,
+} from './platforms';
+export type {
+  CommentRef,
+  EngageAction,
+  EngageContext,
+  EngageDriver,
+  EngagePolicy,
+  EngageRisk,
+  EngageTarget,
+  PlatformComment,
+  PlatformStats,
+  PostRef,
+  StatsContext,
+  StatsDriver,
+  StatsSource,
+} from './insights';
+
+// SPEC-r8 决定记录 2026-10-19: desktop login sessions, signed site scripts, session endpoints, render steps.
+export {
+  interpretSessionCheck,
+  isSessionPage,
+  readPath,
+  SESSION_ACCOUNT_RE,
+  SESSION_PARTITION_PREFIX,
+  SESSION_PLATFORM_RE,
+  sessionPartition,
+  type DesktopSessionSpec,
+  type HandoffRequest,
+  type HandoffStatus,
+  type HandoffTicket,
+  type LoginSuccessRule,
+  type PageReadSpec,
+  type SessionCheckResult,
+  type SessionCheckSpec,
+  type SessionCheckState,
+  type SessionFetch,
+  type SessionFetchInit,
+  type SessionFile,
+  type SessionPage,
+  type SessionResponse,
+} from './desktop-session';
+export {
+  base64UrlDecode,
+  base64UrlEncode,
+  compareVersions,
+  CORE_VERSION,
+  fillTemplate,
+  loadSiteScript,
+  peekSiteScript,
+  signSiteScript,
+  SITE_SCRIPT_KEYS,
+  SiteScriptError,
+  verifySiteScript,
+  type LoadedSiteScript,
+  type LoadSiteScriptOptions,
+  type SignedSiteScript,
+  type SiteEndpoint,
+  type SiteErrorRule,
+  type SiteHttpMethod,
+  type SiteScript,
+  type SiteScriptErrorCode,
+  type VerifyOptions,
+} from './site-script';
+export {
+  buildSessionRequest,
+  classifyResponse,
+  createSessionClient,
+  PlatformSessionError,
+  type PlatformErrorKind,
+  type SessionCallArgs,
+  type SessionCallResult,
+  type SessionClient,
+  type SessionClientOptions,
+} from './session-client';
+export {
+  degradeTree,
+  rewriteImageSrcs,
+  truncateText,
+  type DegradeOptions,
+  type DegradeResult,
+} from './render-steps';
+export {
+  absoluteImageUrl,
+  asSessionPage,
+  bundledScript,
+  CHALLENGE_PROMPT,
+  HANDOFF_FILLED_TEXT,
+  handOffEditor,
+  handoffReport,
+  openSessionRun,
+  rehostImages,
+  verifySession,
+  withChallengeHandover,
+  type EditorHandoff,
+  type EditorHandoffResult,
+  type RehostOptions,
+  type SessionAdapterOptions,
+  type SessionRun,
+} from './session-adapter';
+
+// CONTRACTS-r9 §1 公众号风格主题.
+export {
+  ARTICLE_THEME_IDS,
+  ARTICLE_THEMES,
+  getArticleTheme,
+  isArticleThemeId,
+  recommendThemes,
+  resolveArticleTheme,
+  themeClassName,
+  type ArticleTheme,
+  type ArticleThemeCaption,
+  type ArticleThemeId,
+  type ThemeH2Style,
+  type ThemeH3Style,
+  type ThemeHrStyle,
+  type ThemeQuoteStyle,
+} from './themes';
+
+// CONTRACTS-r9 §5 平台规则与合规, §3 摘编.
+export { PLATFORM_RULES, platformRules, type PlatformRules } from './rules';
+export {
+  AD_LAW_WORDS,
+  AI_DECLARATION_TEXT,
+  aiDeclaration,
+  appendAiDeclaration,
+  charCount,
+  checkCompliance,
+  COMPLIANCE_LEXICON,
+  type ComplianceDoc,
+  type ComplianceField,
+  type ComplianceFix,
+  type ComplianceInput,
+  type ComplianceItem,
+  type ComplianceResult,
+  type ComplianceRule,
+} from './compliance';
+// SPEC-r9-compliance-learning: rules learned from platform feedback, merged by `checkCompliance(..., extraRules)`.
+export { checkLearnedRules, type LearnedRule, type LearnedRulePattern } from './learned';
+export {
+  docChars,
+  extractiveCondense,
+  splitSentences,
+  terms as condenseTerms,
+  type CondenseOptions,
+  type CondenseResult,
+} from './condense';

@@ -1,0 +1,33 @@
+{
+  "name": "@starnote/moderation",
+  "version": "0.1.0",
+  "description": "StarNote sensitive-word masking: replaces hits with ** (or equal-length *) in text or HTML text nodes, with an optional <mark> preview. Never blocks publishing. Lexicon: konsheng/Sensitive-lexicon (MIT).",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./data/*": "./data/*",
+    "./SOURCES.md": "./SOURCES.md",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "data",
+    "SOURCES.md",
+    "LICENSE-THIRD-PARTY"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ../.. packages/moderation"
+  },
+  "license": "UNLICENSED"
+}

@@ -1,0 +1,287 @@
+{
+  "platform": "juejin",
+  "version": "1.0.0",
+  "minCore": "0.1.0",
+  "issuedAt": "2026-10-19T00:00:00.000Z",
+  "urls": {
+    "home": "https://juejin.cn/creator/home",
+    "help": "https://juejin.cn/creator/home",
+    "write": "https://juejin.cn/editor/drafts/new",
+    "edit": "https://juejin.cn/editor/drafts/{id}",
+    "article": "https://juejin.cn/post/{id}",
+    "verify": "https://juejin.cn/"
+  },
+  "selectors": {
+    "title": "input.title-input",
+    "editor": ".bytemd-editor .CodeMirror"
+  },
+  "session": {
+    "loginUrl": "https://juejin.cn/login",
+    "allowedHosts": [
+      "juejin.cn",
+      "bytedance.com",
+      "bytednsdoc.com",
+      "byteimg.com",
+      "open.weixin.qq.com",
+      "github.com",
+      "api.weibo.com"
+    ],
+    "success": {
+      "cookies": [
+        {
+          "name": "sessionid",
+          "domain": "juejin.cn"
+        }
+      ]
+    },
+    "check": {
+      "url": "https://api.juejin.cn/user_api/v1/user/get",
+      "ok": {
+        "path": "err_no",
+        "equals": 0
+      },
+      "uid": "data.user_id",
+      "nickname": "data.user_name",
+      "avatar": "data.avatar_large",
+      "reloginStatus": [
+        401,
+        403
+      ]
+    },
+    "fetchPage": "https://juejin.cn/robots.txt"
+  },
+  "endpoints": {
+    "csrfToken": {
+      "method": "HEAD",
+      "url": "https://api.juejin.cn/user_api/v1/sys/token",
+      "headers": {
+        "x-secsdk-csrf-request": "1",
+        "x-secsdk-csrf-version": "1.2.10"
+      },
+      "resultHeaders": {
+        "token": {
+          "header": "x-ware-csrf-token",
+          "split": ",",
+          "index": 1
+        }
+      }
+    },
+    "createDraft": {
+      "method": "POST",
+      "url": "https://api.juejin.cn/content_api/v1/article_draft/create?aid=2608",
+      "cookieQuery": [
+        {
+          "param": "uuid",
+          "cookie": "__tea_cookie_tokens_2608",
+          "jsonPath": "web_id"
+        }
+      ],
+      "headers": {
+        "x-secsdk-csrf-token": "{csrf}"
+      },
+      "fields": {
+        "title": "title",
+        "markdown": "mark_content",
+        "categoryId": "category_id",
+        "tagIds": "tag_ids",
+        "brief": "brief_content",
+        "cover": "cover_image"
+      },
+      "static": {
+        "html_content": "deprecated",
+        "edit_type": 10,
+        "link_url": "",
+        "theme_ids": [],
+        "category_id": "0",
+        "tag_ids": [],
+        "cover_image": ""
+      },
+      "ok": {
+        "path": "err_no",
+        "equals": 0
+      },
+      "result": {
+        "id": "data.id"
+      }
+    },
+    "updateDraft": {
+      "method": "POST",
+      "url": "https://api.juejin.cn/content_api/v1/article_draft/update?aid=2608",
+      "cookieQuery": [
+        {
+          "param": "uuid",
+          "cookie": "__tea_cookie_tokens_2608",
+          "jsonPath": "web_id"
+        }
+      ],
+      "headers": {
+        "x-secsdk-csrf-token": "{csrf}"
+      },
+      "fields": {
+        "id": "id",
+        "title": "title",
+        "markdown": "mark_content",
+        "categoryId": "category_id",
+        "tagIds": "tag_ids",
+        "brief": "brief_content",
+        "cover": "cover_image"
+      },
+      "static": {
+        "html_content": "deprecated",
+        "edit_type": 10,
+        "link_url": "",
+        "theme_ids": [],
+        "cover_image": ""
+      },
+      "ok": {
+        "path": "err_no",
+        "equals": 0
+      }
+    },
+    "uploadImageByUrl": {
+      "method": "POST",
+      "url": "https://juejin.cn/image/urlSave",
+      "headers": {
+        "x-secsdk-csrf-token": "{csrf}"
+      },
+      "fields": {
+        "url": "url"
+      },
+      "result": {
+        "url": "data"
+      },
+      "note": "旧接口（Wechatsync old 分支），可能已下线；失败时保留原图链接。现行编辑器走 ImageX（AWS4 签名的临时凭证），尚未实现"
+    },
+    "publish": {
+      "method": "POST",
+      "url": "https://api.juejin.cn/content_api/v1/article/publish?aid=2608",
+      "cookieQuery": [
+        {
+          "param": "uuid",
+          "cookie": "__tea_cookie_tokens_2608",
+          "jsonPath": "web_id"
+        }
+      ],
+      "headers": {
+        "x-secsdk-csrf-token": "{csrf}"
+      },
+      "fields": {
+        "draftId": "draft_id"
+      },
+      "static": {
+        "sync_to_org": false,
+        "column_ids": [],
+        "theme_ids": []
+      },
+      "ok": {
+        "path": "err_no",
+        "equals": 0
+      },
+      "result": {
+        "articleId": "data.article_id"
+      }
+    },
+    "categories": {
+      "method": "GET",
+      "url": "https://api.juejin.cn/tag_api/v1/query_category_briefs?aid=2608",
+      "ok": {
+        "path": "err_no",
+        "equals": 0
+      },
+      "result": {
+        "list": "data"
+      }
+    },
+    "searchTags": {
+      "method": "POST",
+      "url": "https://api.juejin.cn/tag_api/v1/query_tag_list?aid=2608",
+      "headers": {
+        "x-secsdk-csrf-token": "{csrf}"
+      },
+      "fields": {
+        "keyword": "key_word"
+      },
+      "static": {
+        "cursor": "0",
+        "limit": 8,
+        "sort_type": 1
+      },
+      "ok": {
+        "path": "err_no",
+        "equals": 0
+      },
+      "result": {
+        "list": "data"
+      }
+    }
+  },
+  "errors": {
+    "relogin": {
+      "status": [
+        401,
+        403
+      ],
+      "codePath": "err_no",
+      "codes": [
+        403
+      ]
+    },
+    "rateLimit": {
+      "status": [
+        429
+      ],
+      "codePath": "err_no",
+      "codes": [
+        429
+      ]
+    },
+    "challenge": {
+      "textMatch": "verifycenter|captcha|安全验证",
+      "urlMatch": "verify(center)?\\.(snssdk|bytedance|zijieapi)\\.com"
+    }
+  },
+  "limits": {
+    "titleMax": 100,
+    "summaryMin": 50,
+    "summaryMax": 100,
+    "tagsMax": 3
+  },
+  "flags": {
+    "disabled": false
+  },
+  "unverified": [
+    "uuid 取自 cookie __tea_cookie_tokens_2608 的 web_id（不带 uuid 会报「请求路由不存在」）",
+    "未登录 / 限流的 err_no（暂按 403 / 429）",
+    "标签上限是 2 还是 3（暂按 3，超出时 err_no 4031）",
+    "image/urlSave 外链转存是否还可用",
+    "fetchPage 用 juejin.cn/robots.txt 作为同源页面是否可行",
+    "验证 / 风控：字节验证中心页面或 captcha 文本（待核实）",
+    "节奏参数（步骤间隔、最小发文间隔、每日上限）是产品取值，不是平台公布的限制",
+    "编辑器选择器 input.title-input / .bytemd-editor .CodeMirror",
+    "发布成功后跳到 juejin.cn/published 或 /post/{id}"
+  ],
+  "pacing": {
+    "minDelayMs": 2500,
+    "maxDelayMs": 4500,
+    "minPostIntervalMin": 30,
+    "dailyMax": 5,
+    "postRequests": [
+      "POST ^https://api\\.juejin\\.cn/content_api/v1/article_draft/create"
+    ],
+    "backoff": {
+      "baseMs": 3000,
+      "maxMs": 60000,
+      "retries": 2
+    }
+  },
+  "waits": {
+    "editor": {
+      "selector": ".bytemd-editor .CodeMirror",
+      "timeoutMs": 20000
+    }
+  },
+  "published": {
+    "urlMatch": "^https://juejin\\.cn/(?:post/(\\d+)|published)(?:[/?#]|$)",
+    "articleUrl": "https://juejin.cn/post/{id}"
+  }
+}

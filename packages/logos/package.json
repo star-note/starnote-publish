@@ -1,0 +1,41 @@
+{
+  "name": "@starnote/platform-logos",
+  "version": "0.1.0",
+  "description": "StarNote platform logos: one logo per registry platform (simple-icons CC0 / official favicons / placeholders), sanitized and inlined as data URIs, plus platformMeta(key) = registry entry + logo.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./assets/*": "./assets/*",
+    "./SOURCES.md": "./SOURCES.md",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "assets",
+    "SOURCES.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ../.. packages/logos"
+  },
+  "dependencies": {
+    "@starnote/publish-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "zod": "^3.25.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.1.0"
+  },
+  "license": "UNLICENSED"
+}

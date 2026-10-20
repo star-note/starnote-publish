@@ -1,0 +1,253 @@
+{
+  "platform": "zhihu",
+  "version": "1.0.0",
+  "minCore": "0.1.0",
+  "issuedAt": "2026-10-19T00:00:00.000Z",
+  "urls": {
+    "home": "https://www.zhihu.com/creator",
+    "help": "https://www.zhihu.com/creator",
+    "write": "https://zhuanlan.zhihu.com/write",
+    "edit": "https://zhuanlan.zhihu.com/p/{id}/edit",
+    "article": "https://zhuanlan.zhihu.com/p/{id}",
+    "equation": "https://www.zhihu.com/equation?tex={tex}",
+    "verify": "https://www.zhihu.com/account/unhuman?type=unhuman&need_login=true"
+  },
+  "selectors": {
+    "title": "textarea[placeholder*=\"标题\"]",
+    "editor": ".public-DraftEditor-content"
+  },
+  "session": {
+    "loginUrl": "https://www.zhihu.com/signin?next=%2Fcreator",
+    "allowedHosts": [
+      "zhihu.com",
+      "zhimg.com",
+      "open.weixin.qq.com",
+      "graph.qq.com",
+      "api.weibo.com",
+      "passport.weibo.com"
+    ],
+    "success": {
+      "cookies": [
+        {
+          "name": "z_c0",
+          "domain": "zhihu.com"
+        }
+      ]
+    },
+    "check": {
+      "url": "https://www.zhihu.com/api/v4/me",
+      "uid": "id",
+      "nickname": "name",
+      "avatar": "avatar_url",
+      "reloginStatus": [
+        401,
+        403
+      ]
+    },
+    "fetchPage": "https://zhuanlan.zhihu.com/robots.txt"
+  },
+  "endpoints": {
+    "createDraft": {
+      "method": "POST",
+      "url": "https://zhuanlan.zhihu.com/api/articles/drafts",
+      "headers": {
+        "x-requested-with": "fetch"
+      },
+      "csrf": {
+        "cookie": "_xsrf",
+        "header": "x-xsrftoken"
+      },
+      "fields": {
+        "title": "title",
+        "html": "content"
+      },
+      "static": {
+        "delta_time": 0,
+        "can_reward": false
+      },
+      "result": {
+        "id": "id"
+      }
+    },
+    "updateDraft": {
+      "method": "PATCH",
+      "url": "https://zhuanlan.zhihu.com/api/articles/{id}/draft",
+      "headers": {
+        "x-requested-with": "fetch"
+      },
+      "csrf": {
+        "cookie": "_xsrf",
+        "header": "x-xsrftoken"
+      },
+      "fields": {
+        "title": "title",
+        "html": "content",
+        "cover": "titleImage"
+      },
+      "static": {
+        "isTitleImageFullScreen": false,
+        "table_of_contents": false,
+        "delta_time": 30,
+        "can_reward": false
+      }
+    },
+    "uploadImageByUrl": {
+      "method": "POST",
+      "url": "https://zhuanlan.zhihu.com/api/uploaded_images",
+      "headers": {
+        "x-requested-with": "fetch"
+      },
+      "csrf": {
+        "cookie": "_xsrf",
+        "header": "x-xsrftoken"
+      },
+      "bodyType": "form",
+      "fields": {
+        "url": "url"
+      },
+      "static": {
+        "source": "article"
+      },
+      "result": {
+        "url": "src"
+      }
+    },
+    "searchTopics": {
+      "method": "GET",
+      "url": "https://zhuanlan.zhihu.com/api/autocomplete/topics?token={keyword}&max_matches=5&use_similar=0&topic_filter=1",
+      "headers": {
+        "x-requested-with": "fetch"
+      },
+      "result": {
+        "first": "0",
+        "firstName": "0.name"
+      }
+    },
+    "attachTopic": {
+      "method": "POST",
+      "url": "https://zhuanlan.zhihu.com/api/articles/{id}/topics",
+      "headers": {
+        "x-requested-with": "fetch"
+      },
+      "csrf": {
+        "cookie": "_xsrf",
+        "header": "x-xsrftoken"
+      }
+    },
+    "publish": {
+      "method": "POST",
+      "url": "https://www.zhihu.com/api/v4/content/publish",
+      "headers": {
+        "x-requested-with": "fetch"
+      },
+      "csrf": {
+        "cookie": "_xsrf",
+        "header": "x-xsrftoken"
+      },
+      "fields": {
+        "draftId": "data.draft.id",
+        "traceId": "data.publish.traceId"
+      },
+      "static": {
+        "action": "article",
+        "data": {
+          "publish": {},
+          "extra_info": {
+            "publisher": "pc",
+            "pc_business_params": "{\"column\":null,\"commentPermission\":\"anyone\",\"disclaimer_type\":\"none\",\"disclaimer_status\":\"close\",\"table_of_contents_enabled\":false,\"commercial_report_info\":{\"commercial_types\":[]},\"canReward\":false}"
+          },
+          "draft": {
+            "disabled": 1,
+            "isPublished": false
+          },
+          "commentsPermission": {
+            "comment_permission": "anyone"
+          },
+          "creationStatement": {
+            "disclaimer_type": "none",
+            "disclaimer_status": "close"
+          },
+          "contentsTables": {
+            "table_of_contents_enabled": false
+          },
+          "commercialReportInfo": {
+            "isReport": 0
+          },
+          "appreciate": {
+            "can_reward": false,
+            "tagline": ""
+          },
+          "hybridInfo": {}
+        }
+      },
+      "ok": {
+        "path": "message",
+        "equals": "success"
+      }
+    }
+  },
+  "errors": {
+    "relogin": {
+      "status": [
+        401
+      ]
+    },
+    "rateLimit": {
+      "status": [
+        429
+      ]
+    },
+    "challenge": {
+      "status": [],
+      "codePath": "error.code",
+      "codes": [
+        40352,
+        40362
+      ],
+      "urlMatch": "zhihu\\.com/account/unhuman",
+      "pageUrl": "https://www.zhihu.com/account/unhuman?type=unhuman&need_login=true"
+    }
+  },
+  "limits": {
+    "titleMax": 100,
+    "topicsMax": 3
+  },
+  "flags": {
+    "disabled": false
+  },
+  "unverified": [
+    "未登录 / 限流时的状态码与 error.code（按 401 / 429 处理）",
+    "fetchPage 用 zhuanlan.zhihu.com/robots.txt 作为同源页面是否可行",
+    "publish 的 pc_business_params 字段集合（来自 zhihu_obsidian 2026-10）",
+    "__zse_ck 反爬 cookie：登录窗口访问过知乎页面后是否已写入",
+    "uploaded_images 外链转存是否仍可用（Wechatsync v2 仍在用）",
+    "验证 / 风控：error.code 40352、40362 与 /account/unhuman 页面（待核实）",
+    "节奏参数（步骤间隔、最小发文间隔、每日上限）是产品取值，不是平台公布的限制",
+    "编辑器选择器 textarea[placeholder*=\"标题\"] / .public-DraftEditor-content",
+    "发布成功后跳到 zhuanlan.zhihu.com/p/{id}（不带 /edit）"
+  ],
+  "pacing": {
+    "minDelayMs": 800,
+    "maxDelayMs": 3000,
+    "minPostIntervalMin": 30,
+    "dailyMax": 5,
+    "postRequests": [
+      "POST ^https://zhuanlan\\.zhihu\\.com/api/articles/drafts$"
+    ],
+    "backoff": {
+      "baseMs": 2000,
+      "maxMs": 60000,
+      "retries": 2
+    }
+  },
+  "waits": {
+    "editor": {
+      "selector": ".public-DraftEditor-content",
+      "timeoutMs": 20000
+    }
+  },
+  "published": {
+    "urlMatch": "^https://zhuanlan\\.zhihu\\.com/p/(\\d+)(?:[?#]|$)",
+    "articleUrl": "https://zhuanlan.zhihu.com/p/{id}"
+  }
+}
