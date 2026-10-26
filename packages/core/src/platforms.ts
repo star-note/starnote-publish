@@ -59,6 +59,8 @@ export type PlatformKey =
   | 'threads'
   | 'reddit'
   | 'telegram'
+  | 'discord'
+  | 'slack'
   | 'quora'
   | 'vocal'
   | 'newsbreak'
@@ -220,6 +222,21 @@ const OWN_API: RuntimeSupport[] = [
   },
 ];
 const OAUTH_LOCAL = (provider: string) => ({ kind: 'oauth', store: 'desktop', provider }) as const;
+/**
+ * SPEC-r11 §10 token platforms (Telegram bot, Discord / Slack webhook): bound with `POST /me/platform-accounts/{p}/connect`,
+ * the credential is kept on the server; the browser / desktop renders, the server sends (also at a scheduled time).
+ */
+const TOKEN_API: RuntimeSupport[] = [
+  relay('web'),
+  relay('electron'),
+  { runtime: 'server', mode: 'api', needs: ['token'], schedulable: true, note: '到点由服务器代发' },
+];
+/** SPEC-r11 §10 Meta / LinkedIn / Pinterest OAuth: `OWN_API` behind an app review where the platform asks for one. */
+const OWN_API_REVIEW: RuntimeSupport[] = OWN_API.map((r) => ({
+  ...r,
+  needs: ['token', 'app-review'] as RuntimeNeed[],
+}));
+const SHORT_OR_ARTICLE: ContentKind[] = ['short-text', 'article'];
 
 const COOKIE = { kind: 'cookie', store: 'desktop' } as const;
 const OAUTH = { kind: 'oauth', store: 'server' } as const;
@@ -687,10 +704,13 @@ const ENTRIES: readonly PlatformEntry[] = [
     color: '#0a66c2',
     region: 'global',
     homepage: 'https://www.linkedin.com/',
-    contentTypes: SHORT,
-    // 发帖 API 要申请产品权限：只做分享跳转
-    runtimes: [handoff('share-intent', 'https://www.linkedin.com/sharing/share-offsite/')],
-    binding: NONE,
+    contentTypes: SHORT_OR_ARTICLE,
+    // SPEC-r11 §10：OAuth（openid profile w_member_social，Share on LinkedIn 自助开通 ⚠️）发文章卡片；没绑定时分享跳转
+    runtimes: [
+      ...OWN_API,
+      handoff('share-intent', 'https://www.linkedin.com/sharing/share-offsite/'),
+    ],
+    binding: OAUTH_LOCAL('linkedin'),
     monetization: [],
     phase: 'P2',
     stage: 'implemented',
@@ -717,10 +737,13 @@ const ENTRIES: readonly PlatformEntry[] = [
     color: '#1877f2',
     region: 'global',
     homepage: 'https://www.facebook.com/',
-    contentTypes: SHORT,
-    // Page 发帖要 Meta App Review，个人主页没有 API：只做分享跳转
-    runtimes: [handoff('share-intent', 'https://www.facebook.com/sharer/sharer.php')],
-    binding: NONE,
+    contentTypes: SHORT_OR_ARTICLE,
+    // SPEC-r11 §10：Facebook 主页（Page）经 Graph API 发链接帖，要 Meta App Review ⚠️；个人主页没有 API，没绑定时分享跳转
+    runtimes: [
+      ...OWN_API_REVIEW,
+      handoff('share-intent', 'https://www.facebook.com/sharer/sharer.php'),
+    ],
+    binding: OAUTH_LOCAL('facebook'),
     monetization: ['ad-share'],
     phase: 'P2',
     stage: 'implemented',
@@ -732,10 +755,10 @@ const ENTRIES: readonly PlatformEntry[] = [
     color: '#000000',
     region: 'global',
     homepage: 'https://www.threads.net/',
-    contentTypes: SHORT,
-    // 对外开放需 Meta App Review：只做分享跳转
-    runtimes: [handoff('share-intent', 'https://www.threads.com/intent/post')],
-    binding: NONE,
+    contentTypes: SHORT_OR_ARTICLE,
+    // SPEC-r11 §10：Threads API 三段式（建容器 → 查状态 → threads_publish），对外开放需 Meta App Review ⚠️；没绑定时分享跳转
+    runtimes: [...OWN_API_REVIEW, handoff('share-intent', 'https://www.threads.com/intent/post')],
+    binding: OAUTH_LOCAL('threads'),
     monetization: [],
     phase: 'P2',
     stage: 'implemented',
@@ -765,9 +788,58 @@ const ENTRIES: readonly PlatformEntry[] = [
     color: '#26a5e4',
     region: 'global',
     homepage: 'https://telegram.org/',
-    contentTypes: SHORT,
-    runtimes: [handoff('share-intent', 'https://t.me/share/url')],
-    binding: NONE,
+    contentTypes: SHORT_OR_ARTICLE,
+    // SPEC-r11 §10：Bot API 发到频道 / 群（bot_token + chat_id，机器人须是管理员）；没绑定时分享跳转
+    runtimes: [...TOKEN_API, handoff('share-intent', 'https://t.me/share/url')],
+    binding: {
+      kind: 'token',
+      store: 'server',
+      provider: 'telegram',
+      fields: ['bot_token', 'chat_id'],
+      createUrl: 'https://t.me/BotFather',
+    },
+    monetization: [],
+    phase: 'P2',
+    stage: 'implemented',
+  },
+  {
+    key: 'discord',
+    label: 'Discord',
+    short: 'D',
+    color: '#5865f2',
+    region: 'global',
+    homepage: 'https://discord.com/',
+    contentTypes: SHORT_OR_ARTICLE,
+    // SPEC-r11 §10：频道 Webhook（content + 1 个 embed）；没绑定时复制文案
+    runtimes: [...TOKEN_API, { ...manual(), note: '复制文案，到 Discord 频道粘贴' }],
+    binding: {
+      kind: 'token',
+      store: 'server',
+      provider: 'discord',
+      fields: ['webhook_url'],
+      createUrl: 'https://support.discord.com/hc/en-us/articles/228383668',
+    },
+    monetization: [],
+    phase: 'P2',
+    stage: 'implemented',
+  },
+  {
+    key: 'slack',
+    label: 'Slack',
+    short: 'S',
+    color: '#4a154b',
+    region: 'global',
+    homepage: 'https://slack.com/',
+    contentTypes: SHORT_OR_ARTICLE,
+    // SPEC-r11 §10：Incoming Webhook（Block Kit）；Webhook 不返回消息 id 和链接；没绑定时复制文案
+    runtimes: [...TOKEN_API, { ...manual(), note: '复制文案，到 Slack 频道粘贴' }],
+    binding: {
+      kind: 'token',
+      store: 'server',
+      provider: 'slack',
+      fields: ['webhook_url'],
+      createUrl: 'https://api.slack.com/messaging/webhooks',
+    },
     monetization: [],
     phase: 'P2',
     stage: 'implemented',
@@ -840,9 +912,13 @@ const ENTRIES: readonly PlatformEntry[] = [
     region: 'global',
     homepage: 'https://www.pinterest.com/',
     contentTypes: ['article', 'short-text'],
-    // API 的 Trial 档建的 Pin 只有自己可见，Standard 档要录屏审核：只做分享跳转（带图片和链接）
-    runtimes: [handoff('share-intent', 'https://www.pinterest.com/pin/create/button/')],
-    binding: NONE,
+    // SPEC-r11 §10：API v5 建 Pin（封面图 + 链接，绑定时选画板）；Trial 档建的 Pin 只有自己可见、Standard 档要审核 ⚠️；
+    // 没绑定时分享跳转（带图片和链接）
+    runtimes: [
+      ...OWN_API_REVIEW,
+      handoff('share-intent', 'https://www.pinterest.com/pin/create/button/'),
+    ],
+    binding: OAUTH_LOCAL('pinterest'),
     monetization: [],
     phase: 'P2',
     stage: 'implemented',
@@ -868,14 +944,16 @@ const ENTRIES: readonly PlatformEntry[] = [
     region: 'global',
     homepage: 'https://www.instagram.com/',
     contentTypes: ['image-set', 'article'],
-    // 发布 API 要 Meta App Review，也没有网页分享链接：手机用系统分享面板交给 App，电脑下载图片 + 复制文案
+    // SPEC-r11 §10：Instagram Login（仅专业账号）三段式发单图 / 轮播，要 Meta App Review ⚠️，图片须是公网 HTTPS 地址；
+    // 没绑定时（也没有网页分享链接）：手机用系统分享面板交给 App，电脑下载图片 + 复制文案
     runtimes: [
+      ...OWN_API_REVIEW,
       handoff('web-share', 'https://www.instagram.com/', {
         note: '手机：系统分享面板选 Instagram，在 App 里完成发布',
       }),
       manual(),
     ],
-    binding: NONE,
+    binding: OAUTH_LOCAL('instagram'),
     monetization: ['brand-deals', 'creator-fund'],
     phase: 'P2',
     stage: 'implemented',

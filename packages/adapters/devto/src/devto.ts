@@ -14,7 +14,11 @@ import {
   fitTitle,
   guard,
   linkedImagesReport,
+  num,
+  readJson,
   relayPublish,
+  relayRequestOf,
+  stats,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
@@ -24,9 +28,11 @@ import type {
   BindingSpec,
   CommonFormShape,
   Doc,
+  PlatformStats,
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  StatsContext,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
 
@@ -244,6 +250,30 @@ export function devtoRelayBody(r: DevtoRendered): DevtoArticleBody {
   return r.body;
 }
 
+/**
+ * SPEC-r11 §7 ✅ `GET /api/articles/me/all` (`api-key`; the desktop's fetch adds it when the context has none):
+ * page views, reactions and comments of the article with this id. ⚠️ 只取第一页 1000 篇。
+ */
+export async function fetchDevtoStats(
+  externalId: string,
+  ctx: StatsContext
+): Promise<PlatformStats | null> {
+  const key = ctx.credential?.api_key;
+  const list = await readJson<Array<Record<string, unknown>>>(
+    ctx,
+    devtoRef(),
+    `${DEVTO_API}/articles/me/all?per_page=1000`,
+    { headers: { Accept: DEVTO_ACCEPT, ...(key ? { 'api-key': key } : {}) } }
+  );
+  const a = list?.find((x) => String(x.id) === String(externalId));
+  if (!a) return null;
+  return stats('official-api', {
+    views: num(a.page_views_count),
+    likes: num(a.public_reactions_count ?? a.positive_reactions_count),
+    comments: num(a.comments_count),
+  });
+}
+
 /* ---------------- adapter ---------------- */
 
 export interface DevtoAdapterOptions {
@@ -267,6 +297,10 @@ export function createDevtoAdapter(opts: DevtoAdapterOptions = {}): Adapter<type
     binding: devtoBinding,
     capabilities: { supportsUpdate: true, needsLogin: true, titleMax: DEVTO_LIMITS.titleMax },
     schema: devtoSchema,
+    statsRequires: 'token',
+    fetchStats(externalId, ctx) {
+      return fetchDevtoStats(externalId, ctx);
+    },
     preview(doc, form, common, content): AdapterPreview {
       const r = renderDevto(doc, form, common, content, renderOpts);
       return {
@@ -276,6 +310,11 @@ export function createDevtoAdapter(opts: DevtoAdapterOptions = {}): Adapter<type
         previewHtml: r.previewHtml,
         report: r.report,
       };
+    },
+    // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
+    renderRequest({ doc, form, common, content, previous }) {
+      const r = renderDevto(doc, form, common, content, renderOpts);
+      return relayRequestOf(devtoRelayBody(r), previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {

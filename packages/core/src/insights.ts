@@ -1,6 +1,10 @@
 /**
- * Types only (SPEC-r8 §7.4, §10.4): post-publish stats and engagement. Nothing implements them yet;
- * adapters may declare `fetchStats` / `engage` so hosts can plan for them.
+ * Post-publish stats (SPEC-r11 §7, implemented by DEV / Hashnode / Mastodon / Bluesky / Reddit / Threads /
+ * Pinterest as `Adapter.fetchStats`) and engagement (SPEC-r8 §7.4, types only).
+ *
+ * Where stats are collected: the server collects public platforms for every post and credentialed ones for
+ * 云端代发 accounts (`POST /admin/platform-stats/collect`, Python); the desktop collects its local accounts' posts
+ * with `fetchStats` every 6 hours and reports them with `POST /me/platform-stats` (`statsRow`).
  */
 import type { AccountRef } from './binding';
 import type { PublishContext } from './types';
@@ -30,12 +34,50 @@ export interface PlatformStats {
   extra?: Record<string, number | string>;
 }
 
+/**
+ * A credential for a stats read. Absent: the request goes out without one and the host's `fetch` adds it (the
+ * desktop main process holds local tokens and signs requests to the platform's API host, like `localRelayFetch`).
+ */
+export interface StatsCredential {
+  /** OAuth bearer token (Threads, Pinterest). */
+  access_token?: string;
+  /** DEV `api-key`, Hashnode personal access token. */
+  api_key?: string;
+  /** Mastodon: the instance host. */
+  instance?: string;
+}
+
 export type StatsContext = Pick<PublishContext, 'fetch' | 'signal' | 'runtime' | 'page'> & {
   account?: AccountRef;
+  /** The post's URL (Mastodon reads the instance from it when the account does not say). */
   url?: string;
   /** API root, for adapters that fetch credentials from the 辰记 API. */
   apiBase?: string;
+  credential?: StatsCredential;
 };
+
+/** One row of `POST /me/platform-stats` (SPEC-r11 §7.3), from a `fetchStats` answer. */
+export interface PlatformStatsRow {
+  platform: string;
+  external_id: string;
+  views?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+}
+
+/** `PlatformStats` → the row the API takes; `views` falls back to `reads`. */
+export function statsRow(platform: string, externalId: string, s: PlatformStats): PlatformStatsRow {
+  const views = s.views ?? s.reads;
+  return {
+    platform,
+    external_id: externalId,
+    ...(views !== undefined ? { views } : {}),
+    ...(s.likes !== undefined ? { likes: s.likes } : {}),
+    ...(s.comments !== undefined ? { comments: s.comments } : {}),
+    ...(s.shares !== undefined ? { shares: s.shares } : {}),
+  };
+}
 
 export interface StatsDriver {
   /** `null`: the post is gone or hidden. */

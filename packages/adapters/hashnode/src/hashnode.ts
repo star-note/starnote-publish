@@ -25,7 +25,11 @@ import {
   guard,
   helpError,
   linkedImagesReport,
+  num,
+  readJson,
   relayPublish,
+  relayRequestOf,
+  stats,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
@@ -35,9 +39,11 @@ import type {
   BindingSpec,
   CommonFormShape,
   Doc,
+  PlatformStats,
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  StatsContext,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
 
@@ -317,6 +323,35 @@ export function hashnodeRelayBody(r: HashnodeRendered, form: HashnodeForm): Hash
 
 /* ---------------- adapter ---------------- */
 
+/** ⚠️ 待核实：`post(id)` 的 `views` 只对作者可见（需要令牌），字段名按 SPEC-r11 §7.3。 */
+export const HASHNODE_STATS_QUERY =
+  'query PostStats($id: ID!) { post(id: $id) { id views reactionCount responseCount } }';
+
+/** SPEC-r11 §7: views, reactions and responses of a post (GraphQL, the user's token). */
+export async function fetchHashnodeStats(
+  externalId: string,
+  ctx: StatsContext
+): Promise<PlatformStats | null> {
+  const token = ctx.credential?.api_key ?? ctx.credential?.access_token;
+  const res = await readJson<{ data?: { post?: Record<string, unknown> | null } }>(
+    ctx,
+    hashnodeRef(),
+    HASHNODE_GQL,
+    {
+      method: 'POST',
+      body: { query: HASHNODE_STATS_QUERY, variables: { id: externalId } },
+      ...(token ? { headers: { Authorization: token } } : {}),
+    }
+  );
+  const post = res?.data?.post;
+  if (!post) return null;
+  return stats('official-api', {
+    views: num(post.views),
+    likes: num(post.reactionCount),
+    comments: num(post.responseCount),
+  });
+}
+
 export interface HashnodeAdapterOptions {
   runtimes?: RuntimeSupport[];
   assetBase?: string;
@@ -337,6 +372,10 @@ export function createHashnodeAdapter(
     binding: hashnodeBinding,
     capabilities: { supportsUpdate: true, needsLogin: true, titleMax: HASHNODE_LIMITS.titleMax },
     schema: hashnodeSchema,
+    statsRequires: 'token',
+    fetchStats(externalId, ctx) {
+      return fetchHashnodeStats(externalId, ctx);
+    },
     preview(doc, form, common, content): AdapterPreview {
       const r = renderHashnode(doc, form, common, content, renderOpts);
       return {
@@ -346,6 +385,11 @@ export function createHashnodeAdapter(
         previewHtml: r.previewHtml,
         report: r.report,
       };
+    },
+    // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
+    renderRequest({ doc, form, common, content, previous }) {
+      const r = renderHashnode(doc, form, common, content, renderOpts);
+      return relayRequestOf(hashnodeRelayBody(r, form), previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {

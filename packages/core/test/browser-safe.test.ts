@@ -35,6 +35,14 @@ const BROWSER_ENTRIES = [
   'packages/adapters/mastodon/src/index.ts',
   'packages/adapters/bluesky/src/index.ts',
   'packages/adapters/instagram/src/index.ts',
+  // SPEC-r11 §10
+  'packages/adapters/telegram/src/index.ts',
+  'packages/adapters/discord/src/index.ts',
+  'packages/adapters/slack/src/index.ts',
+  'packages/adapters/linkedin/src/index.ts',
+  'packages/adapters/threads/src/index.ts',
+  'packages/adapters/facebook/src/index.ts',
+  'packages/adapters/pinterest/src/index.ts',
 ];
 
 const FORBIDDEN = new Set(['electron', ...builtinModules]);
@@ -75,13 +83,14 @@ describe('browser-safe entries', () => {
   });
 
   // @starnote/moderation (masking, zero runtime dependencies) is the one sibling core itself imports; adapters also
-  // use @starnote/publish-kit, which is itself checked above
-  it('only allows zod, the core package, kit and moderation as bare imports', () => {
+  // use @starnote/publish-kit and (for the not-bound hand-off, SPEC-r11 §10) @starnote/publish-share, both checked above
+  it('only allows zod, the core package, kit, share and moderation as bare imports', () => {
     const bare = new Set(BROWSER_ENTRIES.flatMap((e) => walk(e).map((x) => x.spec)));
     expect([...bare].sort()).toEqual([
       '@starnote/moderation',
       '@starnote/publish-core',
       '@starnote/publish-kit',
+      '@starnote/publish-share',
       'zod',
     ]);
   });

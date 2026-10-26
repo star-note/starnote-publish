@@ -27,7 +27,8 @@
   },
   "dependencies": {
     "@starnote/publish-core": "workspace:*",
-    "@starnote/publish-kit": "workspace:*"
+    "@starnote/publish-kit": "workspace:*",
+    "@starnote/publish-share": "workspace:*"
   },
   "peerDependencies": {
     "zod": "^3.25.0 || ^4.0.0"

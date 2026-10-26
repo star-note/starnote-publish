@@ -2,7 +2,7 @@
 
 由 `scripts/build-logos.mts` 生成（2026-10-19）。下载文件一律视为不可信：SVG 经白名单清洗（`src/sanitize.ts`），位图经 sharp 解码后重新编码为 64×64 / 128×128 PNG。
 
-合计 51 个：simple-icons 31，官网 18，自有 1，占位 1。
+合计 53 个：simple-icons 33，官网 18，自有 1，占位 1（2026-10-26 补 discord、slack）。
 
 所有平台名称与 logo 均为其各自所有者的商标，此处仅用于指示发布目标平台，不表示任何合作或背书。
 
@@ -49,6 +49,8 @@
 | threads         | threads.svg                                     | https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/threads.svg（simple-icons@16.35.0；上游：https://www.meta.com/brand/resources/instagram/threads）                                                                         | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-19 |                                  |
 | reddit          | reddit.svg                                      | https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/reddit.svg（simple-icons@16.35.0；上游：https://www.redditinc.com/brand）                                                                                                 | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-19 |                                  |
 | telegram        | telegram.svg                                    | https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/telegram.svg（simple-icons@16.35.0；上游：https://telegram.org/tour/screenshots）                                                                                         | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-19 |                                  |
+| discord         | discord.svg                                     | https://github.com/simple-icons/simple-icons/blob/develop/icons/discord.svg（simple-icons，本地副本版本待核实 ⚠️；上游：https://discord.com/branding） | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-26 | SPEC-r11 新增 |
+| slack           | slack.svg                                       | https://github.com/simple-icons/simple-icons/blob/develop/icons/slack.svg（simple-icons，本地副本版本待核实 ⚠️；上游：https://slack.com/media-kit） | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-26 | SPEC-r11 新增 |
 | quora           | quora.svg                                       | https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/quora.svg（simple-icons@16.35.0；上游：https://www.quora.com）                                                                                                            | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-19 |                                  |
 | vocal           | vocal-64.png, vocal-128.png                     | https://res.cloudinary.com/jerrick/image/upload/v1502164419/u8c2pt1ofugt2wwn9bdx.ico                                                                                                                                                      | 品牌商标，仅用于指示平台                                    | 2026-10-19 |                                  |
 | newsbreak       | newsbreak-64.png, newsbreak-128.png             | https://static.newsbreak.com/static/web-icon.png                                                                                                                                                                                          | 品牌商标，仅用于指示平台                                    | 2026-10-19 |                                  |

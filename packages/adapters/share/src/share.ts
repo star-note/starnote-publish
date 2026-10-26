@@ -35,6 +35,7 @@ import {
   codePoints,
   guard,
   helpError,
+  linkCost,
   threadsLength,
   truncate,
   weiboLength,
@@ -264,11 +265,11 @@ function measure(p: SharePlatform, text: string, tags: string[], link: string): 
         tags.reduce((n, t) => n + 2 + xWeightedLength(t), 0)
       );
     case 'threads':
-      return threadsLength(body) + (link ? 1 + codePoints(link) : 0);
+      return threadsLength(body) + (link ? 1 + linkCost(link) : 0);
     case 'weibo':
       return weiboLength(`${body} ${link}`);
     case 'telegram':
-      return codePoints(body) + (link ? 1 + codePoints(link) : 0);
+      return codePoints(body) + (link ? 1 + linkCost(link) : 0);
     default:
       return codePoints(body);
   }
@@ -609,6 +610,16 @@ export function createShareAdapter(key: ShareKey, opts: ShareAdapterOptions = {}
         title: input.title,
         body: r.copyText,
         url: r.openUrl,
+        report: r.report,
+      };
+    },
+    // SPEC-r11 §12: the reminder a scheduled hand-off task opens (rule-based copy; the AI rewrite runs only on click).
+    renderHandoff({ doc, form, common, content }) {
+      const input = shareInputOf(key, doc, form as ShareForm, common, content, opts);
+      if ('error' in input) throw new Error(input.error);
+      const r = buildShare(key, input);
+      return {
+        handoff: { via: r.via, openUrl: r.openUrl, copyText: r.copyText },
         report: r.report,
       };
     },

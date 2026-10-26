@@ -2,12 +2,17 @@
  * Failure mapping shared by the API adapters: 401 → `relogin`, 429 → `retry` with the wait time, anything
  * else → `help` (plus `retry` for 5xx / network errors, which usually pass).
  *
- * Adapters just throw a `PlatformError`: the publisher (core) reads its `code`, `actions` and
- * `retryAfterSec` into the `failed` event.
+ * SPEC-r11 §1: every `PlatformError` also has an `errorKind` (`refresh` / `retry` / `bad_body` / `disconnect` /
+ * `unknown`); the relay prefers the server's `error_kind`. Actions follow the kind: `disconnect` → relogin,
+ * `retry` → retry (with `retryAfterSec`), `unknown` → help 「去平台确认」 + 「仍要重发」 (never automatic: writes are
+ * not retried by the SDK, see `ErrorKind`).
+ *
+ * Adapters just throw a `PlatformError`: the publisher (core) reads its `code`, `actions`, `retryAfterSec` and
+ * `errorKind` into the `failed` event.
  */
 import { DEFAULT_GUIDE_LINKS } from '@starnote/publish-core';
 
-import type { PublishContext, PublishEventAction } from '@starnote/publish-core';
+import type { ErrorKind, PublishContext, PublishEventAction } from '@starnote/publish-core';
 
 /** Where the actions point; the host knows the guide URLs (they are notes with ids). */
 export interface ErrorLinks {
@@ -44,6 +49,15 @@ export type FailureCode =
   | `http_${number}`
   | (string & {});
 
+/** The kind a code / status means when nobody said (SPEC-r11 §1). */
+export function kindOfCode(code: FailureCode, status?: number): ErrorKind {
+  if (code === 'relogin' || code === 'disconnect') return 'disconnect';
+  if (code === 'rate_limited' || code === 'network') return 'retry';
+  if (code === 'in_progress' || code === 'timeout') return 'unknown';
+  if (status !== undefined && (status === 429 || status >= 500)) return 'retry';
+  return 'bad_body';
+}
+
 export class PlatformError extends Error {
   readonly platform: string;
   readonly code: FailureCode;
@@ -52,6 +66,8 @@ export class PlatformError extends Error {
   readonly retryAfterSec?: number;
   readonly actions: PublishEventAction[];
   readonly detail?: unknown;
+  /** SPEC-r11 §1 (the publisher's `failed.kind`). */
+  readonly errorKind: ErrorKind;
 
   constructor(
     message: string,
@@ -62,12 +78,15 @@ export class PlatformError extends Error {
       retryAfterSec?: number;
       actions: PublishEventAction[];
       detail?: unknown;
+      /** Default: from `code` / `status` (`kindOfCode`). */
+      kind?: ErrorKind;
     }
   ) {
     super(message);
     this.name = 'PlatformError';
     this.platform = init.platform;
     this.code = init.code;
+    this.errorKind = init.kind ?? kindOfCode(init.code, init.status);
     if (init.status !== undefined) this.status = init.status;
     if (init.retryAfterSec !== undefined) this.retryAfterSec = init.retryAfterSec;
     this.actions = init.actions;
@@ -99,6 +118,68 @@ export function helpAction(p: PlatformRef): PublishEventAction {
   return { id: `help:${p.key}`, label: '查看发布指南', kind: 'help', ...(href ? { href } : {}) };
 }
 
+/** `unknown`: check on the platform before sending again (`href`: the post, when known). */
+export function checkAction(p: PlatformRef, href?: string): PublishEventAction {
+  return {
+    id: `check:${p.key}`,
+    label: '去平台确认',
+    kind: 'help',
+    ...(href ? { href } : {}),
+  };
+}
+
+/** `unknown`: the user may still send it again — a new attempt (new `Idempotency-Key`). */
+export function resendAction(): PublishEventAction {
+  return { id: 'retry', label: '仍要重发', kind: 'retry' };
+}
+
+/** The actions of a kind (SPEC-r11 §1.2). */
+export function actionsFor(
+  p: PlatformRef,
+  kind: ErrorKind,
+  opts: { retryAfterSec?: number; checkHref?: string } = {}
+): PublishEventAction[] {
+  switch (kind) {
+    case 'disconnect':
+      return [reloginAction(p), helpAction(p)];
+    case 'retry':
+    case 'refresh':
+      return [retryAction(opts.retryAfterSec)];
+    case 'unknown':
+      return [checkAction(p, opts.checkHref), resendAction()];
+    default:
+      return [helpAction(p)];
+  }
+}
+
+/** A failure of the given kind with its actions. */
+export function kindError(
+  p: PlatformRef,
+  kind: ErrorKind,
+  message: string,
+  init: { code?: FailureCode; status?: number; retryAfterSec?: number; detail?: unknown } = {}
+): PlatformError {
+  return new PlatformError(message, {
+    platform: p.key,
+    code:
+      init.code ??
+      (kind === 'disconnect'
+        ? 'relogin'
+        : kind === 'retry'
+          ? 'rate_limited'
+          : init.status
+            ? `http_${init.status}`
+            : kind),
+    ...(init.status !== undefined ? { status: init.status } : {}),
+    ...(init.retryAfterSec !== undefined ? { retryAfterSec: init.retryAfterSec } : {}),
+    actions: actionsFor(p, kind, {
+      ...(init.retryAfterSec !== undefined ? { retryAfterSec: init.retryAfterSec } : {}),
+    }),
+    ...(init.detail !== undefined ? { detail: init.detail } : {}),
+    kind,
+  });
+}
+
 /** 「30 秒」「2 分钟」「1 小时」 */
 export function formatWait(sec: number): string {
   if (sec < 60) return `${Math.max(1, Math.round(sec))} 秒`;
@@ -116,6 +197,7 @@ export function reloginError(p: PlatformRef, message?: string, status?: number):
       code: 'relogin',
       ...(status !== undefined ? { status } : {}),
       actions: [reloginAction(p), helpAction(p)],
+      kind: 'disconnect',
     }
   );
 }
@@ -132,20 +214,30 @@ export function rateLimitError(
     status: 429,
     ...(retryAfterSec !== undefined ? { retryAfterSec } : {}),
     actions: [retryAction(retryAfterSec)],
+    kind: 'retry',
   });
 }
 
 export function helpError(
   p: PlatformRef,
   message: string,
-  init: { code?: FailureCode; status?: number; retryable?: boolean; detail?: unknown } = {}
+  init: {
+    code?: FailureCode;
+    status?: number;
+    retryable?: boolean;
+    detail?: unknown;
+    /** Default: `retry` when `retryable`, else from code / status. */
+    kind?: ErrorKind;
+  } = {}
 ): PlatformError {
+  const code = init.code ?? (init.status ? `http_${init.status}` : 'invalid');
   return new PlatformError(message, {
     platform: p.key,
-    code: init.code ?? (init.status ? `http_${init.status}` : 'invalid'),
+    code,
     ...(init.status !== undefined ? { status: init.status } : {}),
     actions: init.retryable ? [helpAction(p), retryAction()] : [helpAction(p)],
     ...(init.detail !== undefined ? { detail: init.detail } : {}),
+    kind: init.kind ?? (init.retryable ? 'retry' : kindOfCode(code, init.status)),
   });
 }
 
@@ -206,13 +298,33 @@ export function errorFromStatus(
   });
 }
 
-/** A fetch that threw (DNS, TLS, CORS, offline). */
-export function networkError(p: PlatformRef, cause: unknown): PlatformError {
+/** True when the browser says it is offline (a request then certainly was not sent). */
+export function isOffline(): boolean {
+  const nav = (globalThis as { navigator?: { onLine?: boolean } }).navigator;
+  return nav?.onLine === false;
+}
+
+/**
+ * A fetch that threw (DNS, TLS, CORS, offline, timeout, dropped connection). For a **write** (`write: true`) the
+ * request may have reached the platform, so the kind is `unknown` (never retried automatically) unless the
+ * browser is offline; reads are `retry`.
+ */
+export function networkError(
+  p: PlatformRef,
+  cause: unknown,
+  opts: { write?: boolean } = {}
+): PlatformError {
   const why = cause instanceof Error ? cause.message : String(cause);
+  if (opts.write && !isOffline())
+    return new PlatformError(
+      `连接 ${p.label} 中断，不确定是否已发出：请先到平台确认，没有再重发（${why}）`,
+      { platform: p.key, code: 'network', actions: actionsFor(p, 'unknown'), kind: 'unknown' }
+    );
   return new PlatformError(`连不上 ${p.label}：${why}`, {
     platform: p.key,
     code: 'network',
     actions: [retryAction(), helpAction(p)],
+    kind: 'retry',
   });
 }
 

@@ -1,8 +1,10 @@
 import { articleContent } from './content';
 import { platformMeta } from './platforms';
+import { prepareTasks } from './prepare';
 import { mergeReports } from './report';
 import { normalizeRuntime, planRuntime, resolveRuntimes, runtimeList } from './runtime';
 import { formatZodError } from './schema';
+import { errorKindOf, targetKey } from './targets';
 
 import type { PublishContent } from './content';
 import type { ReportItem } from './report';
@@ -13,6 +15,7 @@ import type {
   CommonFormShape,
   Doc,
   CreatePublisherOptions,
+  ErrorKind,
   JobResult,
   NeedInputRequest,
   PlatformResult,
@@ -22,7 +25,9 @@ import type {
   PublishEventInput,
   PublishJob,
   PublishOptions,
+  PublishOutput,
   Publisher,
+  PublishTarget,
 } from './types';
 
 export const UNKNOWN_PLATFORM = '该平台适配器尚未接入';
@@ -30,6 +35,43 @@ export const UNKNOWN_PLATFORM = '该平台适配器尚未接入';
 const RETRY_ACTION = { id: 'retry', label: '重试', kind: 'retry' as const };
 
 const RUNTIME_NAME = { web: '浏览器', electron: '桌面端', server: '服务器' } as const;
+
+/** SPEC-r11 §2 defaults. */
+export const DEFAULT_POLL_INTERVAL_SEC = 5;
+export const DEFAULT_POLL_TIMEOUT_SEC = 600;
+
+/** `unknown`: the write may have gone through — the user checks the platform before sending again. */
+const CHECK_ACTION: PublishEventAction = { id: 'check', label: '去平台确认', kind: 'help' };
+const RESEND_ACTION: PublishEventAction = { id: 'retry', label: '仍要重发', kind: 'retry' };
+
+const realClock = {
+  now: () => Date.now(),
+  sleep: (ms: number, signal: AbortSignal) =>
+    new Promise<void>((resolve, reject) => {
+      if (signal.aborted) return reject(signal.reason ?? new Error('已取消'));
+      const t = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(t);
+        reject(signal.reason ?? new Error('已取消'));
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+    }),
+};
+
+/** Thrown inside the polling loop; carries its kind to the `failed` event. */
+class PollError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly errorKind: ErrorKind
+  ) {
+    super(message);
+    this.name = 'PollError';
+  }
+}
 
 function now(): string {
   return new Date().toISOString();
@@ -117,11 +159,78 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
     return adapter.preview(args.doc, parsed.data, args.common ?? {}, args.content);
   }
 
+  /** Polls `checkStatus` / `finalize` until `completed` (SPEC-r11 §2). */
+  async function settle(
+    adapter: Adapter<any>,
+    first: PublishOutput,
+    ctx: PublishContext
+  ): Promise<PublishOutput> {
+    if (!adapter.checkStatus)
+      throw new PollError(
+        `${adapter.label} 返回了「处理中」，但适配器没有查询状态的方法`,
+        'processing_unsupported',
+        'unknown'
+      );
+    const clock = options.clock ?? realClock;
+    const interval = Math.max(0, adapter.pollIntervalSec ?? DEFAULT_POLL_INTERVAL_SEC) * 1000;
+    const timeout = Math.max(0, adapter.pollTimeoutSec ?? DEFAULT_POLL_TIMEOUT_SEC) * 1000;
+    const started = clock.now();
+    let pending = first.pending;
+    let finalized = false;
+    let polls = 0;
+    for (;;) {
+      if (clock.now() - started >= timeout)
+        throw new PollError(
+          `${adapter.label} 处理超时（${Math.round(timeout / 1000)} 秒），结果未知：请到平台确认是否已发出`,
+          'timeout',
+          'unknown'
+        );
+      await clock.sleep(interval, ctx.signal);
+      polls += 1;
+      ctx.emit({
+        type: 'progress',
+        percent: Math.min(95, 60 + polls * 5),
+        text: finalized ? '等待平台发布' : '平台处理中',
+      });
+      let check: Awaited<ReturnType<NonNullable<Adapter['checkStatus']>>>;
+      try {
+        check = await adapter.checkStatus(pending, ctx);
+      } catch (cause) {
+        // a status check is a read: a transient failure just waits for the next round
+        if (ctx.signal.aborted) throw cause;
+        const kind = errorKindOf(cause);
+        if (kind === 'retry' || kind === 'refresh') continue;
+        throw cause;
+      }
+      if (check.status === 'completed')
+        return { ...first, url: check.url, externalId: check.externalId, state: 'published' };
+      pending = check.pending;
+      if (check.status === 'pending') continue;
+      // ready
+      if (finalized)
+        throw new PollError(
+          `${adapter.label} 收尾后仍显示「待发布」，为避免重复发帖不再重试：请到平台确认`,
+          'finalize_replayed',
+          'unknown'
+        );
+      if (!adapter.finalize) continue;
+      ctx.emit({ type: 'progress', percent: 90, text: '发布中' });
+      finalized = true;
+      // a write: never retried here
+      const done = await adapter.finalize(pending, ctx);
+      if (done.status === 'completed')
+        return { ...first, url: done.url, externalId: done.externalId, state: 'published' };
+      pending = done.pending;
+    }
+  }
+
   async function runPlatform(
-    platform: string,
+    target: PublishTarget,
     job: PublishJob,
     signal: AbortSignal
   ): Promise<PlatformResult> {
+    const platform = target.platform;
+    const rkey = targetKey(target);
     let finished = false;
     let report: ReportItem[] = [];
     const emit = (input: PublishEventInput) => {
@@ -130,43 +239,60 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       if (event.type === 'report') report = mergeReports(report, event.items);
       if (event.type === 'done' && event.report) report = mergeReports(report, event.report);
       if (event.type === 'done' || event.type === 'failed') finished = true;
-      options.onEvent?.(platform, event);
+      options.onEvent?.(rkey, event, target);
     };
+    // Results of per-account targets say whose they are (plain platform targets stay as before).
+    const who = target.accountId ? { platform, accountId: target.accountId } : {};
     const withReport = <T extends PlatformResult>(r: T): T =>
-      report.length ? { ...r, report } : r;
+      ({ ...r, ...who, ...(report.length ? { report } : {}) }) as T;
 
     // A platform still queued when the job was cancelled never starts (adapters that ignore `signal`
     // would otherwise publish after the user cancelled).
     if (signal.aborted) {
       emit({ type: 'failed', reason: '已取消', code: 'aborted' });
-      return { ok: false, error: '已取消', code: 'aborted' };
+      return { ok: false, error: '已取消', code: 'aborted', ...who };
     }
     const adapter = byKey.get(platform);
     if (!adapter) {
       emit({ type: 'failed', reason: UNKNOWN_PLATFORM, code: 'unsupported' });
-      return { ok: false, error: UNKNOWN_PLATFORM };
+      return { ok: false, error: UNKNOWN_PLATFORM, ...who };
     }
     if (!runtimeList(adapter).includes(runtime)) {
       const reason = `${adapter.label} 不能在${RUNTIME_NAME[runtime]}发布`;
       emit({ type: 'failed', reason, code: 'runtime' });
-      return { ok: false, error: reason, guides: plan(platform) };
+      return { ok: false, error: reason, guides: plan(platform), ...who };
     }
 
     const content: PublishContent =
-      job.perPlatformContent?.[platform] ?? job.content ?? articleContent(job.doc);
+      target.content ??
+      job.perPlatformContent?.[platform] ??
+      job.content ??
+      articleContent(job.doc);
     const kinds = adapter.contentTypes ?? ['article'];
     if (!kinds.includes(content.kind)) {
       const reason = `${adapter.label} 不支持发布这种内容（${content.kind}）`;
-      emit({ type: 'failed', reason, code: 'kind_unsupported' });
-      return { ok: false, error: reason };
+      emit({ type: 'failed', reason, code: 'kind_unsupported', kind: 'bad_body' });
+      return { ok: false, error: reason, kind: 'bad_body', ...who };
     }
 
-    const parsed = adapter.schema.safeParse(job.perPlatform[platform] ?? {});
+    const parsed = adapter.schema.safeParse(
+      target.form ?? job.perPlatform[rkey] ?? job.perPlatform[platform] ?? {}
+    );
     if (!parsed.success) {
       const reason = formatZodError(parsed.error);
-      emit({ type: 'failed', reason, code: 'invalid_form' });
-      return { ok: false, error: reason };
+      emit({ type: 'failed', reason, code: 'invalid_form', kind: 'bad_body' });
+      return { ok: false, error: reason, kind: 'bad_body', ...who };
     }
+
+    // The account: the target's own, else the job's account of the platform (when it is the one asked for).
+    const jobAccount = job.accounts?.[rkey] ?? job.accounts?.[platform];
+    const account =
+      target.account ??
+      (jobAccount && (!target.accountId || jobAccount.id === target.accountId)
+        ? jobAccount
+        : undefined);
+    const accountId = target.accountId ?? account?.id;
+    const previous = target.previous ?? job.previous?.[rkey] ?? job.previous?.[platform];
 
     const owned = new Set<string>();
     const ctx: PublishContext = {
@@ -179,11 +305,15 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       page: options.page,
       ...(options.sessionFetch ? { sessionFetch: options.sessionFetch } : {}),
       ...(options.handoff ? { handoff: options.handoff } : {}),
-      ...(job.accounts?.[platform] ? { account: job.accounts[platform] } : {}),
-      ...(job.previous?.[platform] ? { previous: job.previous[platform] } : {}),
+      ...(account ? { account } : {}),
+      ...(accountId ? { accountId } : {}),
+      ...(previous ? { previous } : {}),
+      ...(target.idempotencyKey ? { idempotencyKey: target.idempotencyKey } : {}),
+      ...(job.jobId ? { jobId: job.jobId } : {}),
+      ...(job.jobId || job.attempt ? { attempt: Math.max(1, Math.floor(job.attempt ?? 1)) } : {}),
       needInput: (req: NeedInputRequest) =>
         new Promise<string>((resolve, reject) => {
-          const k = key(platform, req.id);
+          const k = key(rkey, req.id);
           owned.add(k);
           pending.set(k, { resolve, reject });
           emit({ type: 'needInput', ...req });
@@ -203,13 +333,33 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
     };
 
     try {
-      const result = await adapter.publish({
+      let result = await adapter.publish({
         doc: job.doc,
         form: parsed.data,
         common: job.common,
         ctx,
         content,
       });
+      if (result.state === 'processing') {
+        if (options.pollProcessing === false) {
+          if (result.report?.length) report = mergeReports(report, result.report);
+          emit({
+            type: 'done',
+            url: result.url,
+            ...(result.externalId ? { externalId: result.externalId } : {}),
+            state: 'processing',
+            ...(report.length ? { report } : {}),
+          });
+          return withReport({
+            ok: true,
+            url: result.url,
+            ...(result.externalId ? { externalId: result.externalId } : {}),
+            state: 'processing',
+            pending: result.pending,
+          });
+        }
+        result = await settle(adapter, result, ctx);
+      }
       if (result.report?.length) report = mergeReports(report, result.report);
       // The adapter may already have emitted `done`; exactly one event ends the stream.
       emit({
@@ -238,24 +388,29 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
         !signal.aborted && Array.isArray((cause as any)?.actions) && (cause as any).actions.length
           ? (cause as any).actions
           : undefined;
+      const kind = signal.aborted ? undefined : errorKindOf(cause);
       const actions: PublishEventAction[] =
         given ??
-        (retryAfterSec
-          ? [{ ...RETRY_ACTION, label: `${retryAfterSec} 秒后重试` }]
-          : [RETRY_ACTION]);
+        (kind === 'unknown'
+          ? [CHECK_ACTION, RESEND_ACTION]
+          : retryAfterSec
+            ? [{ ...RETRY_ACTION, label: `${retryAfterSec} 秒后重试` }]
+            : [RETRY_ACTION]);
       emit({
         type: 'failed',
         reason,
         ...(code ? { code } : {}),
         actions,
         ...(retryAfterSec ? { retryAfterSec } : {}),
+        ...(kind ? { kind } : {}),
       });
       return withReport({
         ok: false,
         error: reason,
         // Structured failures (the adapter said what helps) carry the details on the result too.
-        ...(given || retryAfterSec ? { ...(code ? { code } : {}), actions } : {}),
+        ...(given || retryAfterSec || kind ? { ...(code ? { code } : {}), actions } : {}),
         ...(retryAfterSec ? { retryAfterSec } : {}),
+        ...(kind ? { kind } : {}),
       });
     } finally {
       for (const k of owned) {
@@ -278,24 +433,61 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
         });
     }
     const results: Record<string, PlatformResult> = {};
-    const queue = [...job.platforms];
+    const targets: PublishTarget[] =
+      job.targets ?? (job.platforms ?? []).map((platform) => ({ platform }));
+    const queue = [...targets];
     const concurrency = Math.max(1, Math.floor(options.concurrency ?? 1));
+    // SPEC-r11 §6: with concurrency > 1, at most `adapter.maxConcurrent` of one platform at once.
+    const active = new Map<string, number>();
+    let waiting: Array<() => void> = [];
+    const limitOf = (platform: string) => {
+      const n = byKey.get(platform)?.maxConcurrent;
+      return n && n > 0 ? Math.floor(n) : Infinity;
+    };
+    const next = async (): Promise<PublishTarget | undefined> => {
+      for (;;) {
+        if (!queue.length) return undefined;
+        const i =
+          concurrency === 1
+            ? 0
+            : queue.findIndex((t) => (active.get(t.platform) ?? 0) < limitOf(t.platform));
+        if (i >= 0) {
+          const target = queue.splice(i, 1)[0]!;
+          // counted when picked (synchronously), so a second worker sees it before this one runs
+          active.set(target.platform, (active.get(target.platform) ?? 0) + 1);
+          return target;
+        }
+        await new Promise<void>((resolve) => waiting.push(resolve));
+      }
+    };
     const worker = async () => {
-      while (queue.length) {
-        const platform = queue.shift();
-        if (platform === undefined) break;
-        results[platform] = await runPlatform(platform, job, controller.signal);
+      for (;;) {
+        const target = await next();
+        if (target === undefined) break;
+        try {
+          results[targetKey(target)] = await runPlatform(target, job, controller.signal);
+        } finally {
+          active.set(target.platform, (active.get(target.platform) ?? 1) - 1);
+          const wake = waiting;
+          waiting = [];
+          for (const w of wake) w();
+        }
       }
     };
     await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker));
-    // Keep the caller's platform order.
+    // Keep the caller's order.
     const ordered: Record<string, PlatformResult> = {};
-    for (const platform of job.platforms) {
-      const r = results[platform];
-      if (r) ordered[platform] = r;
+    for (const target of targets) {
+      const k = targetKey(target);
+      const r = results[k];
+      if (r) ordered[k] = r;
     }
     return { results: ordered };
   }
 
-  return { publish, capabilities, answer, adapters, plan, preview };
+  function prepare(input: Parameters<Publisher['prepare']>[0]) {
+    return prepareTasks(input, { adapterOf: (p) => byKey.get(p), planTarget });
+  }
+
+  return { publish, capabilities, answer, adapters, plan, preview, prepare };
 }
