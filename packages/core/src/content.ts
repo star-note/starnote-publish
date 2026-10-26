@@ -35,6 +35,11 @@ export interface ArticleContent {
   translations?: Record<string, Doc>;
   /** The note's canonical URL on 辰记 (`https://starnote.app/@<handle>/<short_id>`). */
   canonicalUrl?: string;
+  /**
+   * SPEC-r12 §5.3: the tracking short link (`{base}/s/{code}`) that redirects to the article. What readers click
+   * (share copy, link cards, the link comment, 「本文首发于辰记」); `canonicalUrl` stays the canonical field.
+   */
+  trackingUrl?: string;
   /** The 辰记 post's `short_id`, when the note is published there. */
   shortId?: string;
   /** The 辰记 post's blog category (`slug` is the URL segment, `name` the display name). */
@@ -69,8 +74,10 @@ export interface VideoContent {
 export interface ShortTextContent {
   kind: 'short-text';
   text: string;
-  /** Link back to the article (may be replaced by a tracking short link). */
+  /** Link back to the article. */
   link?: string;
+  /** SPEC-r12 §5.3: the tracking short link, shown instead of `link` (see `visibleLinkOf`). */
+  trackingUrl?: string;
   images?: MediaAsset[];
   /** X / Threads thread, one entry per post. */
   thread?: string[];
@@ -84,4 +91,36 @@ export function articleContent(
   extra: Omit<ArticleContent, 'kind' | 'doc'> = {}
 ): ArticleContent {
   return { kind: 'article', doc, ...extra };
+}
+
+/**
+ * The link readers see and click (SPEC-r12 §5.3): the tracking short link when there is one, else the article's
+ * canonical link (short text: its `link`; image set: its article's). Canonical fields use `canonicalUrl` instead.
+ */
+export function visibleLinkOf(content: PublishContent | undefined): string | undefined {
+  if (!content) return undefined;
+  switch (content.kind) {
+    case 'article':
+      return content.trackingUrl || content.canonicalUrl;
+    case 'short-text':
+      return content.trackingUrl || content.link;
+    case 'image-set':
+      return content.from?.trackingUrl || content.from?.canonicalUrl;
+    default:
+      return undefined;
+  }
+}
+
+/** The content with the tracking short link put where `visibleLinkOf` reads it (unchanged without one). */
+export function withTrackingUrl(content: PublishContent, url: string | undefined): PublishContent {
+  if (!url) return content;
+  switch (content.kind) {
+    case 'article':
+    case 'short-text':
+      return { ...content, trackingUrl: url };
+    case 'image-set':
+      return content.from ? { ...content, from: { ...content.from, trackingUrl: url } } : content;
+    default:
+      return content;
+  }
 }

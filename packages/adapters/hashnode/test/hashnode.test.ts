@@ -109,3 +109,20 @@ describe('hashnode adapter (relay)', () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe('SPEC-r12 Hashnode', () => {
+  it('reads stats of a pasted link by blog host + slug', async () => {
+    const { fetch, calls } = mockFetch({
+      'POST /': () =>
+        json({
+          data: {
+            publication: { post: { id: 'p1', views: 40, reactionCount: 3, responseCount: 1 } },
+          },
+        }),
+    });
+    const ctx = { fetch, signal: new AbortController().signal, runtime: 'web' as const };
+    const s = await hashnodeAdapter.fetchStats!('https://me.hashnode.dev/my-post', ctx);
+    expect(s).toMatchObject({ views: 40, likes: 3, comments: 1 });
+    expect(calls[0]!.body.variables).toEqual({ host: 'me.hashnode.dev', slug: 'my-post' });
+  });
+});

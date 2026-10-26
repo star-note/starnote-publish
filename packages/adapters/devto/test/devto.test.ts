@@ -168,3 +168,35 @@ describe('devto adapters', () => {
     expect(DEVTO_REQUESTS.update.url).toBe('https://dev.to/api/articles/{id}');
   });
 });
+
+describe('SPEC-r12 DEV', () => {
+  it('stats of a pasted link match the article by URL; origin line uses the short link', async () => {
+    const { fetch } = mockFetch({
+      'GET /api/articles/me/all': () =>
+        json([
+          { id: 1, url: 'https://dev.to/me/other-1', page_views_count: 1 },
+          { id: 2, url: 'https://dev.to/me/post-2', page_views_count: 7, comments_count: 3 },
+        ]),
+    });
+    const ctx = { fetch, signal: new AbortController().signal, runtime: 'web' as const };
+    const id = devtoAdapter.parsePostUrl!('https://dev.to/me/post-2/?utm_source=x')!.externalId;
+    expect(id).toBe('https://dev.to/me/post-2');
+    expect(await devtoAdapter.fetchStats!(id, ctx)).toMatchObject({ views: 7, comments: 3 });
+    expect(await devtoAdapter.fetchStats!('https://dev.to/me/none', ctx)).toBeNull();
+    const doc = fixtureDoc();
+    const S = 'https://starnote.app/s/AbCd1234';
+    const r = renderDevto(
+      doc,
+      devtoAdapter.schema.parse({ origin_note: true }),
+      {},
+      {
+        kind: 'article',
+        doc,
+        canonicalUrl: CANONICAL,
+        trackingUrl: S,
+      }
+    );
+    expect(r.body.article.canonical_url).toBe(CANONICAL);
+    expect(r.body.article.body_markdown).toContain(`Originally published at [${S}](${S})`);
+  });
+});

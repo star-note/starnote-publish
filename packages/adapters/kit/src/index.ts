@@ -58,6 +58,7 @@ export {
   containerIdOf,
   relayCheck,
   relayFinalize,
+  relayFollowUp,
   relayPath,
   relayPublish,
   relayRequestOf,
@@ -71,10 +72,14 @@ export {
   canonicalOf,
   cardOf,
   CLIENT_RELAY,
+  linkCommentText,
   linkedImagesReport,
+  linkPlacementField,
   missingLinkReport,
   newPostReport,
+  originLinkOf,
   originNoteHtml,
+  placeLink,
   type CardSource,
 } from './article';
 export {

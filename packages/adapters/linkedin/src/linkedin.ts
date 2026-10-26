@@ -10,9 +10,13 @@
  * URN); the link is `https://www.linkedin.com/feed/update/{urn}`. Access tokens last 60 days and cannot be refreshed
  * on this product tier: the account then shows 「即将到期」 (SPEC-r11 §8).
  *
+ * SPEC-r12 §2: `linkPlacement: 'first_comment'` (the default ⚠️ — LinkedIn is said to show posts with outbound links
+ * less) posts the commentary without the article card; the link follows as the member's comment
+ * (`POST /rest/socialActions/{post urn}/comments`, ⚠️ same `LinkedIn-Version` header) through the relay's `…/comment`.
+ *
  * Not bound: the existing share-offsite hand-off (`@starnote/publish-share`).
  */
-import { defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
+import { defineAdapter, mediaReport, mergeReports, platformMeta } from '@starnote/publish-core';
 import {
   cardOf,
   codePoints,
@@ -20,8 +24,11 @@ import {
   fitPost,
   guard,
   helpError,
+  linkPlacementField,
   missingLinkReport,
   newPostReport,
+  placeLink,
+  relayFollowUp,
   relayPublish,
   relayRequestOf,
   truncate,
@@ -35,6 +42,7 @@ import type {
   BindingSpec,
   CommonFormShape,
   Doc,
+  FollowUpInput,
   PublishContent,
   PublishHandoff,
   ReportItem,
@@ -75,6 +83,8 @@ export const linkedinSchema = z.object({
   include_summary: z.boolean().default(true).describe('文案带上摘要'),
   include_tags: z.boolean().default(true).describe('带上话题'),
   with_cover: z.boolean().default(true).describe('卡片带封面图'),
+  /** SPEC-r12 §2: the link as the article card, or as the member's first comment (default). */
+  linkPlacement: linkPlacementField('linkedin'),
 });
 
 export type LinkedinForm = z.infer<typeof linkedinSchema>;
@@ -131,6 +141,8 @@ export interface LinkedinRendered {
   text: string;
   body: LinkedinRelayBody;
   report: ReportItem[];
+  /** `linkPlacement: 'first_comment'`: the comment carrying the link. */
+  followUp?: FollowUpInput;
 }
 
 export function renderLinkedin(
@@ -146,6 +158,8 @@ export function renderLinkedin(
     link: form.link,
   });
   const report: ReportItem[] = [];
+  const placed = placeLink(form.linkPlacement, card.link, card.lang);
+  const link = placed.bodyLink;
   const allTags = form.include_tags ? card.tags : [];
   // The link is the article card, not part of the text.
   const fit = fitPost({
@@ -167,20 +181,21 @@ export function renderLinkedin(
       text: `LinkedIn 动态最多 ${LINKEDIN_LIMITS.commentaryMax} 字，已截短`,
     });
   let article: { source: string; title: string; description?: string } | undefined;
-  if (card.link) {
+  if (link) {
     const title = truncate(card.title || fit.head, LINKEDIN_LIMITS.titleMax);
     const description =
       codePoints(card.summary) > LINKEDIN_LIMITS.descriptionMax
         ? truncate(card.summary, LINKEDIN_LIMITS.descriptionMax)
         : card.summary;
-    article = { source: card.link, title, ...(description ? { description } : {}) };
+    article = { source: link, title, ...(description ? { description } : {}) };
     report.push({
       kind: 'link.card',
       text: '以文章卡片发出，点开是辰记原文',
-      detail: { url: card.link },
+      detail: { url: link },
     });
-  } else report.push(missingLinkReport('LinkedIn'));
-  const thumb = form.with_cover && card.link ? card.cover : undefined;
+  } else if (placed.followUp) report.push(...placed.report);
+  else report.push(missingLinkReport('LinkedIn'));
+  const thumb = form.with_cover && link ? card.cover : undefined;
   if (thumb)
     report.push({ kind: 'image.rehosted', text: '封面图由服务器上传为卡片缩略图', count: 1 });
   return {
@@ -200,7 +215,8 @@ export function renderLinkedin(
       },
       ...(thumb ? { thumb_url: thumb } : {}),
     },
-    report,
+    report: [...report, ...mediaReport('linkedin', 'LinkedIn', content, common)],
+    ...(placed.followUp ? { followUp: placed.followUp } : {}),
   };
 }
 
@@ -269,11 +285,24 @@ export function createLinkedinAdapter(
     maxConcurrent: 1,
     preview(doc, form, common, content): AdapterPreview {
       const r = renderLinkedin(doc, form, common, content, renderOpts);
-      return { format: 'text', title: common?.title || doc.title, body: r.text, report: r.report };
+      return {
+        format: 'text',
+        title: common?.title || doc.title,
+        body: r.text,
+        report: r.report,
+        ...(r.followUp ? { followUp: r.followUp } : {}),
+      };
     },
     renderRequest({ doc, form, common, content }) {
       const r = renderLinkedin(doc, form, common, content, renderOpts);
-      return relayRequestOf(r.body, undefined, undefined, r.report);
+      return relayRequestOf(r.body, undefined, undefined, r.report, r.followUp);
+    },
+    // SPEC-r12 §2.2: the member's comment on the post (`socialActions/{urn}/comments`), through the relay
+    followUp(post, input, ctx) {
+      return guard(ctx, ref, async () => {
+        const credential = await credentialOf(opts.credential, 'linkedin', ctx);
+        return relayFollowUp(ctx, ref, post, input, { credential });
+      });
     },
     renderHandoff({ doc, form, common, content }) {
       return linkedinHandoff(doc, form, common, content, renderOpts);
@@ -296,6 +325,9 @@ export function createLinkedinAdapter(
           externalId: res.externalId,
           state: res.state ?? 'published',
           report: mergeReports(r.report, res.report),
+          ...(r.followUp
+            ? { followUp: { ...r.followUp, ...(res.meta !== undefined ? { meta: res.meta } : {}) } }
+            : {}),
         };
       });
     },

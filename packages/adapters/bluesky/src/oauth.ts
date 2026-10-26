@@ -18,7 +18,7 @@ import { base64url, oauthState, pkcePair, randomToken } from '@starnote/publish-
 import { BLUESKY_LIMITS, postUrl } from './limits';
 
 import type { ReportItem } from '@starnote/publish-core';
-import type { BlueskyRelayBody } from './bluesky';
+import type { BlueskyPostRecord, BlueskyRelayBody } from './bluesky';
 
 export const BLUESKY_SCOPE = 'atproto transition:generic';
 /** Default entryway when the user gives no handle (✅ bsky.social hosts the Bluesky PDS entryway). */
@@ -477,6 +477,8 @@ export async function xrpc(
 export interface DirectResult {
   url: string;
   uri: string;
+  /** The record's content hash: with `uri`, what a reply needs (`reply.root` / `reply.parent`). */
+  cid: string;
   rkey: string;
   report: ReportItem[];
 }
@@ -513,10 +515,20 @@ export async function publishBlueskyDirect(
       });
     }
   }
+  const out = await createPostDirect(s, record, deps);
+  return { ...out, report };
+}
+
+/** Web: create one `app.bsky.feed.post` record as given (the link comment's reply, SPEC-r12 §2.2). */
+export async function createPostDirect(
+  s: BlueskySession,
+  record: BlueskyPostRecord,
+  deps: Deps & { signal?: AbortSignal }
+): Promise<Omit<DirectResult, 'report'>> {
   const out = await xrpc(deps, s, 'POST', 'com.atproto.repo.createRecord', {
     json: { repo: s.did, collection: 'app.bsky.feed.post', record },
   });
   const uri = String(out?.uri ?? '');
   const rkey = uri.split('/').pop() ?? '';
-  return { uri, rkey, url: postUrl(uri, s.handle), report };
+  return { uri, cid: String(out?.cid ?? ''), rkey, url: postUrl(uri, s.handle) };
 }

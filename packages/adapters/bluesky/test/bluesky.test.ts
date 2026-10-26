@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import type { BlueskySession } from '../src/index';
+
 import {
   CANONICAL,
   fixtureDoc,
@@ -13,7 +15,11 @@ import {
   createBlueskyAdapter,
   dpopKey,
   dpopProof,
+  BlueskyOAuthError,
+  blueskyReplyRecord,
+  blueskyWriteError,
   graphemes,
+  linkFacets,
   postUrl,
   publishBlueskyDirect,
   renderBluesky,
@@ -337,5 +343,152 @@ describe('atproto OAuth flow + direct publish', () => {
     expect(result.ok).toBe(true);
     expect(calls[0]!.body.body.record.$type).toBe('app.bsky.feed.post');
     expect(blueskyAdapter.runtime).toEqual(['electron', 'web']);
+  });
+  it('SPEC-r12 web: the link comment is a reply to the post with a link facet', async () => {
+    const { fetch, calls } = network();
+    const pending = await startBlueskyAuthorization({ fetch }, config);
+    const session = await completeBlueskyAuthorization({ fetch }, pending, {
+      code: 'c',
+      state: pending.state,
+      iss: AS,
+    });
+    const S = 'https://starnote.app/s/AbCd1234';
+    const adapter = createBlueskyAdapter({ session: () => session });
+    const { result } = await runPublish(
+      adapter,
+      { form: { linkPlacement: 'first_comment' }, trackingUrl: S },
+      { runtime: 'web', fetch }
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      followUp: { state: 'succeeded', externalId: '3kxyz' },
+    });
+    const creates = calls.filter((c) => c.url === `${PDS}/xrpc/com.atproto.repo.createRecord`);
+    const post = creates.at(-2)!.body.record;
+    const reply = creates.at(-1)!.body.record;
+    expect(post.embed).toBeUndefined();
+    expect(post.text).not.toContain('http');
+    const ref = { uri: `at://${DID}/app.bsky.feed.post/3kxyz`, cid: 'bafyrec' };
+    expect(reply.reply).toEqual({ root: ref, parent: ref });
+    expect(reply.text).toBe(`原文：${S}`);
+    expect(reply.facets).toEqual([
+      {
+        index: { byteStart: 9, byteEnd: 9 + S.length },
+        features: [{ $type: 'app.bsky.richtext.facet#link', uri: S }],
+      },
+    ]);
+  });
+
+  it('SPEC-r12 desktop: the comment goes to the local relay with the meta it returned', async () => {
+    const { fetch, calls } = mockFetch({
+      'POST /api/v1/notes/note-1/publish/bluesky/comment': () =>
+        json({ code: 0, data: { platform: 'bluesky', external_id: 'r2', url: '' } }),
+      'POST /api/v1/notes/note-1/publish/bluesky': () =>
+        json({
+          code: 0,
+          data: {
+            url: 'https://bsky.app/profile/x/post/1',
+            external_id: '1',
+            meta: { uri: 'at://d/app.bsky.feed.post/1', cid: 'c1' },
+          },
+        }),
+    });
+    const { result } = await runPublish(
+      blueskyAdapter,
+      { form: { linkPlacement: 'first_comment' } },
+      { runtime: 'electron', fetch }
+    );
+    expect(result.followUp).toEqual({
+      kind: 'link_comment',
+      state: 'succeeded',
+      text: `原文：${CANONICAL}`,
+      externalId: 'r2',
+    });
+    expect(calls[1]!.body.parent).toEqual({
+      external_id: '1',
+      meta: { uri: 'at://d/app.bsky.feed.post/1', cid: 'c1' },
+    });
+  });
+});
+
+describe('SPEC-r12 Bluesky helpers', () => {
+  it('reply records: link facets, 300 graphemes', () => {
+    const parent = { uri: 'at://did:plc:a/app.bsky.feed.post/1', cid: 'c' };
+    const r = blueskyReplyRecord('Read more: https://a.dev/x.', parent, { now: () => NOW });
+    expect(r.facets?.[0]?.features[0]).toEqual({
+      $type: 'app.bsky.richtext.facet#link',
+      uri: 'https://a.dev/x',
+    });
+    expect(r.reply).toEqual({ root: parent, parent });
+    expect(graphemes(blueskyReplyRecord('长'.repeat(400), parent).text)).toHaveLength(300);
+    expect(linkFacets('无链接')).toEqual([]);
+  });
+
+  it('parses pasted links to the rkey and reads their stats via the handle', async () => {
+    expect(
+      blueskyAdapter.parsePostUrl!('https://bsky.app/profile/me.bsky.social/post/3kxyz')
+    ).toEqual({
+      externalId: '3kxyz',
+      url: 'https://bsky.app/profile/me.bsky.social/post/3kxyz',
+    });
+    const { fetch, calls } = kitMockFetch({
+      'GET /xrpc/com.atproto.identity.resolveHandle': () => json({ did: 'did:plc:me' }),
+      'GET /xrpc/app.bsky.feed.getPosts': () =>
+        json({ posts: [{ likeCount: 4, replyCount: 1, repostCount: 2 }] }),
+    });
+    const s = await blueskyAdapter.fetchStats!(
+      'https://bsky.app/profile/me.bsky.social/post/3kxyz',
+      {
+        fetch,
+        signal: new AbortController().signal,
+        runtime: 'web',
+      }
+    );
+    expect(s).toMatchObject({ likes: 4, comments: 1, shares: 2 });
+    expect(decodeURIComponent(calls[1]!.url)).toContain('at://did:plc:me/app.bsky.feed.post/3kxyz');
+  });
+});
+
+describe('SPEC-r12 Bluesky direct write errors (review)', () => {
+  it('maps PDS failures by what may have happened to the write', () => {
+    const kind = (e: BlueskyOAuthError) =>
+      (blueskyWriteError(e) as { errorKind?: string }).errorKind;
+    expect(kind(new BlueskyOAuthError('x', 'network'))).toBe('unknown');
+    expect(kind(new BlueskyOAuthError('x', 'invalid', 502))).toBe('unknown');
+    expect(kind(new BlueskyOAuthError('x', 'invalid'))).toBe('unknown');
+    expect(kind(new BlueskyOAuthError('x', 'rate_limited', 429))).toBe('retry');
+    expect(kind(new BlueskyOAuthError('x', 'relogin', 401))).toBe('disconnect');
+    expect(kind(new BlueskyOAuthError('x', 'invalid', 400))).toBe('bad_body');
+    const other = new Error('o');
+    expect(blueskyWriteError(other)).toBe(other);
+  });
+
+  it('a 5xx on the web reply is unknown, so 「补发」 is not offered blindly', async () => {
+    const session = {
+      did: 'did:plc:me',
+      pds: 'https://pds.example',
+      accessToken: 'at',
+      expiresAt: Date.now() + 3_600_000,
+      key: await dpopKey(),
+      nonces: new Map(),
+    } as unknown as BlueskySession;
+    const { fetch } = kitMockFetch({
+      'POST /xrpc/com.atproto.repo.createRecord': () => json({ error: 'boom' }, 502),
+    });
+    const adapter = createBlueskyAdapter({ session: () => session });
+    const err = await adapter.followUp!(
+      { externalId: '1', url: '', meta: { uri: 'at://did:plc:me/app.bsky.feed.post/1', cid: 'c' } },
+      { kind: 'link_comment', text: 'Read more: https://a.dev' },
+      {
+        fetch,
+        signal: new AbortController().signal,
+        runtime: 'web',
+        noteId: 'n',
+        apiBase: '/api/v1',
+        emit: () => {},
+        needInput: async () => '',
+      }
+    ).catch((e) => e);
+    expect(err.errorKind).toBe('unknown');
   });
 });

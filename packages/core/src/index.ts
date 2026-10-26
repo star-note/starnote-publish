@@ -24,6 +24,7 @@ export {
   errorKindOf,
   fillCanonicalPlaceholder,
   finalizeKeyOf,
+  followUpKeyOf,
   hasCanonicalPlaceholder,
   IDEMPOTENCY_KEY_MAX,
   idempotencyKeyOf,
@@ -54,8 +55,14 @@ export type {
   AdapterPreview,
   AdapterRenderArgs,
   ErrorKind,
+  FollowUpInput,
+  FollowUpParent,
+  FollowUpRequest,
+  FollowUpResult,
   PendingCheck,
   PrepareAccount,
+  PrepareTarget,
+  PreviewOptions,
   PreparedTask,
   PrepareInput,
   PrepareProblemCode,
@@ -103,6 +110,8 @@ export {
 export {
   articleContent,
   CONTENT_KINDS,
+  visibleLinkOf,
+  withTrackingUrl,
   type ArticleContent,
   type ContentKind,
   type ImageSetContent,
@@ -147,11 +156,13 @@ export {
 export { mergeReports, type ReportItem, type ReportKind } from './report';
 export {
   isPlatformKey,
+  LINK_PLACEMENT,
   listPlatforms,
   PLATFORM_KEYS,
   PLATFORMS,
   platformMeta,
   type MonetizationModel,
+  type LinkPlacement,
   type PlatformKey,
   type PlatformMeta,
   type PlatformPhase,
@@ -159,6 +170,28 @@ export {
   type PlatformStage,
 } from './platforms';
 export { statsRow } from './insights';
+// SPEC-r12: pasted-back post links (§1.1) and media limits (§3).
+export {
+  isUrlExternalId,
+  normalizePostUrl,
+  parsePostUrl,
+  POST_URL_MAX,
+  POST_URL_PLATFORMS,
+  shortcodeOf,
+  type ParsedPostUrl,
+} from './post-url';
+export {
+  checkMedia,
+  formatRatio,
+  MEDIA_LIMITS,
+  mediaFormat,
+  mediaItemsOf,
+  mediaLimitsOf,
+  mediaReport,
+  type AspectRange,
+  type MediaItem,
+  type MediaLimits,
+} from './media';
 export type {
   CommentRef,
   EngageAction,

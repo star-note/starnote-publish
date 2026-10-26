@@ -6,17 +6,24 @@
  * (env, default `v23.0` ⚠️); `external_id` is the post id (`{page-id}_{post-id}`), the link
  * `https://www.facebook.com/{post-id}`.
  *
+ * SPEC-r12 §2: `linkPlacement: 'first_comment'` posts the message without `link` (no preview card); the link follows
+ * as the Page's comment (`POST /{post-id}/comments` with the Page token, ⚠️ `pages_manage_engagement`) through the
+ * relay's `…/comment`.
+ *
  * Personal timelines have no API. Not bound: the existing sharer.php hand-off (`@starnote/publish-share`).
  */
-import { defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
+import { defineAdapter, mediaReport, mergeReports, platformMeta } from '@starnote/publish-core';
 import {
   cardOf,
   credentialOf,
   fitPost,
   guard,
   helpError,
+  linkPlacementField,
   missingLinkReport,
   newPostReport,
+  placeLink,
+  relayFollowUp,
   relayPublish,
   relayRequestOf,
 } from '@starnote/publish-kit';
@@ -29,6 +36,7 @@ import type {
   BindingSpec,
   CommonFormShape,
   Doc,
+  FollowUpInput,
   PublishContent,
   PublishHandoff,
   ReportItem,
@@ -70,6 +78,8 @@ export const facebookSchema = z.object({
     .regex(/^\d{5,30}$/, '主页 ID 是数字')
     .optional()
     .describe('主页'),
+  /** SPEC-r12 §2: the link with its preview card, or as the Page's first comment. */
+  linkPlacement: linkPlacementField('facebook'),
 });
 
 export type FacebookForm = z.infer<typeof facebookSchema>;
@@ -102,6 +112,8 @@ export interface FacebookRendered {
   text: string;
   body: FacebookFeedBody;
   report: ReportItem[];
+  /** `linkPlacement: 'first_comment'`: the comment carrying the link. */
+  followUp?: FollowUpInput;
 }
 
 export function renderFacebook(
@@ -117,6 +129,8 @@ export function renderFacebook(
     link: form.link,
   });
   const report: ReportItem[] = [];
+  const placed = placeLink(form.linkPlacement, card.link, card.lang);
+  const link = placed.bodyLink;
   const allTags = form.include_tags ? card.tags : [];
   const fit = fitPost({
     head: card.text ?? card.title,
@@ -130,21 +144,23 @@ export function renderFacebook(
       level: 'notice',
       text: `引流文案按 ${FACEBOOK_LIMITS.cardMessageMax} 字截短`,
     });
-  if (card.link)
+  if (link)
     report.push({
       kind: 'link.card',
       text: 'Facebook 会按链接生成预览卡片',
-      detail: { url: card.link },
+      detail: { url: link },
     });
+  else if (placed.followUp) report.push(...placed.report);
   else report.push(missingLinkReport('Facebook'));
   return {
     text: fit.text,
     body: {
       message: fit.text,
-      ...(card.link ? { link: card.link } : {}),
+      ...(link ? { link } : {}),
       ...(form.page_id ? { page_id: form.page_id } : {}),
     },
-    report,
+    report: [...report, ...mediaReport('facebook', 'Facebook', content, common)],
+    ...(placed.followUp ? { followUp: placed.followUp } : {}),
   };
 }
 
@@ -208,11 +224,24 @@ export function createFacebookAdapter(
     maxConcurrent: 2,
     preview(doc, form, common, content): AdapterPreview {
       const r = renderFacebook(doc, form, common, content, renderOpts);
-      return { format: 'text', title: common?.title || doc.title, body: r.text, report: r.report };
+      return {
+        format: 'text',
+        title: common?.title || doc.title,
+        body: r.text,
+        report: r.report,
+        ...(r.followUp ? { followUp: r.followUp } : {}),
+      };
     },
     renderRequest({ doc, form, common, content }) {
       const r = renderFacebook(doc, form, common, content, renderOpts);
-      return relayRequestOf(r.body, undefined, undefined, r.report);
+      return relayRequestOf(r.body, undefined, undefined, r.report, r.followUp);
+    },
+    // SPEC-r12 §2.2: the Page's comment on the post (`/{post-id}/comments`), through the relay
+    followUp(post, input, ctx) {
+      return guard(ctx, ref, async () => {
+        const credential = await credentialOf(opts.credential, 'facebook', ctx);
+        return relayFollowUp(ctx, ref, post, input, { credential });
+      });
     },
     renderHandoff({ doc, form, common, content }) {
       return facebookHandoff(doc, form, common, content, shareOpts);
@@ -234,6 +263,9 @@ export function createFacebookAdapter(
           externalId: res.externalId,
           state: res.state ?? 'published',
           report: mergeReports(r.report, res.report),
+          ...(r.followUp
+            ? { followUp: { ...r.followUp, ...(res.meta !== undefined ? { meta: res.meta } : {}) } }
+            : {}),
         };
       });
     },

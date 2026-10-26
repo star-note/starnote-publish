@@ -13,7 +13,13 @@
  * `https://gql.hashnode.com` with a different cover / TOC shape (`coverImageOptions`, `settings`). The
  * endpoint is an option; we only send fields both schemas share plus `coverImage` / `enableToc`.
  */
-import { defineAdapter, mergeReports } from '@starnote/publish-core';
+import {
+  defineAdapter,
+  isUrlExternalId,
+  mediaReport,
+  mergeReports,
+  parsePostUrl,
+} from '@starnote/publish-core';
 import {
   articleOf,
   canonicalOf,
@@ -233,6 +239,10 @@ export function renderHashnode(
     ...slugs.report.filter((i) => i.kind === 'tags.trimmed'),
     ...canonical.report,
   ];
+
+  // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
+
+  report.push(...mediaReport('hashnode', 'Hashnode', content, common));
   if (form.mode === 'draft')
     report.push({
       kind: 'draft.only',
@@ -327,23 +337,40 @@ export function hashnodeRelayBody(r: HashnodeRendered, form: HashnodeForm): Hash
 export const HASHNODE_STATS_QUERY =
   'query PostStats($id: ID!) { post(id: $id) { id views reactionCount responseCount } }';
 
-/** SPEC-r11 §7: views, reactions and responses of a post (GraphQL, the user's token). */
+/** A pasted-back link (SPEC-r12 §1.1): the post by its blog host and slug. */
+export const HASHNODE_STATS_BY_SLUG_QUERY =
+  'query PostStatsBySlug($host: String!, $slug: String!) { publication(host: $host) { post(slug: $slug) { id views reactionCount responseCount } } }';
+
+/**
+ * SPEC-r11 §7: views, reactions and responses of a post (GraphQL, the user's token). A link (SPEC-r12 §1.1) is looked
+ * up by host + slug; a link that names no post gives `null`.
+ */
 export async function fetchHashnodeStats(
   externalId: string,
   ctx: StatsContext
 ): Promise<PlatformStats | null> {
   const token = ctx.credential?.api_key ?? ctx.credential?.access_token;
-  const res = await readJson<{ data?: { post?: Record<string, unknown> | null } }>(
-    ctx,
-    hashnodeRef(),
-    HASHNODE_GQL,
-    {
-      method: 'POST',
-      body: { query: HASHNODE_STATS_QUERY, variables: { id: externalId } },
-      ...(token ? { headers: { Authorization: token } } : {}),
-    }
-  );
-  const post = res?.data?.post;
+  let byLink: { host: string; slug: string } | undefined;
+  if (isUrlExternalId(externalId)) {
+    const parsed = parsePostUrl('hashnode', externalId);
+    const u = parsed ? new URL(parsed.url) : undefined;
+    const slug = u?.pathname.split('/').filter(Boolean).pop();
+    if (!u || !slug) return null;
+    byLink = { host: u.host, slug };
+  }
+  const res = await readJson<{
+    data?: {
+      post?: Record<string, unknown> | null;
+      publication?: { post?: Record<string, unknown> | null } | null;
+    };
+  }>(ctx, hashnodeRef(), HASHNODE_GQL, {
+    method: 'POST',
+    body: byLink
+      ? { query: HASHNODE_STATS_BY_SLUG_QUERY, variables: byLink }
+      : { query: HASHNODE_STATS_QUERY, variables: { id: externalId } },
+    ...(token ? { headers: { Authorization: token } } : {}),
+  });
+  const post = byLink ? res?.data?.publication?.post : res?.data?.post;
   if (!post) return null;
   return stats('official-api', {
     views: num(post.views),

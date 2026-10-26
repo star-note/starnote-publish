@@ -1,10 +1,16 @@
 /** Small pieces every relay adapter needs: the article, its canonical link, runtimes, the image report. */
+import { LINK_PLACEMENT, visibleLinkOf } from '@starnote/publish-core';
+import { z } from 'zod';
+
 import { hashtagWord } from './text';
 
 import type {
   ArticleContent,
   CommonFormShape,
   Doc,
+  FollowUpInput,
+  LinkPlacement,
+  PlatformKey,
   PublishContent,
   ReportItem,
   RuntimeSupport,
@@ -48,6 +54,18 @@ export function canonicalOf(
       },
     ],
   };
+}
+
+/**
+ * The link of a 「本文首发于辰记」 / 「Originally published at」 line (SPEC-r12 §5.3): readers click it, so it is the
+ * tracking short link — unless the form named its own canonical URL, which then wins.
+ */
+export function originLinkOf(
+  form: { canonical_url?: string | undefined },
+  article: ArticleContent,
+  canonicalUrl: string
+): string {
+  return form.canonical_url ? canonicalUrl : article.trackingUrl || canonicalUrl;
 }
 
 /**
@@ -104,7 +122,10 @@ export interface CardSource {
   summary: string;
   /** The user's own text (form, or `ShortTextContent.text`): used instead of title + summary when given. */
   text?: string;
-  /** The link back to 辰记 (form link, short-text link, canonical, image set's article) — may be the placeholder. */
+  /**
+   * The link back to 辰记 readers click (form link, else the tracking short link, short-text link, canonical, image
+   * set's article — SPEC-r12 §5.3) — may be the placeholder.
+   */
   link?: string;
   /** Topic words without `#`, deduplicated (`hashtagWord`). */
   tags: string[];
@@ -133,7 +154,7 @@ export function cardOf(
   const set = content?.kind === 'image-set' ? content : undefined;
   const article = content?.kind === 'article' ? content : set?.from;
   const d = article?.doc ?? doc;
-  const link = opts.link || short?.link || article?.canonicalUrl;
+  const link = opts.link || visibleLinkOf(content);
   const text = opts.text || short?.thread?.[0] || short?.text || set?.caption || undefined;
   const tags = [
     ...new Set(
@@ -186,4 +207,45 @@ export function newPostReport(previous: { externalId?: string } | undefined): Re
         },
       ]
     : [];
+}
+
+/**
+ * SPEC-r12 §2.2: the platform form's `linkPlacement` field (only on the platforms of `LINK_PLACEMENT`), defaulting
+ * to the registry's choice.
+ */
+export function linkPlacementField(platform: PlatformKey) {
+  return z
+    .enum(['body', 'first_comment'])
+    .default(LINK_PLACEMENT[platform] ?? 'body')
+    .describe('原文链接');
+}
+
+/** SPEC-r12 §2.2: the link comment — `原文：{url}` for a Chinese note, `Read more: {url}` for another language. */
+export function linkCommentText(url: string, lang?: string): string {
+  return lang && !/^zh/i.test(lang) ? `Read more: ${url}` : `原文：${url}`;
+}
+
+/**
+ * Where the link goes (SPEC-r12 §2.2). `body`: the post keeps the link (`bodyLink`). `first_comment`: the post gets
+ * no link and no link card, and the link becomes the follow-up comment (reported as `link.first_comment`). No
+ * link at all: nothing to place.
+ */
+export function placeLink(
+  placement: LinkPlacement | undefined,
+  link: string | undefined,
+  lang?: string
+): { bodyLink: string | undefined; followUp?: FollowUpInput; report: ReportItem[] } {
+  if (placement !== 'first_comment' || !link) return { bodyLink: link, report: [] };
+  const text = linkCommentText(link, lang);
+  return {
+    bodyLink: undefined,
+    followUp: { kind: 'link_comment', text },
+    report: [
+      {
+        kind: 'link.first_comment',
+        text: '原文链接不放正文，发帖后作为第一条评论发出',
+        detail: { url: link, text },
+      },
+    ],
+  };
 }

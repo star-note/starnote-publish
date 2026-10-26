@@ -123,3 +123,32 @@ describe('instagram adapter', () => {
     ).toBe('cancelled');
   });
 });
+
+describe('SPEC-r12 Instagram media limits', () => {
+  it('a 3:1 image is an error, a WebP is refused', () => {
+    const doc = fixtureDoc();
+    const r = renderInstagram(
+      doc,
+      instagramAdapter.schema.parse({}),
+      {},
+      {
+        kind: 'image-set',
+        title: 't',
+        caption: 'c',
+        images: [
+          { url: 'https://starnote.app/a.jpg', width: 1200, height: 400, mime: 'image/jpeg' },
+          { url: 'https://starnote.app/b.webp', width: 1080, height: 1080, mime: 'image/webp' },
+        ],
+      },
+      { assetBase: ASSET_BASE }
+    );
+    const media = r.report.filter((i) => i.kind.startsWith('media.'));
+    expect(media).toEqual([
+      expect.objectContaining({ kind: 'media.image.aspect', level: 'error' }),
+      expect.objectContaining({ kind: 'media.image.format', level: 'error' }),
+    ]);
+    expect(instagramAdapter.parsePostUrl!('https://www.instagram.com/p/AbC/')?.externalId).toBe(
+      'code:AbC'
+    );
+  });
+});

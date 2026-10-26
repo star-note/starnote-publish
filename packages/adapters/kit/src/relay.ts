@@ -21,8 +21,21 @@
  *   POST {…}/publish/{platform}/finalize  { pending, account_id?, credential? }  → same
  *                                          (Idempotency-Key: finalize:{platform}:{container id})
  *   (`credential`: as for publish — the web page's in-memory token, forwarded once)
+ *
+ * The link comment (SPEC-r12 §2.2, LinkedIn / Threads / Bluesky / Mastodon / Facebook):
+ *
+ *   POST {…}/publish/{platform}/comment   { parent: { external_id, meta? }, text, account_id?, credential? }
+ *                                          (Idempotency-Key: comment:{platform}:{parent external_id})
+ *   → { platform, external_id, url? }      (`url` may be empty)
+ *   (`meta`: what the publish answer gave as `data.meta` — Bluesky `{ uri, cid }`, Mastodon `{ visibility }`;
+ *    without it the server reads the post once itself)
  */
-import { finalizeKeyOf, idempotencyKeyOf, isErrorKind } from '@starnote/publish-core';
+import {
+  finalizeKeyOf,
+  followUpKeyOf,
+  idempotencyKeyOf,
+  isErrorKind,
+} from '@starnote/publish-core';
 
 import {
   helpAction,
@@ -36,6 +49,8 @@ import {
 
 import type {
   ErrorKind,
+  FollowUpInput,
+  FollowUpParent,
   PendingCheck,
   PostRef,
   PublishContext,
@@ -56,6 +71,8 @@ export interface RelayResult {
   pending?: unknown;
   /** The server answered from its idempotency record (the same key was done before). */
   replayed?: boolean;
+  /** SPEC-r12 §2.2 `data.meta`: what the link comment needs about the post (Bluesky `{ uri, cid }`…). */
+  meta?: unknown;
 }
 
 /** What the relay helpers read from the publish context. */
@@ -261,11 +278,53 @@ export async function relayPublish(
       report: Array.isArray(d.report) ? (d.report as ReportItem[]) : [],
       ...(d.pending !== undefined && d.pending !== null ? { pending: d.pending } : {}),
       ...(d.replayed ? { replayed: true } : {}),
+      ...(d.meta !== undefined && d.meta !== null ? { meta: d.meta } : {}),
     };
   }
   // 2xx but no readable success envelope (cut body, HTML, `code` 0 without data): the post may exist
   if (res.ok && (!env || env.code === 0)) throw unreadableWrite(p, res);
   throw envelopeError(p, res, env, `${p.label} 发布失败`, true);
+}
+
+/**
+ * SPEC-r12 §2.2 `POST …/publish/{platform}/comment`: the link comment under a live post. A write — never retried
+ * here; the key `comment:{platform}:{post externalId}` makes 「补发」 after a failure post again (the server only
+ * remembers successes and `unknown`s) and a replay of a success return the first answer.
+ */
+export async function relayFollowUp(
+  ctx: RelayContext,
+  p: PlatformRef,
+  parent: FollowUpParent,
+  input: FollowUpInput,
+  opts: { credential?: PlatformCredential | undefined; idempotencyKey?: string } = {}
+): Promise<{ externalId: string; url?: string }> {
+  const accountId = accountIdOf(ctx);
+  const res = await post(
+    ctx,
+    p,
+    `${relayPath(ctx.apiBase, ctx.noteId, p.key)}/comment`,
+    {
+      parent: {
+        external_id: parent.externalId,
+        ...(parent.meta !== undefined && parent.meta !== null ? { meta: parent.meta } : {}),
+      },
+      text: input.text,
+      ...(opts.credential ? { credential: opts.credential } : {}),
+      ...(accountId ? { account_id: accountId } : {}),
+    },
+    {
+      write: true,
+      idempotencyKey: opts.idempotencyKey ?? followUpKeyOf(p.key, parent.externalId),
+    }
+  );
+  const env = await readEnvelope(res);
+  if (res.ok && env && env.code === 0 && env.data && typeof env.data === 'object') {
+    const d = env.data;
+    const url = typeof d.url === 'string' && d.url ? d.url : undefined;
+    return { externalId: String(d.external_id ?? ''), ...(url ? { url } : {}) };
+  }
+  if (res.ok && (!env || env.code === 0)) throw unreadableWrite(p, res);
+  throw envelopeError(p, res, env, `${p.label} 链接评论发送失败`, true);
 }
 
 /** The container id inside a three-stage `pending` (`container_id`, `creation_id` or `id`). */
@@ -387,7 +446,8 @@ export function relayRequestOf(
   body: unknown,
   previous?: PostRef,
   previousId?: string,
-  report?: ReportItem[]
+  report?: ReportItem[],
+  followUp?: FollowUpInput
 ): RelayRequest & { report?: ReportItem[] } {
   const prevId = previous?.externalId ?? previousId;
   return {
@@ -395,6 +455,8 @@ export function relayRequestOf(
     ...(prevId
       ? { previous: { external_id: prevId, ...(previous?.url ? { url: previous.url } : {}) } }
       : {}),
+    // SPEC-r12 §2.3: the runner posts the link comment once the post succeeded
+    ...(followUp ? { follow_up: { kind: followUp.kind, text: followUp.text } } : {}),
     ...(report?.length ? { report } : {}),
   };
 }

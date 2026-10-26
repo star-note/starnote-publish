@@ -114,7 +114,7 @@ export const CANONICAL = 'https://starnote.app/@me/abc123';
 /** Runs one platform through a real publisher and collects its events. */
 export async function runPublish(
   adapter: Adapter<any>,
-  job: Partial<PublishJob> & { form?: unknown },
+  job: Partial<PublishJob> & { form?: unknown; trackingUrl?: string },
   opts: { runtime?: 'web' | 'electron' | 'node'; fetch?: typeof fetch } = {}
 ) {
   const events: PublishEvent[] = [];
@@ -128,7 +128,9 @@ export async function runPublish(
   const { results } = await publisher.publish({
     noteId: 'note-1',
     doc,
-    platforms: [adapter.key],
+    ...(job.trackingUrl
+      ? { targets: [{ platform: adapter.key, trackingUrl: job.trackingUrl }] }
+      : { platforms: [adapter.key] }),
     common: job.common ?? { title: 'Hello Title', tags: ['TypeScript', 'web dev'] },
     perPlatform: { [adapter.key]: job.form ?? {} },
     content: job.content ?? { kind: 'article', doc, canonicalUrl: CANONICAL },

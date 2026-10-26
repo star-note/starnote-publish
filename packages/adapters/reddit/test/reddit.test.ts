@@ -111,3 +111,20 @@ describe('reddit adapter', () => {
     expect(redditAdapter.runtime).toEqual(['electron', 'web', 'server']);
   });
 });
+
+describe('SPEC-r12 Reddit', () => {
+  it('reads stats of a pasted link by its post id; other links give nothing', async () => {
+    const { fetch, calls } = mockFetch({
+      'GET /by_id/t3_abc12.json': () =>
+        json({ data: { children: [{ data: { score: 9, num_comments: 2 } }] } }),
+    });
+    const ctx = { fetch, signal: new AbortController().signal, runtime: 'web' as const };
+    expect(
+      await redditAdapter.fetchStats!('https://www.reddit.com/r/ts/comments/abc12/x/', ctx)
+    ).toMatchObject({
+      comments: 2,
+    });
+    expect(calls[0]!.url).toContain('/by_id/t3_abc12.json');
+    expect(await redditAdapter.fetchStats!('https://www.reddit.com/r/ts/', ctx)).toBeNull();
+  });
+});

@@ -1,4 +1,10 @@
-import { convert, degradeTree, rewriteImageSrcs, truncateText } from '@starnote/publish-core';
+import {
+  convert,
+  degradeTree,
+  mediaReport,
+  rewriteImageSrcs,
+  truncateText,
+} from '@starnote/publish-core';
 
 import type {
   CommonFormShape,
@@ -71,6 +77,8 @@ export function renderJuejin(
   brief?: string
 ): JuejinRendered {
   const report: ReportItem[] = [];
+  // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
+  report.push(...mediaReport('juejin', '掘金', undefined, common));
   const rawTitle = (common.title || doc.title || '').trim();
   const titleMax = script.limits?.titleMax ?? 100;
   const cut = truncateText(rawTitle, titleMax);

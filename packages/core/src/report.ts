@@ -33,6 +33,15 @@ export type ReportKind =
   | 'handoff.pending'
   | 'scheduled'
   | 'unchanged'
+  | 'link.first_comment'
+  | 'followup.posted'
+  | 'followup.failed'
+  | 'media.too_large'
+  | 'media.format'
+  | 'media.count'
+  | 'media.size'
+  | 'media.aspect'
+  | 'media.duration'
   | (string & {});
 
 export interface ReportItem {
@@ -40,8 +49,11 @@ export interface ReportItem {
   /** One localized sentence, e.g. 「3 张图片已转存到仓库」. */
   text: string;
   count?: number;
-  /** `notice`: the user should know; `warn`: may affect how the post reads. Default `info`. */
-  level?: 'info' | 'notice' | 'warn';
+  /**
+   * `notice`: the user should know; `warn`: may affect how the post reads (or was fixed for the user, e.g. an image
+   * compressed); `error`: the platform will refuse it, change it first (SPEC-r12 §3, `checkMedia`). Default `info`.
+   */
+  level?: 'info' | 'notice' | 'warn' | 'error';
   /** Up to 3 examples (a truncated title, a dropped link…). */
   samples?: string[];
   detail?: Record<string, unknown>;

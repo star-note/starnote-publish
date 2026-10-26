@@ -8,7 +8,7 @@
  * Browser-safe: render + relay body only. The key never reaches the browser: 辰记's Python API signs the JWT and
  * calls Ghost (服务器代发).
  */
-import { defineAdapter, mergeReports } from '@starnote/publish-core';
+import { defineAdapter, mediaReport, mergeReports } from '@starnote/publish-core';
 import {
   articleOf,
   canonicalOf,
@@ -202,6 +202,8 @@ export function renderGhost(
     ...tags.report,
     ...canonical.report,
   ];
+  // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
+  report.push(...mediaReport('ghost', 'Ghost', content, common));
   if (form.status === 'draft')
     report.push({
       kind: 'draft.only',

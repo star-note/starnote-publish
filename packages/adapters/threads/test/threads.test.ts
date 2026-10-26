@@ -145,3 +145,83 @@ describe('threads adapter (three stages)', () => {
     expect(threadsAdapter.statsRequires).toBe('token');
   });
 });
+
+describe('SPEC-r12 Threads', () => {
+  it('first_comment: no link_attachment; the reply follows finalize', async () => {
+    const r = renderThreads(
+      doc,
+      parse({ linkPlacement: 'first_comment' }),
+      { title: 'Hi' },
+      article
+    );
+    expect(r.body.media_type).toBe('TEXT');
+    expect(r.body).not.toHaveProperty('link_attachment');
+    expect(r.followUp).toEqual({ kind: 'link_comment', text: `原文：${CANONICAL}` });
+    const img = renderThreads(
+      doc,
+      parse({ linkPlacement: 'first_comment', with_cover: true }),
+      { title: 'Hi', cover: '/c.png' },
+      article,
+      { assetBase: ASSET_BASE }
+    );
+    expect(img.text).not.toContain(CANONICAL);
+
+    const { fetch, calls } = mockFetch({
+      [`POST ${PATH}/comment`]: () =>
+        json({ code: 0, data: { platform: 'threads', external_id: 'm2' } }),
+      [`POST ${PATH}/check`]: () =>
+        json({ code: 0, data: { status: 'ready', pending: { container_id: 'c1' } } }),
+      [`POST ${PATH}/finalize`]: () =>
+        json({
+          code: 0,
+          data: {
+            status: 'completed',
+            url: 'https://www.threads.net/@me/post/X',
+            external_id: 'm1',
+          },
+        }),
+      [`POST ${PATH}`]: () =>
+        json({
+          code: 0,
+          data: { url: '', external_id: '', state: 'processing', pending: { container_id: 'c1' } },
+        }),
+    });
+    const a = createThreadsAdapter({ poll: { intervalSec: 0 } });
+    const { result } = await runPublish(
+      a,
+      { form: { linkPlacement: 'first_comment' } },
+      { runtime: 'electron', fetch }
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      externalId: 'm1',
+      followUp: { state: 'succeeded', externalId: 'm2' },
+    });
+    expect(calls.map((c) => c.url.replace(/^.*\/threads/, ''))).toEqual([
+      '',
+      '/check',
+      '/finalize',
+      '/comment',
+    ]);
+    expect(calls[3]!.body).toEqual({ parent: { external_id: 'm1' }, text: `原文：${CANONICAL}` });
+    expect(calls[3]!.headers.get('Idempotency-Key')).toBe('comment:threads:m1');
+  });
+
+  it('pasted links are code: ids; stats look the shortcode up with the token, else nothing', async () => {
+    expect(threadsAdapter.parsePostUrl!('https://www.threads.com/@me/post/AbC')?.externalId).toBe(
+      'code:AbC'
+    );
+    const { fetch, calls } = mockFetch({
+      'GET /v1.0/me/threads': () => json({ data: [{ id: '17', shortcode: 'AbC' }] }),
+      'GET /v1.0/17/insights': () => json({ data: [{ name: 'likes', total_value: { value: 5 } }] }),
+    });
+    const ctx = { fetch, signal: new AbortController().signal, runtime: 'web' as const };
+    expect(await fetchThreadsStats('code:AbC', ctx)).toBeNull();
+    expect(calls).toHaveLength(0);
+    const s = await fetchThreadsStats('code:AbC', { ...ctx, credential: { access_token: 't' } });
+    expect(s).toMatchObject({ likes: 5 });
+    expect(
+      await fetchThreadsStats('code:Nope', { ...ctx, credential: { access_token: 't' } })
+    ).toBeNull();
+  });
+});

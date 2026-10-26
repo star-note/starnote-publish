@@ -11,7 +11,14 @@
  * Default: a link post to the 辰记 original (what most subreddits expect); `kind: 'self'` posts the article as
  * Reddit Markdown with the link at the end.
  */
-import { defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
+import {
+  defineAdapter,
+  isUrlExternalId,
+  mediaReport,
+  mergeReports,
+  parsePostUrl,
+  platformMeta,
+} from '@starnote/publish-core';
 import {
   articleOf,
   canonicalOf,
@@ -138,6 +145,8 @@ export function renderReddit(
   opts: { assetBase?: string } = {}
 ): RedditRendered {
   const report: ReportItem[] = [];
+  // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
+  report.push(...mediaReport('reddit', 'Reddit', content, common));
   const short = content?.kind === 'short-text' ? content : undefined;
   const article = short ? undefined : articleOf(doc, content);
   const rawTitle = (
@@ -158,7 +167,10 @@ export function renderReddit(
   const canonical = article
     ? canonicalOf({ canonical_url: form.link }, article, 'Reddit')
     : { url: form.link || short?.link, report: [] as ReportItem[] };
-  const link = canonical.url;
+  // SPEC-r12 §5.3: the submitted link / the closing line is what readers click: the tracking short link
+  const link = form.link
+    ? canonical.url
+    : (article ? article.trackingUrl : short?.trackingUrl) || canonical.url;
 
   let text = '';
   if (form.kind === 'self') {
@@ -262,7 +274,11 @@ export async function fetchRedditStats(
   ctx: StatsContext,
   base = 'https://www.reddit.com'
 ): Promise<PlatformStats | null> {
-  const id = externalId.replace(/^t3_/, '');
+  // a pasted-back link (SPEC-r12 §1.1) gives its post id; a link that names none: no stats
+  const id = isUrlExternalId(externalId)
+    ? parsePostUrl('reddit', externalId)?.externalId
+    : externalId.replace(/^t3_/, '');
+  if (!id) return null;
   const data = await readJson<{ data?: { children?: Array<{ data?: Record<string, unknown> }> } }>(
     ctx,
     redditRef(),

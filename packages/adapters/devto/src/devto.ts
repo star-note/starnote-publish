@@ -3,7 +3,13 @@
  * `GET /api/users/me`; auth header `api-key`. Body is Markdown (with liquid tags), up to 4 tags,
  * `canonical_url` back to the 辰记 original. Browser-safe: render + relay body only; 辰记's Python API holds the key and calls DEV (服务器代发).
  */
-import { defineAdapter, mergeReports } from '@starnote/publish-core';
+import {
+  defineAdapter,
+  isUrlExternalId,
+  mediaReport,
+  mergeReports,
+  normalizePostUrl,
+} from '@starnote/publish-core';
 import {
   articleOf,
   canonicalOf,
@@ -19,6 +25,7 @@ import {
   relayPublish,
   relayRequestOf,
   stats,
+  originLinkOf,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
@@ -173,8 +180,11 @@ export function renderDevto(
 
   let markdown = degraded.body;
   const report: ReportItem[] = [];
+  // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
+  report.push(...mediaReport('devto', 'DEV', content, common));
   if (form.origin_note && canonical.url) {
-    markdown += `\n\n---\n\n*Originally published at [${canonical.url}](${canonical.url}).*`;
+    const origin = originLinkOf(form, article, canonical.url);
+    markdown += `\n\n---\n\n*Originally published at [${origin}](${origin}).*`;
     report.push({ kind: 'origin.note', text: '文末加上「Originally published at」原文链接' });
   }
   report.push(
@@ -252,7 +262,8 @@ export function devtoRelayBody(r: DevtoRendered): DevtoArticleBody {
 
 /**
  * SPEC-r11 §7 ✅ `GET /api/articles/me/all` (`api-key`; the desktop's fetch adds it when the context has none):
- * page views, reactions and comments of the article with this id. ⚠️ 只取第一页 1000 篇。
+ * page views, reactions and comments of the article with this id — or, for a pasted-back link (SPEC-r12 §1.1), with
+ * this URL. ⚠️ 只取第一页 1000 篇。
  */
 export async function fetchDevtoStats(
   externalId: string,
@@ -265,7 +276,12 @@ export async function fetchDevtoStats(
     `${DEVTO_API}/articles/me/all?per_page=1000`,
     { headers: { Accept: DEVTO_ACCEPT, ...(key ? { 'api-key': key } : {}) } }
   );
-  const a = list?.find((x) => String(x.id) === String(externalId));
+  const byUrl = isUrlExternalId(externalId) ? normalizePostUrl(externalId) : null;
+  const a = list?.find((x) =>
+    byUrl
+      ? typeof x.url === 'string' && normalizePostUrl(x.url) === byUrl
+      : String(x.id) === String(externalId)
+  );
   if (!a) return null;
   return stats('official-api', {
     views: num(a.page_views_count),

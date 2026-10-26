@@ -11,19 +11,31 @@
  * - web: `./oauth` runs the flow in the page (non-extractable WebCrypto key, page memory only) and posts directly
  *   to the PDS (`publishBlueskyDirect`); nothing goes through 辰记's API;
  * - no 「云端代发」 for Bluesky.
+ *
+ * SPEC-r12 §2: with `linkPlacement: 'first_comment'` the post has no link and no card; the link follows as the
+ * author's reply (`reply.root` / `reply.parent` = the post's `uri` + `cid`, a link facet over the URL — Bluesky does
+ * not detect links in text by itself ✅).
  */
 import {
   CANONICAL_PLACEHOLDER,
   defineAdapter,
+  isUrlExternalId,
+  mediaReport,
   mergeReports,
+  parsePostUrl,
   platformMeta,
+  visibleLinkOf,
 } from '@starnote/publish-core';
 import {
   absoluteUrl,
   guard,
   helpError,
+  kindError,
+  linkPlacementField,
   num,
+  placeLink,
   readJson,
+  relayFollowUp,
   relayPublish,
   relayRequestOf,
   stats,
@@ -37,6 +49,8 @@ import type {
   BindingSpec,
   CommonFormShape,
   Doc,
+  FollowUpInput,
+  FollowUpParent,
   PlatformStats,
   PublishContent,
   ReportItem,
@@ -45,7 +59,12 @@ import type {
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
 import { BLUESKY_LIMITS } from './limits';
-import { BLUESKY_APPVIEW, publishBlueskyDirect } from './oauth';
+import {
+  BLUESKY_APPVIEW,
+  BlueskyOAuthError,
+  createPostDirect,
+  publishBlueskyDirect,
+} from './oauth';
 
 import type { BlueskySession } from './oauth';
 
@@ -73,6 +92,8 @@ export const blueskySchema = z.object({
   include_summary: z.boolean().default(true).describe('带上摘要'),
   include_tags: z.boolean().default(true).describe('带上话题'),
   link_card: z.boolean().default(true).describe('链接卡片'),
+  /** SPEC-r12 §2: the link as a card / in the text, or as the author's first reply. */
+  linkPlacement: linkPlacementField('bluesky'),
 });
 
 export type BlueskyForm = z.infer<typeof blueskySchema>;
@@ -119,12 +140,20 @@ export interface BlueskyFacet {
   >;
 }
 
+/** A record's `uri` + `cid` (`com.atproto.repo.strongRef`). */
+export interface BlueskyStrongRef {
+  uri: string;
+  cid: string;
+}
+
 export interface BlueskyPostRecord {
   $type: 'app.bsky.feed.post';
   text: string;
   createdAt: string;
   langs?: string[];
   facets?: BlueskyFacet[];
+  /** A reply: the thread's first post and the post replied to. */
+  reply?: { root: BlueskyStrongRef; parent: BlueskyStrongRef };
   embed?: {
     $type: 'app.bsky.embed.external';
     external: { uri: string; title: string; description: string; thumb?: unknown };
@@ -141,6 +170,8 @@ export interface BlueskyRendered {
   text: string;
   body: BlueskyRelayBody;
   report: ReportItem[];
+  /** `linkPlacement: 'first_comment'`: the reply carrying the link. */
+  followUp?: FollowUpInput;
 }
 
 function hashtag(t: string): string | null {
@@ -182,7 +213,8 @@ export function renderBluesky(
   const short = content?.kind === 'short-text' ? content : undefined;
   const article = content?.kind === 'article' ? content : undefined;
   const d = article?.doc ?? doc;
-  const link = form.link || short?.link || article?.canonicalUrl;
+  const placed = placeLink(form.linkPlacement, form.link || visibleLinkOf(content), article?.lang);
+  const link = placed.bodyLink;
   const title = (common.title || d.title || '').trim();
   const head = (form.text || short?.thread?.[0] || short?.text || title).trim();
   let summary =
@@ -301,6 +333,8 @@ export function renderBluesky(
       text: thumb ? '附上辰记原文链接卡片（含封面缩略图）' : '附上辰记原文链接卡片',
       detail: { url: link },
     });
+  } else if (placed.followUp) {
+    report.push(...placed.report);
   } else if (!link) {
     report.push({
       kind: 'canonical.missing',
@@ -309,7 +343,62 @@ export function renderBluesky(
     });
   }
 
-  return { text, body: { record, ...(thumb ? { thumb_url: thumb } : {}) }, report };
+  report.push(...mediaReport('bluesky', 'Bluesky', content, common));
+  return {
+    text,
+    body: { record, ...(thumb ? { thumb_url: thumb } : {}) },
+    report,
+    ...(placed.followUp ? { followUp: placed.followUp } : {}),
+  };
+}
+
+/** `#link` facets over every http(s) URL in `text` (UTF-8 byte offsets ✅; Bluesky does not detect links itself). */
+export function linkFacets(text: string): BlueskyFacet[] {
+  const facets: BlueskyFacet[] = [];
+  for (const m of text.matchAll(/https?:\/\/[^\s，。、；！？）)\]]+/g)) {
+    const uri = m[0].replace(/[.,;:!?'"]+$/, '');
+    const byteStart = utf8(text.slice(0, m.index));
+    facets.push({
+      index: { byteStart, byteEnd: byteStart + utf8(uri) },
+      features: [{ $type: 'app.bsky.richtext.facet#link', uri }],
+    });
+  }
+  return facets;
+}
+
+/**
+ * Pure: the link comment as a reply record (SPEC-r12 §2.2): `reply.root` and `reply.parent` both the post (it is
+ * the first reply of a new thread), link facets, at most 300 graphemes (the text is cut before the link would be).
+ */
+export function blueskyReplyRecord(
+  text: string,
+  parent: BlueskyStrongRef,
+  opts: { root?: BlueskyStrongRef; langs?: string[]; now?: () => Date } = {}
+): BlueskyPostRecord {
+  const g = graphemes(text);
+  const t =
+    g.length > BLUESKY_LIMITS.graphemes ? g.slice(0, BLUESKY_LIMITS.graphemes).join('') : text;
+  const facets = linkFacets(t);
+  return {
+    $type: 'app.bsky.feed.post',
+    text: t,
+    createdAt: (opts.now?.() ?? new Date()).toISOString(),
+    ...(opts.langs?.length ? { langs: opts.langs } : {}),
+    ...(facets.length ? { facets } : {}),
+    reply: { root: opts.root ?? parent, parent },
+  };
+}
+
+/** The `{ uri, cid }` in a publish answer's `meta`, when it is one. */
+export function strongRefOf(meta: unknown): BlueskyStrongRef | undefined {
+  const m = meta as { uri?: unknown; cid?: unknown } | null | undefined;
+  return m &&
+    typeof m.uri === 'string' &&
+    m.uri.startsWith('at://') &&
+    typeof m.cid === 'string' &&
+    m.cid
+    ? { uri: m.uri, cid: m.cid }
+    : undefined;
 }
 
 export function blueskyRef(links?: ErrorLinks): PlatformRef {
@@ -360,6 +449,12 @@ export async function fetchBlueskyStats(
   appView: string = BLUESKY_APPVIEW
 ): Promise<PlatformStats | null> {
   const ref = blueskyRef();
+  // a pasted-back link (SPEC-r12 §1.1): its rkey, and the author's handle from the link
+  if (isUrlExternalId(externalId)) {
+    const parsed = parsePostUrl('bluesky', externalId);
+    if (!parsed) return null;
+    return fetchBlueskyStats(parsed.externalId, { ...ctx, url: parsed.url }, appView);
+  }
   const target = blueskyPostUri(externalId, ctx);
   let uri = target.uri;
   if (!uri && target.handle) {
@@ -390,6 +485,61 @@ export async function fetchBlueskyStats(
   });
 }
 
+/**
+ * A failed **write** straight to the PDS (web) → a `PlatformError` with its kind (SPEC-r11 §1): the request may have
+ * reached the PDS when the connection dropped, the PDS answered 5xx or nothing says otherwise, so those are `unknown`
+ * (never re-sent without asking); 429 `retry`; 401 / an expired session `disconnect`; a DPoP nonce loop (the PDS
+ * refused every try) `retry`; any other 4xx `bad_body`. Other errors are passed on unchanged.
+ */
+export function blueskyWriteError(cause: unknown, p: PlatformRef = blueskyRef()): unknown {
+  if (!(cause instanceof BlueskyOAuthError)) return cause;
+  const status = cause.status;
+  const init = status !== undefined ? { status } : {};
+  if (cause.code === 'relogin' || status === 401)
+    return kindError(p, 'disconnect', cause.message, { code: 'relogin', ...init });
+  if (cause.code === 'rate_limited' || status === 429)
+    return kindError(p, 'retry', cause.message, { code: 'rate_limited', ...init });
+  if (cause.code === 'dpop') return kindError(p, 'retry', cause.message, { code: 'dpop' });
+  if (status !== undefined && status >= 400 && status < 500)
+    return kindError(p, 'bad_body', cause.message, { code: cause.code, ...init });
+  // network, 5xx, no status: the write may have gone through
+  return kindError(
+    p,
+    'unknown',
+    `${cause.message}（结果未知：可能已经发出，请先到 Bluesky 确认，没有再重发）`,
+    { code: cause.code === 'network' ? 'network' : status ? `http_${status}` : 'unknown', ...init }
+  );
+}
+
+async function directWrite<T>(p: PlatformRef, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (cause) {
+    throw blueskyWriteError(cause, p);
+  }
+}
+
+/** The post's `cid` from the public AppView, when the publish answer did not give it (a 「补发」 later). */
+async function resolveStrongRef(
+  post: FollowUpParent,
+  fallbackUri: string,
+  ctx: Pick<StatsContext, 'fetch' | 'signal'>,
+  appView: string = BLUESKY_APPVIEW
+): Promise<BlueskyStrongRef> {
+  const uri = post.externalId.startsWith('at://') ? post.externalId : fallbackUri;
+  const data = await readJson<{ posts?: Array<{ uri?: string; cid?: string }> }>(
+    ctx,
+    blueskyRef(),
+    `${appView}/xrpc/app.bsky.feed.getPosts?uris=${encodeURIComponent(uri)}`
+  );
+  const found = data?.posts?.[0];
+  if (!found?.cid)
+    throw helpError(blueskyRef(), '找不到要回复的 Bluesky 帖子（可能已删除）', {
+      code: 'not_found',
+    });
+  return { uri: found.uri ?? uri, cid: found.cid };
+}
+
 export interface BlueskyAdapterOptions {
   runtimes?: RuntimeSupport[];
   assetBase?: string;
@@ -413,12 +563,43 @@ export function createBlueskyAdapter(
     schema: blueskySchema,
     preview(doc, form, common, content): AdapterPreview {
       const r = renderBluesky(doc, form, common, content, renderOpts);
-      return { format: 'text', title: common?.title || doc.title, body: r.text, report: r.report };
+      return {
+        format: 'text',
+        title: common?.title || doc.title,
+        body: r.text,
+        report: r.report,
+        ...(r.followUp ? { followUp: r.followUp } : {}),
+      };
     },
     // SPEC-r11 §12: the record a desktop task posts (Bluesky has no 云端代发: scheduled posts wait for the desktop).
     renderRequest({ doc, form, common, content, previous }) {
       const r = renderBluesky(doc, form, common, content, renderOpts);
-      return relayRequestOf(r.body, previous, undefined, r.report);
+      return relayRequestOf(r.body, previous, undefined, r.report, r.followUp);
+    },
+    // SPEC-r12 §2.2: web straight to the PDS (a reply record with link facets); desktop through its local relay.
+    followUp(post, input, ctx) {
+      return guard(ctx, ref, async () => {
+        if (ctx.runtime !== 'web') return relayFollowUp(ctx, ref, post, input);
+        const session = opts.session?.();
+        if (!session)
+          throw helpError(ref, '这个页面还没有 Bluesky 授权（授权只保存在当前页面），请先授权', {
+            code: 'bind',
+          });
+        const parent =
+          strongRefOf(post.meta) ??
+          (await resolveStrongRef(
+            post,
+            `at://${session.did}/app.bsky.feed.post/${post.externalId}`,
+            ctx
+          ));
+        const out = await directWrite(ref, () =>
+          createPostDirect(session, blueskyReplyRecord(input.text, parent), {
+            fetch: ctx.fetch,
+            signal: ctx.signal,
+          })
+        );
+        return { externalId: out.rkey, ...(out.url ? { url: out.url } : {}) };
+      });
     },
     statsRequires: 'none',
     fetchStats(externalId, ctx) {
@@ -444,16 +625,18 @@ export function createBlueskyAdapter(
             throw helpError(ref, '这个页面还没有 Bluesky 授权（授权只保存在当前页面），请先授权', {
               code: 'bind',
             });
-          const res = await publishBlueskyDirect(session, r.body, {
-            fetch: ctx.fetch,
-            signal: ctx.signal,
-          });
+          const res = await directWrite(ref, () =>
+            publishBlueskyDirect(session, r.body, { fetch: ctx.fetch, signal: ctx.signal })
+          );
           ctx.emit({ type: 'progress', percent: 100, text: '完成' });
           return {
             url: res.url,
             externalId: res.rkey,
             state: 'published',
             report: mergeReports(report, res.report),
+            ...(r.followUp
+              ? { followUp: { ...r.followUp, meta: { uri: res.uri, cid: res.cid } } }
+              : {}),
           };
         }
         // Desktop: the main process holds the token and the DPoP key (the host routes this call to it).
@@ -464,6 +647,9 @@ export function createBlueskyAdapter(
           externalId: res.externalId,
           state: res.state ?? 'published',
           report: mergeReports(report, res.report),
+          ...(r.followUp
+            ? { followUp: { ...r.followUp, ...(res.meta !== undefined ? { meta: res.meta } : {}) } }
+            : {}),
         };
       });
     },

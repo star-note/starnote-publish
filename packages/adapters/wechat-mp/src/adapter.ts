@@ -202,7 +202,10 @@ export function createWechatMpAdapter(
         const authorMax = script.limits?.authorMax ?? 16;
         const author = form.author ? truncateText(form.author, authorMax).value : '';
         const sourceUrl =
-          form.source_url ?? (content?.kind === 'article' ? content.canonicalUrl : undefined) ?? '';
+          form.source_url ??
+          // SPEC-r12 §5.3: 「阅读原文」 is clicked by readers: the tracking short link when given
+          (content?.kind === 'article' ? content.trackingUrl || content.canonicalUrl : undefined) ??
+          '';
         if (sourceUrl)
           report.push({ kind: 'canonical.set', text: '「阅读原文」指向辰记原文', level: 'info' });
 

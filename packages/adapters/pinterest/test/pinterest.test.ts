@@ -97,3 +97,17 @@ describe('pinterest adapter', () => {
     expect(calls[0]!.url).toContain('start_date=2026-07-29&end_date=2026-10-26');
   });
 });
+
+describe('SPEC-r12 Pinterest', () => {
+  it('reads stats of a pasted Pin link by its id', async () => {
+    const { fetch, calls } = mockFetch({
+      'GET /v5/pins/4455/analytics': () => json({ all: { summary_metrics: { IMPRESSION: 12 } } }),
+    });
+    const ctx = { fetch, signal: new AbortController().signal, runtime: 'web' as const };
+    expect(await fetchPinterestStats('https://www.pinterest.com/pin/4455/', ctx)).toMatchObject({
+      views: 12,
+    });
+    expect(calls).toHaveLength(1);
+    expect(await fetchPinterestStats('https://www.pinterest.com/me/board/', ctx)).toBeNull();
+  });
+});

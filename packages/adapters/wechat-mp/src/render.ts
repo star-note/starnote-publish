@@ -1,4 +1,4 @@
-import { convertWechat, escapeHtml, truncateText } from '@starnote/publish-core';
+import { convertWechat, escapeHtml, mediaReport, truncateText } from '@starnote/publish-core';
 
 import type {
   CommonFormShape,
@@ -38,6 +38,8 @@ export function renderWechatMp(
   opts: WechatOptions = {}
 ): WechatMpRendered {
   const report: ReportItem[] = [];
+  // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
+  report.push(...mediaReport('wechat', '公众号', undefined, common));
   const titleMax = script.limits?.titleMax ?? 64;
   const rawTitle = (common.title || doc.title || '').trim();
   const title = truncateText(rawTitle, titleMax);

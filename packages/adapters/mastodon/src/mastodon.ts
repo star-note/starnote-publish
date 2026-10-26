@@ -5,17 +5,31 @@
  * `read:accounts write:statuses`; PKCE on 4.3+; tokens do not expire ✅). The instance builds the link card from the
  * first link in the text ✅, so the post is the title (+ summary) + hashtags + the 辰记 link.
  *
+ * SPEC-r12 §2: `linkPlacement: 'first_comment'` leaves the link out of the status and posts it as a reply of the author
+ * (`POST /api/v1/statuses` with `in_reply_to_id`, the same visibility) through the relay's `…/comment`.
+ *
  * Length: 500 by default, each instance sets its own (`/api/v2/instance` → `configuration.statuses.max_characters`
  * ✅, kept on the account as `meta.max_characters`); a URL always counts as `characters_reserved_per_url` (23 ✅).
  */
-import { defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
+import {
+  defineAdapter,
+  isUrlExternalId,
+  mediaReport,
+  mergeReports,
+  parsePostUrl,
+  platformMeta,
+  visibleLinkOf,
+} from '@starnote/publish-core';
 import {
   codePoints,
   credentialOf,
   guard,
   helpError,
+  linkPlacementField,
   num,
+  placeLink,
   readJson,
+  relayFollowUp,
   relayPublish,
   relayRequestOf,
   stats,
@@ -29,6 +43,7 @@ import type {
   BindingSpec,
   CommonFormShape,
   Doc,
+  FollowUpInput,
   PlatformStats,
   PublishContent,
   ReportItem,
@@ -90,6 +105,8 @@ export const mastodonSchema = z.object({
     .regex(/^\d+$/, '嘟文 ID 是数字')
     .optional()
     .describe('已发布嘟文 ID'),
+  /** SPEC-r12 §2: the link in the status, or as the author's first reply. */
+  linkPlacement: linkPlacementField('mastodon'),
 });
 
 export type MastodonForm = z.infer<typeof mastodonSchema>;
@@ -124,6 +141,8 @@ export interface MastodonRendered {
   hashtags: string[];
   body: MastodonStatusBody;
   report: ReportItem[];
+  /** `linkPlacement: 'first_comment'`: the reply carrying the link. */
+  followUp?: FollowUpInput;
 }
 
 /** Mastodon's count: code points, every URL as 23. */
@@ -160,7 +179,8 @@ export function renderMastodon(
       : MASTODON_DEFAULTS.maxCharacters;
   const short = content?.kind === 'short-text' ? content : undefined;
   const article = content?.kind === 'article' ? content : undefined;
-  const link = form.link || short?.link || article?.canonicalUrl;
+  const placed = placeLink(form.linkPlacement, form.link || visibleLinkOf(content), article?.lang);
+  const link = placed.bodyLink;
   const d = article?.doc ?? doc;
   const head = (
     form.text ||
@@ -231,6 +251,7 @@ export function renderMastodon(
       text: '实例会按正文里的链接生成预览卡片',
       detail: { url: link },
     });
+  else if (placed.followUp) report.push(...placed.report);
   else
     report.push({
       kind: 'canonical.missing',
@@ -249,7 +270,8 @@ export function renderMastodon(
       ...(form.spoiler_text ? { spoiler_text: form.spoiler_text } : {}),
       ...(form.sensitive ? { sensitive: true } : {}),
     },
-    report,
+    report: [...report, ...mediaReport('mastodon', 'Mastodon', content, common)],
+    ...(placed.followUp ? { followUp: placed.followUp } : {}),
   };
 }
 
@@ -300,18 +322,31 @@ export function mastodonInstanceOf(
 /**
  * SPEC-r11 §7 ✅ public `GET https://{instance}/api/v1/statuses/{id}` (public / unlisted posts need no token):
  * favourites → likes, replies → comments, boosts → shares. Mastodon has no view count.
+ *
+ * A pasted-back link (SPEC-r12 §1.1) is read on the link's own instance. The token is sent only to the instance it
+ * belongs to (the credential's / the bound account's `instance`) — never to a host taken from a link.
  */
 export async function fetchMastodonStats(
   externalId: string,
   ctx: StatsContext
 ): Promise<PlatformStats | null> {
-  const instance = mastodonInstanceOf(ctx);
+  let id = externalId;
+  let instance: string | null;
+  if (isUrlExternalId(externalId)) {
+    const parsed = parsePostUrl('mastodon', externalId);
+    // not a status link, or a remote post seen through another instance (no id of its own)
+    if (!parsed || isUrlExternalId(parsed.externalId)) return null;
+    id = parsed.externalId;
+    instance = normalizeInstance(new URL(parsed.url).host);
+  } else instance = mastodonInstanceOf(ctx);
   if (!instance) return null;
-  const token = ctx.credential?.access_token;
+  const own = ctx.credential?.instance ?? ctx.account?.meta?.instance;
+  const tokenInstance = typeof own === 'string' && own ? normalizeInstance(own) : null;
+  const token = tokenInstance === instance ? ctx.credential?.access_token : undefined;
   const s = await readJson<Record<string, unknown>>(
     ctx,
     mastodonRef(),
-    `https://${instance}/api/v1/statuses/${encodeURIComponent(externalId)}`,
+    `https://${instance}/api/v1/statuses/${encodeURIComponent(id)}`,
     token ? { headers: { Authorization: `Bearer ${token}` } } : {}
   );
   if (!s) return null;
@@ -351,13 +386,26 @@ export function createMastodonAdapter(
     },
     preview(doc, form, common, content): AdapterPreview {
       const r = renderMastodon(doc, form, common, content);
-      return { format: 'text', title: common?.title || doc.title, body: r.text, report: r.report };
+      return {
+        format: 'text',
+        title: common?.title || doc.title,
+        body: r.text,
+        report: r.report,
+        ...(r.followUp ? { followUp: r.followUp } : {}),
+      };
     },
     // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
     renderRequest({ doc, form, common, content, previous, account }) {
       const max = maxOf(account?.meta);
       const r = renderMastodon(doc, form, common, content, max ? { maxCharacters: max } : {});
-      return relayRequestOf(r.body, previous, form.external_id, r.report);
+      return relayRequestOf(r.body, previous, form.external_id, r.report, r.followUp);
+    },
+    // SPEC-r12 §2.2: the link as a reply of the author, through the relay (`in_reply_to_id`, same visibility)
+    followUp(post, input, ctx) {
+      return guard(ctx, ref, async () => {
+        const credential = await credentialOf(opts.credential, 'mastodon', ctx);
+        return relayFollowUp(ctx, ref, post, input, { credential });
+      });
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
@@ -374,6 +422,9 @@ export function createMastodonAdapter(
           externalId: res.externalId,
           state: res.state ?? 'published',
           report: mergeReports(r.report, res.report),
+          ...(r.followUp
+            ? { followUp: { ...r.followUp, meta: res.meta ?? { visibility: form.visibility } } }
+            : {}),
         };
       });
     },

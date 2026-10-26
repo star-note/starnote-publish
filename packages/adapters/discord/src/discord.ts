@@ -8,7 +8,7 @@
  *
  * Not bound: copy the text and paste it in Discord (`via: 'copy'`).
  */
-import { defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
+import { defineAdapter, mediaReport, mergeReports, platformMeta } from '@starnote/publish-core';
 import {
   appendLink,
   cardOf,
@@ -137,6 +137,8 @@ export function renderDiscord(
     link: form.link,
   });
   const report: ReportItem[] = [];
+  // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
+  report.push(...mediaReport('discord', 'Discord', content, common));
   const rawTitle = card.title || card.text || 'Untitled';
   const title = truncate(rawTitle, DISCORD_LIMITS.titleMax);
   if (title !== rawTitle)
