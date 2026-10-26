@@ -12,7 +12,9 @@
 | `@starnote/publish-share` | `packages/adapters/share` | X / LinkedIn / Facebook / Threads / Pinterest / 微博 / Telegram 分享链接（Reddit 作为未获批时的降级）与 Medium 导入：`buildShare` 生成打开地址和文案，结果 `state: 'handoff'` + `handoff {via, openUrl, copyText}` |
 | `@starnote/publish-blogger` / `-wordpress-com` / `-tumblr` / `-reddit` / `-mastodon` | `packages/adapters/{blogger,wordpress-com,tumblr,reddit,mastodon}` | 官方 OAuth + 官方接口：浏览器 / 桌面渲染请求体。桌面端令牌加密存本机、主进程直接发；网页令牌只在页面内存（`MemoryCredentialStore`），随 `credential` 经辰记 API 转发一次、不保存；打开「云端代发」才存服务器。网页授权流程见 kit 的 `startWebAuthorization` / `completeWebAuthorization` |
 | `@starnote/publish-bluesky` | `packages/adapters/bluesky` | atproto OAuth（公开客户端，PKCE + PAR + DPoP）：网页在页面内直接授权并发到 PDS（`./oauth`），桌面端由主进程完成；服务器不参与，不支持云端代发 |
-| `@starnote/publish-instagram` | `packages/adapters/instagram` | 交接：手机用 Web Share 把图片 + 文案交给系统分享面板，电脑下载图片 + 复制文案；`handoff.files` |
+| `@starnote/publish-instagram` | `packages/adapters/instagram` | 交接：手机用 Web Share 把图片 + 文案交给系统分享面板，电脑下载图片 + 复制文案；`handoff.files`。SPEC-r11 起另有 API 模式 `instagramApiAdapter`（专业账号，单图 / 轮播三段式发布；图片须是公网 HTTPS） |
+| `@starnote/publish-telegram` / `-discord` / `-slack` | `packages/adapters/{telegram,discord,slack}` | SPEC-r11 令牌绑定（Bot 令牌 + 频道、频道 Webhook）：渲染引流卡片请求体，经辰记中转发送；没绑定时 Telegram 回落 `t.me/share/url`，Discord / Slack 回落「复制文案」（`via: 'copy'`） |
+| `@starnote/publish-linkedin` / `-threads` / `-facebook` / `-pinterest` | `packages/adapters/{linkedin,threads,facebook,pinterest}` | SPEC-r11 OAuth 直发：LinkedIn 文章卡片、Threads 三段式（建容器 → `/check` → `/finalize`）、Facebook 主页链接帖、Pinterest Pin；没绑定时回落原来的分享跳转（`@starnote/publish-share`） |
 | `@starnote/publish-zhihu` / `-juejin` / `-csdn` / `-wechat-mp` | `packages/adapters/{zhihu,juejin,csdn,wechat-mp}` | 登录态平台（桌面端）：`.` 入口只有声明、渲染与预览；`./electron` 用 `ctx.sessionFetch` 在账号会话里发请求。默认**交接**（填好标题正文、由用户点发布，进桌面端「发布台」）；公众号个人号只存进后台。易变部分放在签名站点脚本 `site-script.signed.json` |
 | `@starnote/platform-logos` | `packages/logos` | 全部平台 logo 的唯一来源：`logoOf(key)`、`platformMeta(key)`（注册表字段 + logo），资源内联，`SOURCES.md` 记来源与许可 |
 | `@starnote/moderation` | `packages/moderation` | 敏感词打码：`maskText` / `maskHtml`（预览高亮 `mark.sn-masked`，正式输出 `**`），MIT 词库，归一化与白名单 |
@@ -108,7 +110,20 @@ Optional fields added for SPEC-r8 (all incremental; adapters without them behave
 | `binding` / `binder` | 绑定声明 `{kind: 'session'\|'oauth'\|'token'\|'app-secret'\|'wx-component'\|'cookie'\|'none', store: 'server'\|'desktop'\|'none', provider?, fields?, form?, permissions?, createUrl?}` 与 `bind / status / unbind` 驱动；存放位置说明见 `CREDENTIAL_STORES` |
 | `preview(doc, form, common?, content?)` | 无副作用地给出将提交的正文 / 文件和预测的 report |
 | `publish` 返回 `{url, externalId?, state?, report?}` | `state`: `published` / `draft` / `pending-review` / `handoff` |
-| `fetchStats` / `engage` | 只有类型（SPEC-r8 §10.4 / §7.4），尚无实现 |
+| `fetchStats` / `statsRequires` | SPEC-r11 §7：帖子数据（views / likes / comments / shares）。DEV、Hashnode、Mastodon、Bluesky、Reddit、Threads、Pinterest 已实现；`statsRow()` 转成 `POST /me/platform-stats` 的一行。只读请求可自动重试（kit `readJson`） |
+| `engage` | 只有类型（SPEC-r8 §7.4） |
+
+SPEC-r11 增量（同样都是可选字段）：
+
+| 字段 | 作用 |
+| --- | --- |
+| `renderRequest(args)` / `renderHandoff(args)` | 纯函数、无网络：`publish` 会发的中转请求 `{body, previous?}`，以及没绑定时的交接（分享页 / 复制文案）。`publisher.prepare` 用它们生成排期任务 |
+| `checkStatus` / `finalize` / `pollIntervalSec`（默认 5）/ `pollTimeoutSec`（默认 600） | 三段式：`publish` 返回 `state: 'processing'` + `pending`，publisher 轮询 `checkStatus`，`ready` 时调一次 `finalize`，到 `completed` 为止；超时以 `kind: 'unknown'` 失败。`finalize` 生效后 `checkStatus` 不能再返回 `ready` |
+| `maxConcurrent` | `concurrency > 1` 时同一平台最多同时几个（Reddit / LinkedIn 1，Telegram / Discord / Slack 3） |
+
+**报错分类**（`ErrorKind`）：`failed.kind` / `PlatformResult.kind` 为 `refresh` / `retry` / `bad_body` / `disconnect` / `unknown`；kit 的 `PlatformError.errorKind` 由状态码推出，中转错误信封里的 `error_kind` 优先。动作随类型：`disconnect` → 重新绑定，`retry` → N 秒后重试，`unknown` → 「去平台确认」+「仍要重发」。**写操作（发帖、`finalize`）从不自动重试**；只读请求（状态查询、统计）可以。
+
+**幂等与多账号**：`PublishJob.jobId` + `attempt` 让中转带上 `Idempotency-Key: ${jobId}:${platform}:${accountId ?? 'default'}:${attempt}`（`PublishTarget.idempotencyKey` 直接指定，如排期任务里存的 key）；`finalize` 用 `finalize:${platform}:${containerId}`。`PublishJob.targets: [{platform, accountId?, account?, form?, previous?, idempotencyKey?}]` 让同一平台的多个账号各发一次，结果按 `targetKey()`（`platform@accountId`）分开；中转 body 带 `account_id`。
 
 ## The event stream
 
@@ -121,8 +136,10 @@ asset    { kind, url, text? }      screenshot or file produced on the way
 needInput{ id, kind, title, … }    the host must answer; see below
 report   { items: [{ kind, text, count?, level?, samples? }] }  「我们帮你做了什么」，同 kind 后者覆盖前者
 done     { url, externalId?, state?, report? }  terminal
-failed   { reason, code?, actions? } terminal; actions: retry | relogin | skip | help
+failed   { reason, code?, actions?, retryAfterSec?, kind? } terminal; actions: retry | relogin | skip | help
 ```
+
+With `targets`, `onEvent(key, event, target)` gets `key = targetKey(target)` (`platform` or `platform@accountId`).
 
 The stream ends with exactly one `done` or `failed`. Events are plain JSON so they can be forwarded unchanged to `POST /publish/jobs/{id}/tasks/{platform}/events` and replayed from the SSE endpoint.
 
@@ -159,7 +176,9 @@ const { results } = await publisher.publish({
 
 **引导（端不支持时怎么办）**：纯函数 `planRuntime(target, env, {scheduleAt?, contentKind?})` 对一个平台（注册表条目或适配器）给出按优先级排序的 `RuntimeGuide[]`，`kind` 为 `run-here` / `server`（服务器代发，可定时）/ `desktop`（交给或排队等桌面端）/ `download-desktop` / `bind-first` / `handoff`（deeplink、share-intent、import-url…）/ `copy`（复制后手动发，总在最后）/ `unavailable`，每项带 `label`、`href?`、`reason`。`planPlatforms` 批量计算；`publisher.plan(platform)` 用已注册的适配器（否则用注册表），`publisher.preview(platform, {doc, form})` 调适配器的 `preview`。运行端不符时 `results[platform].guides` 也会带上这份引导。
 
-**平台注册表**：`PLATFORMS` / `platformMeta(key)` / `listPlatforms({region, contentType})` 覆盖 SPEC-r8 §2、§5 的 50 个国内外平台（key、名称、`short`、颜色、`region`、`contentTypes`、推荐 `runtimes`、绑定方式、变现方式、落地阶段 `phase`），是前后端平台 key 的唯一来源（GitHub 统一用 `github-pages`）。
+**平台注册表**：`PLATFORMS` / `platformMeta(key)` / `listPlatforms({region, contentType})` 覆盖 SPEC-r8 §2、§5 的国内外平台（SPEC-r11 新增 discord、slack，共 54 个）（key、名称、`short`、颜色、`region`、`contentTypes`、推荐 `runtimes`、绑定方式、变现方式、落地阶段 `phase`），是前后端平台 key 的唯一来源（GitHub 统一用 `github-pages`）。
+
+**排期（SPEC-r11 §4、§12）**：`publisher.prepare({doc, targets, common, perPlatform, accounts, canonicalUrl?, previous?})` 不发请求，返回每个目标的 `PreparedTask`：`{platform, accountId?, runtime: 'server'|'desktop'|'handoff', seq, request?: {body, previous?}, handoff?: {open_url, copy_text?, files?}, label, report?, dependsOnChenji?, problem?}`，直接作为 `POST /publish/schedules` 的 `tasks`。规则：辰记和开了云端代发的账号 → `server`；本机账号、发布台平台、Bluesky → `desktop`（发布台不带 request，桌面端认领时再渲染）；不需要账号或没绑定 → `handoff`；只在页面里授权过的 → `server` + `problem: needs_cloud`（同时给出 `handoff` 备选）。辰记在同一批且还没发布时，其他平台里的原文链接写成 `CANONICAL_PLACEHOLDER`（`__STARNOTE_CANONICAL_URL__`），服务器先发辰记再替换（`fillCanonicalPlaceholder` 是同一操作的 TS 版）。排版时按真实链接长度（`CANONICAL_PLACEHOLDER_RESERVE` = 64）留位置，截断只截正文、不截链接（kit `appendLink` / `fitPost`）；Bluesky 不把占位符写进正文（facet 的字节偏移会错位），改用链接卡片。`toScheduleTasks(prepared, {needsCloud?: 'handoff'|'drop'|'keep'})` 把结果转成 API 的 `TaskIn`（snake_case）：去掉 `BLOCKING_PROBLEMS`（invalid_form / render_failed / unsupported / disabled）的任务，`needs_cloud` 默认改为到点提醒，辰记跑不了时去掉依赖占位符的任务。
 
 `publisher.capabilities(key)` returns an adapter's `capabilities` for the form (title length, cover ratio, login needed); `publisher.adapters` lists what is registered. `publish` runs platforms sequentially unless `concurrency > 1`; pass `{ signal }` to cancel — pending `needInput`s reject and the platform ends `failed`.
 
@@ -187,15 +206,18 @@ Adapters that automate third-party sites depend on selectors and flows that brea
 packages/core/src
   convert.ts / wechat.ts / mobile.ts   Tiptap JSON → 博客 HTML、公众号内联 HTML、手机端适配（图片 max-width、表格滚动）
   mask.ts / condense.ts / themes.ts    打码（接 @starnote/moderation）、摘编、文章主题 token（与 shared/styles 同一套）
-  publisher.ts                         createPublisher：校验、事件、needInput / answer、取消、report 合并、done|failed 保证
-  runtime.ts / platforms.ts            RuntimeSupport、planRuntime / planPlatforms；PLATFORMS 注册表（51 个平台：端、绑定、
+  publisher.ts                         createPublisher：校验、事件、needInput / answer、取消、report 合并、done|failed 保证、
+                                       三段式轮询、按平台限流（maxConcurrent）
+  prepare.ts / targets.ts              publisher.prepare（排期任务）；targetKey、幂等 key、规范链接占位符、errorKindOf
+  runtime.ts / platforms.ts            RuntimeSupport、planRuntime / planPlatforms；PLATFORMS 注册表（54 个平台：端、绑定、
                                        内容类型、rules、mobileFirst、stage…）→ 构建时导出 dist/platforms.json
   binding.ts / desktop-session.ts      凭据声明（token / oauth / cookie…）、桌面登录态会话声明
   site-script.ts                       签名站点脚本（ed25519）校验、过期、回落随包副本
   compliance.ts / rules.ts / learned.ts checkCompliance（确定性规则 + 学习规则 extraRules）；golden 用例与 FastAPI 共享
   session-client.ts / session-adapter.ts / render-steps.ts   登录态平台的公共请求与渲染步骤
   content.ts / report.ts / insights.ts / define.ts / schema.ts / types.ts
-packages/adapters/<platform>/          每平台一个包；kit/ 是公用件（块降级、错误映射、截断、OAuth 工具）
+packages/adapters/<platform>/          每平台一个包；kit/ 是公用件（块降级、错误映射与分类、截断与 fitPost、OAuth 工具、
+                                       中转 relayPublish / relayCheck / relayFinalize、统计读取 readJson）
 packages/logos · packages/moderation   logo 与打码（见上表）
 scripts/sign-site-scripts.mjs          站点脚本签名；开发密钥在 packages/core/test/fixtures/
 ```

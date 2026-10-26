@@ -15,7 +15,18 @@
  */
 import type { PublishContext } from '@starnote/publish-core';
 
-export type OAuthPlatform = 'blogger' | 'wordpress-com' | 'tumblr' | 'reddit' | 'mastodon';
+export type OAuthPlatform =
+  | 'blogger'
+  | 'wordpress-com'
+  | 'tumblr'
+  | 'reddit'
+  | 'mastodon'
+  // SPEC-r11 §10: 辰记's API `platform_oauth.py` Spec gains these five
+  | 'linkedin'
+  | 'threads'
+  | 'facebook'
+  | 'instagram'
+  | 'pinterest';
 
 export const OAUTH_PLATFORMS: readonly OAuthPlatform[] = [
   'blogger',
@@ -23,6 +34,11 @@ export const OAUTH_PLATFORMS: readonly OAuthPlatform[] = [
   'tumblr',
   'reddit',
   'mastodon',
+  'linkedin',
+  'threads',
+  'facebook',
+  'instagram',
+  'pinterest',
 ];
 
 /** `postMessage` type the web callback page sends to its opener. */
@@ -55,7 +71,7 @@ export interface OAuthAccount {
   display_name: string;
   avatar_url?: string;
   url?: string;
-  /** Blogs / sites to publish to (Blogger, WordPress.com, Tumblr); empty elsewhere. */
+  /** Blogs / sites / Pages / boards to publish to (Blogger, WordPress.com, Tumblr, Facebook, Pinterest); empty elsewhere. */
   targets: OAuthTarget[];
   meta?: Record<string, unknown>;
 }

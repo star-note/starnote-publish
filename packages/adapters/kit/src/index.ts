@@ -4,18 +4,24 @@
  * (SPEC-r8 §12.5 render steps, §12.4 report) once the core refactor settles.
  */
 export {
+  actionsFor,
+  checkAction,
   errorFromStatus,
   formatWait,
   guard,
   helpAction,
   helpError,
+  isOffline,
   isPlatformError,
+  kindError,
+  kindOfCode,
   networkError,
   parseRetryAfter,
   PlatformError,
   rateLimitError,
   reloginAction,
   reloginError,
+  resendAction,
   retryAction,
   type ErrorLinks,
   type FailureCode,
@@ -32,24 +38,44 @@ export {
   type DegradeTarget,
 } from './degrade';
 export {
+  appendLink,
   codePoints,
+  fitPost,
   fitSummary,
   fitTags,
   fitTitle,
+  hashtagWord,
+  linkCost,
   threadsLength,
   truncate,
   weiboLength,
   xWeightedLength,
+  type FitPostInput,
+  type FitPostResult,
   type FitTagsOptions,
 } from './text';
-export { relayPath, relayPublish, type RelayResult } from './relay';
+export {
+  containerIdOf,
+  relayCheck,
+  relayFinalize,
+  relayPath,
+  relayPublish,
+  relayRequestOf,
+  type RelayContext,
+  type RelayResult,
+} from './relay';
+export { num, readJson, stats, type ReadOptions } from './stats';
 export {
   absoluteUrl,
   articleOf,
   canonicalOf,
+  cardOf,
   CLIENT_RELAY,
   linkedImagesReport,
+  missingLinkReport,
+  newPostReport,
   originNoteHtml,
+  type CardSource,
 } from './article';
 export {
   base64url,

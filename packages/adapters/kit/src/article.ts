@@ -1,6 +1,9 @@
 /** Small pieces every relay adapter needs: the article, its canonical link, runtimes, the image report. */
+import { hashtagWord } from './text';
+
 import type {
   ArticleContent,
+  CommonFormShape,
   Doc,
   PublishContent,
   ReportItem,
@@ -91,4 +94,96 @@ export function absoluteUrl(url: string | undefined, base?: string): string | un
   } catch {
     return undefined;
   }
+}
+
+/** What a short post / link card is made of (SPEC-r11 §10 「只发引流卡片，不发全文」). */
+export interface CardSource {
+  /** The note's title (or the form's). */
+  title: string;
+  /** The summary (common, else the note's first sentences). */
+  summary: string;
+  /** The user's own text (form, or `ShortTextContent.text`): used instead of title + summary when given. */
+  text?: string;
+  /** The link back to 辰记 (form link, short-text link, canonical, image set's article) — may be the placeholder. */
+  link?: string;
+  /** Topic words without `#`, deduplicated (`hashtagWord`). */
+  tags: string[];
+  /** Absolute cover URL, when there is one. */
+  cover?: string;
+  /** Absolute image URLs: the cover first, then the note's / set's images. */
+  images: string[];
+  lang?: string;
+}
+
+/**
+ * Pure: the pieces of a link card from any content. Relative images are made absolute on `assetBase` (dropped
+ * when that is not possible).
+ */
+export function cardOf(
+  doc: Doc,
+  common: CommonFormShape,
+  content: PublishContent | undefined,
+  opts: {
+    assetBase?: string | undefined;
+    text?: string | undefined;
+    link?: string | undefined;
+  } = {}
+): CardSource {
+  const short = content?.kind === 'short-text' ? content : undefined;
+  const set = content?.kind === 'image-set' ? content : undefined;
+  const article = content?.kind === 'article' ? content : set?.from;
+  const d = article?.doc ?? doc;
+  const link = opts.link || short?.link || article?.canonicalUrl;
+  const text = opts.text || short?.thread?.[0] || short?.text || set?.caption || undefined;
+  const tags = [
+    ...new Set(
+      [...(set?.topics ?? []), ...(common.tags ?? [])]
+        .map(hashtagWord)
+        .filter((t): t is string => !!t)
+    ),
+  ];
+  const cover = absoluteUrl(common.cover, opts.assetBase);
+  const raw = [
+    ...(cover ? [cover] : []),
+    ...(set ? set.images.map((i) => i.url) : (short?.images ?? []).map((i) => i.url)),
+    ...(set ? [] : d.images),
+  ];
+  const images = [
+    ...new Set(raw.map((u) => absoluteUrl(u, opts.assetBase)).filter((u): u is string => !!u)),
+  ];
+  return {
+    title: (common.title || d.title || set?.title || '').trim(),
+    summary: (common.summary || d.summary || '').trim(),
+    ...(text ? { text: text.trim() } : {}),
+    ...(link ? { link } : {}),
+    tags,
+    ...(cover ? { cover } : {}),
+    images,
+    ...(article?.lang ? { lang: article.lang } : {}),
+  };
+}
+
+/** `canonical.missing` for a short post without a link back to 辰记. */
+export function missingLinkReport(platform: string): ReportItem {
+  return {
+    kind: 'canonical.missing',
+    level: 'notice',
+    text: `还没有辰记原文链接，${platform} 帖子里没有链接（先发布到辰记再同步可以带上原文卡片）`,
+  };
+}
+
+/**
+ * SPEC-r11 §10: the short-post platforms never edit an earlier post — with `ctx.previous` the new post is a new one,
+ * and the report says so (`update.unsupported`).
+ */
+export function newPostReport(previous: { externalId?: string } | undefined): ReportItem[] {
+  return previous?.externalId
+    ? [
+        {
+          kind: 'update.unsupported',
+          level: 'notice',
+          text: '这次发出的是一条新帖子（不修改之前发过的）',
+        },
+      ]
+    : [];
 }

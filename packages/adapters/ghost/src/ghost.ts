@@ -20,6 +20,7 @@ import {
   guard,
   linkedImagesReport,
   relayPublish,
+  relayRequestOf,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
@@ -321,6 +322,11 @@ export function createGhostAdapter(opts: GhostAdapterOptions = {}): Adapter<type
         previewHtml: r.html,
         report: r.report,
       };
+    },
+    // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
+    renderRequest({ doc, form, common, content, previous }) {
+      const r = renderGhost(doc, form, common, content, renderOpts);
+      return relayRequestOf(ghostRelayBody(r, form), previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {

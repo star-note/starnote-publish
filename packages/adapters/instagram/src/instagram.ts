@@ -12,7 +12,14 @@
  * `shareToInstagram` (phone) or downloads `files` (computer) inside the user's click.
  */
 import { defineAdapter } from '@starnote/publish-core';
-import { absoluteUrl, codePoints, guard, helpError, truncate } from '@starnote/publish-kit';
+import {
+  absoluteUrl,
+  codePoints,
+  guard,
+  helpError,
+  linkCost,
+  truncate,
+} from '@starnote/publish-kit';
 import { z } from 'zod';
 
 import type {
@@ -160,7 +167,11 @@ export function renderInstagram(
     .filter(Boolean)
     .join('\n\n');
   let body = [head, summary].filter(Boolean).join('\n\n');
-  const room = INSTAGRAM_LIMITS.captionMax - (tail ? codePoints(tail) + 2 : 0);
+  // a scheduled batch's link placeholder is budgeted at the real link's length (`linkCost`)
+  const tailCost =
+    codePoints(tail) +
+    (form.include_link && link && tail.includes(link) ? linkCost(link) - codePoints(link) : 0);
+  const room = INSTAGRAM_LIMITS.captionMax - (tail ? tailCost + 2 : 0);
   if (codePoints(body) > room) {
     body = truncate(body, Math.max(1, room));
     report.push({

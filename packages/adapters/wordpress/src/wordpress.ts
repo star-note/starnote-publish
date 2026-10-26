@@ -21,6 +21,7 @@ import {
   guard,
   linkedImagesReport,
   relayPublish,
+  relayRequestOf,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
@@ -333,6 +334,11 @@ export function createWordpressAdapter(
         previewHtml: r.html,
         report: r.report,
       };
+    },
+    // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
+    renderRequest({ doc, form, common, content, previous }) {
+      const r = renderWordpress(doc, form, common, content, renderOpts);
+      return relayRequestOf(wordpressRelayBody(r, form), previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {

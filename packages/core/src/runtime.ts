@@ -13,7 +13,9 @@ export type RuntimeMode = 'api' | 'automation' | 'handoff' | 'manual';
 export type RuntimeNeed =
   'session' | 'token' | 'fixed-ip' | 'premium' | 'app-review' | 'verified-account';
 
-export type HandoffVia = 'deeplink' | 'share-intent' | 'import-url' | 'qrcode' | 'web-share';
+/** `copy`: no share page — the text is copied and the platform's app / page opened (Discord, Slack, SPEC-r11 §10). */
+export type HandoffVia =
+  'deeplink' | 'share-intent' | 'import-url' | 'qrcode' | 'web-share' | 'copy';
 
 /** One runtime a platform supports, in the platform's order of preference. */
 export interface RuntimeSupport {
@@ -130,6 +132,7 @@ const HANDOFF_LABEL: Record<HandoffVia, string> = {
   'import-url': '用导入链接发布',
   qrcode: '扫码在手机上完成',
   'web-share': '分享到 App 完成',
+  copy: '复制文案去发布',
 };
 
 /** `runtimes`, or the legacy `runtime` list read as official-API support. */

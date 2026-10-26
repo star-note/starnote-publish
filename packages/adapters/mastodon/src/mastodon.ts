@@ -14,7 +14,11 @@ import {
   credentialOf,
   guard,
   helpError,
+  num,
+  readJson,
   relayPublish,
+  relayRequestOf,
+  stats,
   truncate,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
@@ -25,9 +29,11 @@ import type {
   BindingSpec,
   CommonFormShape,
   Doc,
+  PlatformStats,
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  StatsContext,
 } from '@starnote/publish-core';
 import type {
   CredentialSource,
@@ -278,6 +284,44 @@ export const MASTODON_REQUESTS = {
   },
 } as const satisfies Record<string, RequestDescription>;
 
+/** The instance of a post: the credential's, the account's (`meta.instance`), else the post URL's host. */
+export function mastodonInstanceOf(
+  ctx: Pick<StatsContext, 'credential' | 'account' | 'url'>
+): string | null {
+  const given = ctx.credential?.instance ?? ctx.account?.meta?.instance;
+  if (typeof given === 'string' && given) return normalizeInstance(given);
+  try {
+    return ctx.url ? normalizeInstance(new URL(ctx.url).host) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * SPEC-r11 §7 ✅ public `GET https://{instance}/api/v1/statuses/{id}` (public / unlisted posts need no token):
+ * favourites → likes, replies → comments, boosts → shares. Mastodon has no view count.
+ */
+export async function fetchMastodonStats(
+  externalId: string,
+  ctx: StatsContext
+): Promise<PlatformStats | null> {
+  const instance = mastodonInstanceOf(ctx);
+  if (!instance) return null;
+  const token = ctx.credential?.access_token;
+  const s = await readJson<Record<string, unknown>>(
+    ctx,
+    mastodonRef(),
+    `https://${instance}/api/v1/statuses/${encodeURIComponent(externalId)}`,
+    token ? { headers: { Authorization: `Bearer ${token}` } } : {}
+  );
+  if (!s) return null;
+  return stats('public', {
+    likes: num(s.favourites_count),
+    comments: num(s.replies_count),
+    shares: num(s.reblogs_count),
+  });
+}
+
 export interface MastodonAdapterOptions {
   runtimes?: RuntimeSupport[];
   links?: ErrorLinks;
@@ -301,9 +345,19 @@ export function createMastodonAdapter(
     binding: mastodonBinding,
     capabilities: { supportsUpdate: true, needsLogin: true },
     schema: mastodonSchema,
+    statsRequires: 'none',
+    fetchStats(externalId, ctx) {
+      return fetchMastodonStats(externalId, ctx);
+    },
     preview(doc, form, common, content): AdapterPreview {
       const r = renderMastodon(doc, form, common, content);
       return { format: 'text', title: common?.title || doc.title, body: r.text, report: r.report };
+    },
+    // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
+    renderRequest({ doc, form, common, content, previous, account }) {
+      const max = maxOf(account?.meta);
+      const r = renderMastodon(doc, form, common, content, max ? { maxCharacters: max } : {});
+      return relayRequestOf(r.body, previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {

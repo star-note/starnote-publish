@@ -12,8 +12,23 @@
  *   to the PDS (`publishBlueskyDirect`); nothing goes through 辰记's API;
  * - no 「云端代发」 for Bluesky.
  */
-import { defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
-import { absoluteUrl, guard, helpError, relayPublish, truncate } from '@starnote/publish-kit';
+import {
+  CANONICAL_PLACEHOLDER,
+  defineAdapter,
+  mergeReports,
+  platformMeta,
+} from '@starnote/publish-core';
+import {
+  absoluteUrl,
+  guard,
+  helpError,
+  num,
+  readJson,
+  relayPublish,
+  relayRequestOf,
+  stats,
+  truncate,
+} from '@starnote/publish-kit';
 import { z } from 'zod';
 
 import type {
@@ -22,13 +37,15 @@ import type {
   BindingSpec,
   CommonFormShape,
   Doc,
+  PlatformStats,
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  StatsContext,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
 import { BLUESKY_LIMITS } from './limits';
-import { publishBlueskyDirect } from './oauth';
+import { BLUESKY_APPVIEW, publishBlueskyDirect } from './oauth';
 
 import type { BlueskySession } from './oauth';
 
@@ -174,8 +191,12 @@ export function renderBluesky(
     ? [...new Set((common.tags ?? []).map(hashtag).filter((t): t is string => !!t))]
     : [];
   const tags = allTags.slice(0, BLUESKY_LIMITS.maxTags);
-  // Without a card the link has to be in the text (as a link facet).
-  const inlineLink = link && !form.link_card ? link : '';
+  // Without a card the link has to be in the text (as a link facet). A scheduled batch's placeholder is never put
+  // in the text: the server's string substitution would change the length (300 graphemes) and shift the facets'
+  // UTF-8 byte offsets, so a placeholder link always goes into the link card (whose `uri` is substituted safely).
+  const placeholder = link === CANONICAL_PLACEHOLDER;
+  const useCard = form.link_card || placeholder;
+  const inlineLink = link && !useCard ? link : '';
   const compose = (h: string, s: string, tg: string[]) =>
     [[h, s].filter(Boolean).join('\n\n'), tg.map((t) => `#${t}`).join(' '), inlineLink]
       .filter(Boolean)
@@ -255,7 +276,13 @@ export function renderBluesky(
     ...(facets.length ? { facets } : {}),
   };
   let thumb: string | undefined;
-  if (link && form.link_card) {
+  if (placeholder && !form.link_card)
+    report.push({
+      kind: 'link.card.forced',
+      level: 'notice',
+      text: '排期时辰记原文链接还不确定，改为以链接卡片附上（不写进正文）',
+    });
+  if (link && useCard) {
     const description = truncate(
       (common.summary || d.summary || '').trim(),
       BLUESKY_LIMITS.cardDescription
@@ -304,6 +331,65 @@ export const BLUESKY_REQUESTS = {
   },
 } as const satisfies Record<string, RequestDescription>;
 
+/**
+ * `at://did/app.bsky.feed.post/rkey` of a post: the external id as is when it is an AT URI, else the rkey with the
+ * account's DID (`AccountRef.externalUid`) or the DID / handle in the post URL (`bsky.app/profile/{x}/post/{rkey}`).
+ */
+export function blueskyPostUri(
+  externalId: string,
+  ctx: Pick<StatsContext, 'account' | 'url'>
+): { uri?: string; handle?: string; rkey: string } {
+  if (externalId.startsWith('at://'))
+    return { uri: externalId, rkey: externalId.split('/').pop()! };
+  const rkey = externalId;
+  const did = ctx.account?.externalUid?.startsWith('did:') ? ctx.account.externalUid : undefined;
+  if (did) return { uri: `at://${did}/app.bsky.feed.post/${rkey}`, rkey };
+  const m = /\/profile\/([^/]+)\/post\//.exec(ctx.url ?? '');
+  const who = m ? decodeURIComponent(m[1]!) : undefined;
+  if (who?.startsWith('did:')) return { uri: `at://${who}/app.bsky.feed.post/${rkey}`, rkey };
+  return { ...(who ? { handle: who } : {}), rkey };
+}
+
+/**
+ * SPEC-r11 §7 ✅ public AppView `app.bsky.feed.getPosts` (no credential): likes, replies, reposts + quotes. Bluesky
+ * shows no view count.
+ */
+export async function fetchBlueskyStats(
+  externalId: string,
+  ctx: StatsContext,
+  appView: string = BLUESKY_APPVIEW
+): Promise<PlatformStats | null> {
+  const ref = blueskyRef();
+  const target = blueskyPostUri(externalId, ctx);
+  let uri = target.uri;
+  if (!uri && target.handle) {
+    const r = await readJson<{ did?: string }>(
+      ctx,
+      ref,
+      `${appView}/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(target.handle)}`
+    );
+    if (r?.did) uri = `at://${r.did}/app.bsky.feed.post/${target.rkey}`;
+  }
+  if (!uri) return null;
+  const data = await readJson<{ posts?: Array<Record<string, unknown>> }>(
+    ctx,
+    ref,
+    `${appView}/xrpc/app.bsky.feed.getPosts?uris=${encodeURIComponent(uri)}`
+  );
+  const post = data?.posts?.[0];
+  if (!post) return null;
+  const reposts = num(post.repostCount);
+  const quotes = num(post.quoteCount);
+  return stats('public', {
+    likes: num(post.likeCount),
+    comments: num(post.replyCount),
+    ...(reposts !== undefined || quotes !== undefined
+      ? { shares: (reposts ?? 0) + (quotes ?? 0) }
+      : {}),
+    ...(quotes !== undefined ? { extra: { quotes } } : {}),
+  });
+}
+
 export interface BlueskyAdapterOptions {
   runtimes?: RuntimeSupport[];
   assetBase?: string;
@@ -328,6 +414,15 @@ export function createBlueskyAdapter(
     preview(doc, form, common, content): AdapterPreview {
       const r = renderBluesky(doc, form, common, content, renderOpts);
       return { format: 'text', title: common?.title || doc.title, body: r.text, report: r.report };
+    },
+    // SPEC-r11 §12: the record a desktop task posts (Bluesky has no 云端代发: scheduled posts wait for the desktop).
+    renderRequest({ doc, form, common, content, previous }) {
+      const r = renderBluesky(doc, form, common, content, renderOpts);
+      return relayRequestOf(r.body, previous, undefined, r.report);
+    },
+    statsRequires: 'none',
+    fetchStats(externalId, ctx) {
+      return fetchBlueskyStats(externalId, ctx);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {

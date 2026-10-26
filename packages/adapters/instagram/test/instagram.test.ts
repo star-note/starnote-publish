@@ -70,17 +70,25 @@ describe('instagram adapter', () => {
     expect(empty.terminal[0]).toMatchObject({ type: 'failed', code: 'invalid' });
   });
 
-  it('offers the share sheet only on a phone; copy elsewhere', () => {
+  it('not bound: offers the share sheet only on a phone; copy elsewhere', () => {
+    // SPEC-r11 §10: the registry lists the API first; without a bound account the hand-off is what can run
     const meta = platformMeta('instagram')!;
+    const kinds = (mobile: boolean) =>
+      planRuntime(
+        meta,
+        { runtime: 'web', mobile, accounts: {} },
+        { contentKind: 'image-set' }
+      ).guides.map((g) => g.kind);
+    expect(kinds(true)[0]).toBe('bind-first');
     expect(
-      planRuntime(meta, { runtime: 'web', mobile: true }, { contentKind: 'image-set' }).primary
-    ).toMatchObject({
-      kind: 'handoff',
-      via: 'web-share',
-    });
-    expect(planRuntime(meta, { runtime: 'web' }, { contentKind: 'image-set' }).primary.kind).toBe(
-      'copy'
-    );
+      planRuntime(
+        meta,
+        { runtime: 'web', mobile: true, accounts: {} },
+        { contentKind: 'image-set' }
+      ).guides
+    ).toContainEqual(expect.objectContaining({ kind: 'handoff', via: 'web-share' }));
+    expect(kinds(false)).not.toContain('handoff');
+    expect(kinds(false).at(-1)).toBe('copy');
   });
 
   it('shares files + caption through navigator.share, copying the caption first', async () => {

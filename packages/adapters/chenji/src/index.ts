@@ -117,6 +117,31 @@ export const CHENJI_RUNTIMES: RuntimeSupport[] = [
 /** Publishing to 辰记 uses the author's own login; there is nothing to bind. */
 export const CHENJI_BINDING: BindingSpec = { kind: 'session', store: 'none' };
 
+/**
+ * The body of `POST /notes/{id}/publish/chenji` (pure): what `publish` sends and what a scheduled task stores
+ * (SPEC-r11 §4.1, the server runs 辰记 first with it).
+ */
+export function chenjiBody(doc: Doc, form: ChenjiForm, common: CommonFormShape = {}) {
+  return {
+    category: form.category,
+    visibility: form.visibility,
+    show_in_blog: form.show_in_blog,
+    summary: common.summary ?? doc.summary,
+    html: doc.html,
+    toc: doc.toc,
+    title: common.title ?? doc.title,
+    // `common.cover` is the asset hash the cover field uploaded (or an article image's hash).
+    ...(common.cover ? { cover_asset_hash: common.cover } : {}),
+    // the other sizes (og / wide / square / portrait); the server falls back to the cover for missing keys
+    ...(common.coverVariants && Object.keys(common.coverVariants).length
+      ? { cover_variants: pickVariants(common.coverVariants) }
+      : {}),
+    ...(common.coverAlt ? { cover_alt: common.coverAlt } : {}),
+    // r9 译文: the English version prepared by the publish panel rides along with the post
+    ...(form.translations ? { translations: form.translations } : {}),
+  };
+}
+
 export const chenjiAdapter: Adapter<typeof chenjiSchema> = {
   key: 'chenji',
   label: '辰记',
@@ -137,26 +162,14 @@ export const chenjiAdapter: Adapter<typeof chenjiSchema> = {
     return id ? { category: { id } } : {};
   },
 
+  /** SPEC-r11 §12: 辰记's own request (`seq = 0` of a scheduled batch). */
+  renderRequest({ doc, form, common }) {
+    return { body: chenjiBody(doc, form, common) };
+  },
+
   async publish({ doc, form, common, ctx }) {
     ctx.emit({ type: 'progress', percent: 10, text: '转换正文' });
-    const body = {
-      category: form.category,
-      visibility: form.visibility,
-      show_in_blog: form.show_in_blog,
-      summary: common.summary ?? doc.summary,
-      html: doc.html,
-      toc: doc.toc,
-      title: common.title ?? doc.title,
-      // `common.cover` is the asset hash the cover field uploaded (or an article image's hash).
-      ...(common.cover ? { cover_asset_hash: common.cover } : {}),
-      // the other sizes (og / wide / square / portrait); the server falls back to the cover for missing keys
-      ...(common.coverVariants && Object.keys(common.coverVariants).length
-        ? { cover_variants: pickVariants(common.coverVariants) }
-        : {}),
-      ...(common.coverAlt ? { cover_alt: common.coverAlt } : {}),
-      // r9 译文: the English version prepared by the publish panel rides along with the post
-      ...(form.translations ? { translations: form.translations } : {}),
-    };
+    const body = chenjiBody(doc, form, common);
     ctx.emit({ type: 'progress', percent: 40, text: '上传到辰记' });
     const response = await ctx.fetch(`${ctx.apiBase}/notes/${ctx.noteId}/publish/chenji`, {
       method: 'POST',

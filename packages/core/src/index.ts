@@ -11,7 +11,32 @@ export {
   type MaskSummary,
 } from './mask';
 export { mobileHtml, mobileOptionsFor, type MobileOptions, type MobileResult } from './mobile';
-export { createPublisher, UNKNOWN_PLATFORM } from './publisher';
+export {
+  createPublisher,
+  DEFAULT_POLL_INTERVAL_SEC,
+  DEFAULT_POLL_TIMEOUT_SEC,
+  UNKNOWN_PLATFORM,
+} from './publisher';
+// SPEC-r11: failure kinds, idempotency keys, per-account targets, the canonical placeholder, scheduled tasks.
+export {
+  CANONICAL_PLACEHOLDER,
+  CANONICAL_PLACEHOLDER_RESERVE,
+  errorKindOf,
+  fillCanonicalPlaceholder,
+  finalizeKeyOf,
+  hasCanonicalPlaceholder,
+  IDEMPOTENCY_KEY_MAX,
+  idempotencyKeyOf,
+  isErrorKind,
+  targetKey,
+} from './targets';
+export {
+  BLOCKING_PROBLEMS,
+  prepareTasks,
+  toScheduleTasks,
+  type PrepareDeps,
+  type ScheduleTaskIn,
+} from './prepare';
 export {
   commonSchema,
   formatZodError,
@@ -22,11 +47,21 @@ export {
   type FieldMeta,
   type FieldType,
 } from './schema';
-export { COVER_VARIANT_SIZES } from './types';
+export { COVER_VARIANT_SIZES, ERROR_KINDS } from './types';
 export type {
   Adapter,
   AdapterCapabilities,
   AdapterPreview,
+  AdapterRenderArgs,
+  ErrorKind,
+  PendingCheck,
+  PrepareAccount,
+  PreparedTask,
+  PrepareInput,
+  PrepareProblemCode,
+  PublishTarget,
+  RelayRequest,
+  TaskRuntime,
   CommonFormShape,
   ConvertOptions,
   CoverVariantKey,
@@ -123,6 +158,7 @@ export {
   type PlatformRegion,
   type PlatformStage,
 } from './platforms';
+export { statsRow } from './insights';
 export type {
   CommentRef,
   EngageAction,
@@ -133,8 +169,10 @@ export type {
   EngageTarget,
   PlatformComment,
   PlatformStats,
+  PlatformStatsRow,
   PostRef,
   StatsContext,
+  StatsCredential,
   StatsDriver,
   StatsSource,
 } from './insights';

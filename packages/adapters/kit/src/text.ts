@@ -1,4 +1,6 @@
 /** Length limits: titles, summaries, tags and share copy. Pure, browser-safe. */
+import { CANONICAL_PLACEHOLDER, CANONICAL_PLACEHOLDER_RESERVE } from '@starnote/publish-core';
+
 import type { ReportItem } from '@starnote/publish-core';
 
 /** Code points, so an emoji or a CJK character counts once. */
@@ -173,4 +175,121 @@ export function threadsLength(s: string): number {
     n += /\p{Extended_Pictographic}/u.test(ch) ? new TextEncoder().encode(ch).length : 1;
   }
   return n;
+}
+
+/** A topic as one token: letters (any script), digits and `_`; `null` when nothing (or only digits) is left. */
+export function hashtagWord(tag: string): string | null {
+  const w = tag.replace(/[^\p{L}\p{N}_]+/gu, '');
+  return w && !/^\d+$/.test(w) ? w : null;
+}
+
+/**
+ * How many characters a link counts for in a fitted post: its own length, but the scheduled-batch placeholder
+ * (`CANONICAL_PLACEHOLDER`) reserves `CANONICAL_PLACEHOLDER_RESERVE` (the real link replaces it later).
+ */
+export function linkCost(
+  link: string | undefined,
+  count: (s: string) => number = codePoints
+): number {
+  if (!link) return 0;
+  return link === CANONICAL_PLACEHOLDER
+    ? Math.max(CANONICAL_PLACEHOLDER_RESERVE, count(link))
+    : count(link);
+}
+
+export interface FitPostInput {
+  /** The title, or the user's own text. */
+  head: string;
+  summary?: string;
+  /** Topic words (no `#`). */
+  tags?: readonly string[];
+  /** The link written at the end of the text (leave out when the platform attaches it as a card). */
+  link?: string;
+  /** Limit of the whole text, link and topics included, as `count` measures it. */
+  limit: number;
+  /** Default: code points. */
+  count?: (s: string) => number;
+  /** How a topic is written. Default `#word`. */
+  hashtag?: (word: string) => string;
+  /** Keep at least this many characters of a shortened summary, else drop it. Default 20. */
+  minSummary?: number;
+}
+
+export interface FitPostResult {
+  /** The whole post: head (+ summary) (+ topics) (+ link), blank lines between. */
+  text: string;
+  head: string;
+  summary: string;
+  tags: string[];
+  truncated: boolean;
+  droppedTags: string[];
+}
+
+/**
+ * Rule-based fitting of a short post (SPEC-r11 §10 「只发引流卡片」): shortens the summary first, then drops topics
+ * from the end, then shortens the head. The link is never cut.
+ */
+export function fitPost(input: FitPostInput): FitPostResult {
+  const count = input.count ?? codePoints;
+  const tagOf = input.hashtag ?? ((w: string) => `#${w}`);
+  const minSummary = input.minSummary ?? 20;
+  const tags = [...(input.tags ?? [])];
+  const droppedTags: string[] = [];
+  let head = input.head.trim();
+  let summary = (input.summary ?? '').trim();
+  const reserve = input.link ? linkCost(input.link, count) - count(input.link) : 0;
+  const compose = (h: string, s: string, tg: string[]) =>
+    [[h, s].filter(Boolean).join('\n\n'), tg.map(tagOf).join(' '), input.link ?? '']
+      .filter(Boolean)
+      .join('\n\n');
+  const fits = (h: string, s: string, tg: string[]) =>
+    count(compose(h, s, tg)) + reserve <= input.limit;
+  const done = (truncated: boolean): FitPostResult => ({
+    text: compose(head, summary, tags),
+    head,
+    summary,
+    tags,
+    truncated,
+    droppedTags,
+  });
+  if (fits(head, summary, tags)) return done(false);
+  if (summary) {
+    let lo = 0;
+    let hi = codePoints(summary);
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (fits(head, truncate(summary, mid, count), tags)) lo = mid;
+      else hi = mid - 1;
+    }
+    summary = lo >= minSummary ? truncate(summary, lo, count) : '';
+    if (fits(head, summary, tags)) return done(true);
+  }
+  while (tags.length && !fits(head, summary, tags)) droppedTags.unshift(tags.pop()!);
+  if (fits(head, summary, tags)) return done(true);
+  let lo = 1;
+  let hi = codePoints(head);
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (fits(truncate(head, mid, count), summary, tags)) lo = mid;
+    else hi = mid - 1;
+  }
+  head = truncate(head, Math.max(1, lo), count);
+  return done(true);
+}
+
+/**
+ * `text` + `sep` + `link` within `max`: only the text is shortened, the link is kept whole (a scheduled batch's
+ * placeholder is budgeted at `CANONICAL_PLACEHOLDER_RESERVE`, so the server's substitution never cuts it).
+ */
+export function appendLink(
+  text: string,
+  link: string | undefined,
+  max: number,
+  sep = '\n\n',
+  count: (s: string) => number = codePoints
+): string {
+  if (!link) return truncate(text, max, count);
+  const room = max - linkCost(link, count) - count(sep);
+  const head = text && room > 0 ? truncate(text, room, count) : '';
+  return head ? `${head}${sep}${link}` : link;
 }

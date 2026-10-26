@@ -20,9 +20,15 @@ import {
   degradeArticle,
   guard,
   helpError,
+  linkCost,
+  num,
+  readJson,
   relayPublish,
+  relayRequestOf,
+  stats,
   truncate,
 } from '@starnote/publish-kit';
+import { buildShare } from '@starnote/publish-share';
 import { z } from 'zod';
 
 import type {
@@ -31,9 +37,11 @@ import type {
   BindingSpec,
   CommonFormShape,
   Doc,
+  PlatformStats,
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  StatsContext,
 } from '@starnote/publish-core';
 import type {
   CredentialSource,
@@ -180,8 +188,10 @@ export function renderReddit(
       text = short?.text ?? '';
     }
     const tail = link ? `\n\n---\n\n*Originally published at [${link}](${link})*` : '';
-    if (codePoints(text) + codePoints(tail) > REDDIT_LIMITS.textMax) {
-      text = truncate(text, REDDIT_LIMITS.textMax - codePoints(tail) - 2);
+    // the link appears twice; a scheduled batch's placeholder is budgeted at the real link's length
+    const tailCost = codePoints(tail) + (link ? 2 * (linkCost(link) - codePoints(link)) : 0);
+    if (codePoints(text) + tailCost > REDDIT_LIMITS.textMax) {
+      text = truncate(text, REDDIT_LIMITS.textMax - tailCost - 2);
       report.push({
         kind: 'body.truncated',
         level: 'warn',
@@ -243,6 +253,33 @@ export const REDDIT_REQUESTS = {
   },
 } as const satisfies Record<string, RequestDescription>;
 
+/**
+ * SPEC-r11 §7 ✅ public `GET https://www.reddit.com/by_id/t3_{id}.json` (no credential): score → likes, comments;
+ * Reddit shows no view count to others (`view_count` is null ⚠️).
+ */
+export async function fetchRedditStats(
+  externalId: string,
+  ctx: StatsContext,
+  base = 'https://www.reddit.com'
+): Promise<PlatformStats | null> {
+  const id = externalId.replace(/^t3_/, '');
+  const data = await readJson<{ data?: { children?: Array<{ data?: Record<string, unknown> }> } }>(
+    ctx,
+    redditRef(),
+    `${base}/by_id/t3_${encodeURIComponent(id)}.json?raw_json=1`
+  );
+  const post = data?.data?.children?.[0]?.data;
+  if (!post || post.removed_by_category) return null;
+  const ratio = num(post.upvote_ratio);
+  return stats('public', {
+    views: num(post.view_count),
+    likes: num(post.score),
+    comments: num(post.num_comments),
+    shares: num(post.num_crossposts),
+    ...(ratio !== undefined ? { extra: { upvote_ratio: ratio } } : {}),
+  });
+}
+
 export interface RedditAdapterOptions {
   runtimes?: RuntimeSupport[];
   assetBase?: string;
@@ -261,6 +298,12 @@ export function createRedditAdapter(opts: RedditAdapterOptions = {}): Adapter<ty
     binding: redditBinding,
     capabilities: { supportsUpdate: true, needsLogin: true, titleMax: REDDIT_LIMITS.titleMax },
     schema: redditSchema,
+    // SPEC-r11 §6: Reddit one at a time
+    maxConcurrent: 1,
+    statsRequires: 'none',
+    fetchStats(externalId, ctx) {
+      return fetchRedditStats(externalId, ctx);
+    },
     preview(doc, form, common, content): AdapterPreview {
       try {
         const r = renderReddit(doc, form, common, content, renderOpts);
@@ -278,6 +321,30 @@ export function createRedditAdapter(opts: RedditAdapterOptions = {}): Adapter<ty
           report: [{ kind: 'share.no-link', level: 'warn', text: (e as Error).message }],
         };
       }
+    },
+    // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
+    renderRequest({ doc, form, common, content, previous }) {
+      const r = renderReddit(doc, form, common, content, renderOpts);
+      return relayRequestOf(
+        r.body,
+        previous,
+        form.kind === 'self' ? form.external_id : undefined,
+        r.report
+      );
+    },
+    // Not bound / app not approved: the share-intent hand-off (SPEC-r11 §10).
+    renderHandoff({ doc, form, common, content }) {
+      const r = renderReddit(doc, { ...form, kind: 'link' }, common, content, renderOpts);
+      const s = buildShare('reddit', {
+        title: r.title,
+        link: r.body.url!,
+        tags: [],
+        subreddit: form.subreddit,
+      });
+      return {
+        handoff: { via: s.via, openUrl: s.openUrl, copyText: s.copyText },
+        report: s.report,
+      };
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {

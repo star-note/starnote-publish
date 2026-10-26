@@ -331,6 +331,18 @@ export const PLATFORM_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
   threads: intl({ body: { max: 500 } }, META_AI, 'Meta: Labeling AI-generated content (AI info)'),
   reddit: intl({ title: { max: 300 } }, INTL_NO_RULE, 'Reddit Content Policy（各版块规则另计）'),
   telegram: intl({ body: { max: 4096 } }, INTL_NO_RULE, 'Telegram Terms of Service'),
+  // SPEC-r11 §10: 2000 characters per message, embed description 4096 (Discord developer docs: Execute Webhook)
+  discord: intl(
+    { body: { max: 2000 } },
+    INTL_NO_RULE,
+    'Discord Community Guidelines；各服务器规则另计'
+  ),
+  // ⚠️ Slack: a section block's text up to 3000 characters (Block Kit reference)
+  slack: intl(
+    { body: { max: 3000 } },
+    INTL_NO_RULE,
+    'Slack Acceptable Use Policy；各工作区规则另计'
+  ),
   quora: intl(
     {},
     {

@@ -25,6 +25,7 @@ import {
   linkedImagesReport,
   originNoteHtml,
   relayPublish,
+  relayRequestOf,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
@@ -272,6 +273,11 @@ export function createWordpressComAdapter(
         previewHtml: r.html,
         report: r.report,
       };
+    },
+    // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
+    renderRequest({ doc, form, common, content, previous }) {
+      const r = renderWordpressCom(doc, form, common, content, renderOpts);
+      return relayRequestOf(r.body, previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {

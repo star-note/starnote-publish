@@ -58,6 +58,8 @@ const SIMPLE: Record<string, string> = {
   threads: 'threads',
   reddit: 'reddit',
   telegram: 'telegram',
+  discord: 'discord',
+  slack: 'slack',
   quora: 'quora',
   patreon: 'patreon',
   buymeacoffee: 'buymeacoffee',
