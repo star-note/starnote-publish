@@ -18,7 +18,7 @@ describe('renderLinkedin', () => {
   it('commentary in little text, an article card back to 辰记, the thumbnail to upload', () => {
     const r = renderLinkedin(
       doc,
-      parse(),
+      parse({ linkPlacement: 'body' }),
       { title: 'C# (tips)', summary: 'Sum', tags: ['dotnet'], cover: '/c.png' },
       article,
       { assetBase: ASSET_BASE }
@@ -64,5 +64,79 @@ describe('linkedin adapter', () => {
     expect(h.handoff.openUrl.startsWith('https://www.linkedin.com/sharing/share-offsite/?')).toBe(
       true
     );
+  });
+});
+
+describe('SPEC-r12 LinkedIn', () => {
+  it('defaults to the link as the first comment: no article card, no thumbnail', () => {
+    const r = renderLinkedin(doc, parse(), { title: 'T', cover: '/c.png' }, article, {
+      assetBase: ASSET_BASE,
+    });
+    expect(r.body.post.content).toBeUndefined();
+    expect(r.body.thumb_url).toBeUndefined();
+    expect(r.followUp).toEqual({ kind: 'link_comment', text: `原文：${CANONICAL}` });
+  });
+
+  it('comments on the post URN through …/comment', async () => {
+    const { fetch, calls } = mockFetch({
+      'POST /api/v1/notes/note-1/publish/linkedin/comment': () =>
+        json({
+          code: 0,
+          data: { platform: 'linkedin', external_id: 'urn:li:comment:(urn:li:share:1,9)' },
+        }),
+      'POST /api/v1/notes/note-1/publish/linkedin': () =>
+        json({
+          code: 0,
+          data: {
+            url: 'https://www.linkedin.com/feed/update/urn:li:share:1',
+            external_id: 'urn:li:share:1',
+          },
+        }),
+    });
+    const { createLinkedinAdapter } = await import('../src/index');
+    const { result } = await runPublish(
+      createLinkedinAdapter(),
+      {},
+      { runtime: 'electron', fetch }
+    );
+    expect(result.followUp).toMatchObject({ state: 'succeeded' });
+    expect(calls[1]!.headers.get('Idempotency-Key')).toBe('comment:linkedin:urn:li:share:1');
+    expect(calls[1]!.body.parent).toEqual({ external_id: 'urn:li:share:1' });
+  });
+
+  it('a failed comment leaves the post published', async () => {
+    const { fetch } = mockFetch({
+      'POST /api/v1/notes/note-1/publish/linkedin/comment': () =>
+        json(
+          {
+            code: 40301,
+            message: '没有评论权限',
+            data: { error_code: 'forbidden', error_kind: 'disconnect' },
+          },
+          403
+        ),
+      'POST /api/v1/notes/note-1/publish/linkedin': () =>
+        json({ code: 0, data: { url: 'u', external_id: 'urn:li:share:1' } }),
+    });
+    const { createLinkedinAdapter } = await import('../src/index');
+    const { result, terminal } = await runPublish(
+      createLinkedinAdapter(),
+      {},
+      { runtime: 'electron', fetch }
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      followUp: { state: 'failed', error: { kind: 'disconnect', code: 'forbidden' } },
+    });
+    expect(terminal).toHaveLength(1);
+    expect(terminal[0]!.type).toBe('done');
+  });
+
+  it('parses feed / posts links to URNs', () => {
+    expect(
+      linkedinAdapter.parsePostUrl!('https://www.linkedin.com/feed/update/urn:li:share:7/')
+        ?.externalId
+    ).toBe('urn:li:share:7');
+    expect(linkedinAdapter.parsePostUrl!('https://x.com/a/status/1')).toBeNull();
   });
 });

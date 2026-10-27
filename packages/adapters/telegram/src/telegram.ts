@@ -12,7 +12,13 @@
  *
  * ⚠️ 待核实：Telegram 的长度按 UTF-16 码元计（实体解析后）；这里按码点计，emoji 多时可能略超。
  */
-import { defineAdapter, escapeHtml, mergeReports, platformMeta } from '@starnote/publish-core';
+import {
+  defineAdapter,
+  escapeHtml,
+  mediaReport,
+  mergeReports,
+  platformMeta,
+} from '@starnote/publish-core';
 import {
   cardOf,
   fitPost,
@@ -160,6 +166,8 @@ export function renderTelegram(
     link: form.link,
   });
   const report: ReportItem[] = [];
+  // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
+  report.push(...mediaReport('telegram', 'Telegram', content, common));
   const photo = form.with_cover ? card.cover : undefined;
   const limit = photo ? TELEGRAM_LIMITS.captionMax : TELEGRAM_LIMITS.textMax;
   const ownText = !!card.text;

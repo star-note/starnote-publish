@@ -9,7 +9,14 @@
  *
  * Not bound: the existing pin/create button hand-off (`@starnote/publish-share`).
  */
-import { defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
+import {
+  defineAdapter,
+  isUrlExternalId,
+  mediaReport,
+  mergeReports,
+  parsePostUrl,
+  platformMeta,
+} from '@starnote/publish-core';
 import {
   cardOf,
   codePoints,
@@ -140,6 +147,8 @@ export function renderPinterest(
     link: form.link,
   });
   const report: ReportItem[] = [];
+  // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
+  report.push(...mediaReport('pinterest', 'Pinterest', content, common));
   const image = card.images.find((u) => /^https:\/\//i.test(u));
   if (!image) throw new Error('Pinterest 的 Pin 需要一张 https 图片：给笔记加封面后再试');
   const board = boardOf(form, opts.account);
@@ -222,6 +231,11 @@ export async function fetchPinterestStats(
   apiBase: string = PINTEREST_API,
   now: number = Date.now()
 ): Promise<PlatformStats | null> {
+  // a pasted-back link (SPEC-r12 §1.1) gives its Pin id; a link that names none: no stats
+  if (isUrlExternalId(externalId)) {
+    const id = parsePostUrl('pinterest', externalId)?.externalId;
+    return id ? fetchPinterestStats(id, ctx, apiBase, now) : null;
+  }
   const token = ctx.credential?.access_token;
   const from = Math.max(
     now - (PINTEREST_LIMITS.analyticsDays - 1) * 86_400_000,

@@ -8,7 +8,7 @@
  *
  * Not bound: copy the text and paste it in Slack (`via: 'copy'`).
  */
-import { defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
+import { defineAdapter, mediaReport, mergeReports, platformMeta } from '@starnote/publish-core';
 import {
   appendLink,
   cardOf,
@@ -138,6 +138,8 @@ export function renderSlack(
     link: form.link,
   });
   const report: ReportItem[] = [];
+  // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
+  report.push(...mediaReport('slack', 'Slack', content, common));
   const title = card.title || card.text || 'Untitled';
   let summary = form.include_summary ? card.summary : '';
   if (codePoints(summary) > SLACK_LIMITS.cardSummaryMax) {

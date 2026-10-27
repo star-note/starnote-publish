@@ -24,6 +24,7 @@ import {
   guard,
   relayPublish,
   relayRequestOf,
+  originLinkOf,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
@@ -223,6 +224,8 @@ export function renderTumblr(
   const blocks: NpfBlock[] = [];
   let titleText: string;
   let canonicalUrl: string | undefined;
+  // SPEC-r12 §5.3: the closing link card is clicked by readers (tracking short link); `source_url` stays canonical
+  let cardUrl: string | undefined;
 
   if (content?.kind === 'short-text') {
     titleText = common.title || doc.title || '';
@@ -231,6 +234,9 @@ export function renderTumblr(
       if (t) blocks.push({ type: 'text', text: t });
     }
     canonicalUrl = form.set_canonical === false ? undefined : form.canonical_url || content.link;
+    cardUrl = form.canonical_url
+      ? canonicalUrl
+      : canonicalUrl && (content.trackingUrl || canonicalUrl);
   } else {
     const article = articleOf(doc, content);
     const { json, counts } = degradeJson(article.doc.json, {
@@ -276,11 +282,12 @@ export function renderTumblr(
       });
     const canonical = canonicalOf(form, article, 'Tumblr');
     canonicalUrl = canonical.url;
+    cardUrl = canonical.url && originLinkOf(form, article, canonical.url);
     report.push(...canonical.report.filter((i) => i.kind !== 'canonical.set'));
   }
 
   if (canonicalUrl) {
-    blocks.push({ type: 'link', url: canonicalUrl, title: titleText || canonicalUrl });
+    blocks.push({ type: 'link', url: cardUrl ?? canonicalUrl, title: titleText || canonicalUrl });
     report.push({
       kind: 'canonical.source',
       text: 'Tumblr 没有 canonical：帖子的来源（source_url）设为辰记原文，文末附原文链接卡片',

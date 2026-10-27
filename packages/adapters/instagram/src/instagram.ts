@@ -11,7 +11,7 @@
  * `publish` ends with `state: 'handoff'` and `handoff: { via: 'web-share', openUrl, copyText, files }`; the host runs
  * `shareToInstagram` (phone) or downloads `files` (computer) inside the user's click.
  */
-import { defineAdapter } from '@starnote/publish-core';
+import { defineAdapter, mediaReport, visibleLinkOf } from '@starnote/publish-core';
 import {
   absoluteUrl,
   codePoints,
@@ -98,6 +98,8 @@ export function renderInstagram(
   opts: { assetBase?: string } = {}
 ): InstagramRendered {
   const report: ReportItem[] = [];
+  // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
+  report.push(...mediaReport('instagram', 'Instagram', content, common));
   const set = content?.kind === 'image-set' ? content : undefined;
   const article = content?.kind === 'article' ? content : undefined;
   const d = article?.doc ?? doc;
@@ -141,7 +143,7 @@ export function renderInstagram(
   }));
 
   // caption
-  const link = article?.canonicalUrl ?? set?.from?.canonicalUrl;
+  const link = visibleLinkOf(content);
   const head = (form.caption || set?.caption || common.title || d.title || set?.title || '').trim();
   const summary =
     form.caption || set || !form.include_summary ? '' : (common.summary || d.summary || '').trim();

@@ -7,9 +7,11 @@
  * adapter is registered yet. Facts marked ⚠️ in SPEC-r8 are best guesses until verified with real
  * accounts.
  */
+import { MEDIA_LIMITS } from './media';
 import { PLATFORM_RULES } from './rules';
 
 import type { CredentialKind, CredentialStore } from './binding';
+import type { MediaLimits } from './media';
 import type { PlatformRules } from './rules';
 import type { ContentKind } from './content';
 import type { HandoffVia, RuntimeNeed, RuntimeSupport } from './runtime';
@@ -156,7 +158,29 @@ export interface PlatformMeta {
   imageWidth?: 'fit' | 'fill';
   /** 平台规则与合规 (CONTRACTS-r9 §5): limits, 导流, 广告法, AI label; see `rules.ts`. */
   rules?: PlatformRules;
+  /** SPEC-r12 §3: what the platform accepts for covers, images and videos (`checkMedia`); see `media.ts`. */
+  limits?: { media?: MediaLimits };
+  /**
+   * SPEC-r12 §2: the link back to the article can go into the author's first comment instead of the post (the
+   * platform form's `linkPlacement`). Absent: the platform has no such option.
+   */
+  linkPlacement?: { supported: true; default: LinkPlacement };
 }
+
+/** Where the link back to the article goes (SPEC-r12 §2). */
+export type LinkPlacement = 'body' | 'first_comment';
+
+/**
+ * SPEC-r12 §2.1: platforms that can post the link as the author's first comment, and the default. LinkedIn is said to
+ * show posts with outbound links less ⚠️ (not documented by the platforms), so it defaults to the comment.
+ */
+export const LINK_PLACEMENT: Partial<Record<PlatformKey, LinkPlacement>> = {
+  linkedin: 'first_comment',
+  threads: 'body',
+  bluesky: 'body',
+  mastodon: 'body',
+  facebook: 'body',
+};
 
 /** A registry entry as written below; `mobileFirst` defaults to false. */
 type PlatformEntry = Omit<PlatformMeta, 'mobileFirst'> & { mobileFirst?: boolean };
@@ -1010,6 +1034,10 @@ export const PLATFORMS: readonly PlatformMeta[] = ENTRIES.map((p) => ({
   ...p,
   mobileFirst: p.mobileFirst ?? false,
   ...(PLATFORM_RULES[p.key] ? { rules: PLATFORM_RULES[p.key] } : {}),
+  ...(MEDIA_LIMITS[p.key] ? { limits: { media: MEDIA_LIMITS[p.key] } } : {}),
+  ...(LINK_PLACEMENT[p.key]
+    ? { linkPlacement: { supported: true as const, default: LINK_PLACEMENT[p.key]! } }
+    : {}),
 }));
 
 export const PLATFORM_KEYS: readonly PlatformKey[] = PLATFORMS.map((p) => p.key);

@@ -19,6 +19,7 @@ import {
   fitTitle,
   guard,
   linkedImagesReport,
+  originLinkOf,
   originNoteHtml,
   relayPublish,
   relayRequestOf,
@@ -151,7 +152,7 @@ export function renderBlogger(
     report.push({ kind: 'cover.inline', text: 'Blogger 没有封面字段，封面图放在正文开头' });
   }
   if (canonical.url && form.origin_note) {
-    html += originNoteHtml(canonical.url, article.lang);
+    html += originNoteHtml(originLinkOf(form, article, canonical.url), article.lang);
     report.push({
       kind: 'canonical.note',
       text: 'Blogger 没有 canonical 字段，已在文末注明首发于辰记并附原文链接',

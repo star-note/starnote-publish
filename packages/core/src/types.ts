@@ -146,6 +146,8 @@ export type PublishEvent =
       report?: ReportItem[];
       /** `state: 'handoff'`: the page the user opens to finish, and the text to paste there. */
       handoff?: PublishHandoff;
+      /** The link comment after the post (SPEC-r12 §2.2), when one was asked for. */
+      followUp?: FollowUpResult;
       at: string;
     }
   | {
@@ -251,6 +253,13 @@ export interface PublishContext {
   jobId?: string;
   /** `PublishJob.attempt`: 1 for the first try, +1 each time the user presses 「重试」. */
   attempt?: number;
+  /**
+   * SPEC-r12 §5.3: the tracking short link of this note on this platform / account (`PublishTarget.trackingUrl`).
+   * Links the reader sees and clicks (share copy, link cards, the link comment, 「本文首发于辰记」) use it instead of
+   * the canonical link; fields meant for search engines (`canonical_url`…) always keep the canonical one. The
+   * publisher also puts it on the content (`ArticleContent.trackingUrl`), so `visibleLinkOf(content)` finds it.
+   */
+  trackingUrl?: string;
 }
 
 /** Cover sizes besides the main (3:2) cover. */
@@ -272,6 +281,11 @@ export interface CommonFormShape {
   /** Asset hashes of the cover at other sizes; see `COVER_VARIANT_SIZES`. */
   coverVariants?: CoverVariants;
   coverAlt?: string;
+  /**
+   * What is known about the cover file (SPEC-r12 §3: the asset's metadata), for `checkMedia`. Unknown fields are not
+   * checked.
+   */
+  coverMeta?: { width?: number; height?: number; bytes?: number; mime?: string };
   tags?: string[];
   scheduleAt?: string;
 }
@@ -289,6 +303,56 @@ export interface AdapterPreview {
   /** Where the post will be, when known in advance. */
   url?: string;
   report: ReportItem[];
+  /**
+   * SPEC-r12 §2.2: the link comment posted under the post (`linkPlacement: 'first_comment'`). Hosts draw it as an
+   * indented reply below `body`.
+   */
+  followUp?: FollowUpInput;
+}
+
+/** Extra inputs of `Adapter.preview` (SPEC-r12). */
+export interface PreviewOptions {
+  /** The tracking short link (§5.3), as `PublishTarget.trackingUrl`. */
+  trackingUrl?: string;
+}
+
+/**
+ * What is posted after the main post (SPEC-r12 §2.2). Only `link_comment` for now: the link back to the article as
+ * the author's own first comment, so the post itself carries no outbound link.
+ */
+export interface FollowUpInput {
+  kind: 'link_comment';
+  /** `原文：{url}` / `Read more: {url}`; may contain `CANONICAL_PLACEHOLDER` in a scheduled request. */
+  text: string;
+}
+
+/** `PublishOutput.followUp`: the follow-up to post once the post is live, plus what the adapter needs for it. */
+export interface FollowUpRequest extends FollowUpInput {
+  /** Opaque to the publisher, handed back to `Adapter.followUp` as `post.meta` (Bluesky: the post's `uri` + `cid`). */
+  meta?: unknown;
+}
+
+/** The main post a follow-up replies to (`Adapter.followUp`'s first argument). */
+export interface FollowUpParent {
+  externalId: string;
+  url: string;
+  meta?: unknown;
+}
+
+/** How the follow-up went (`PlatformResult.followUp`). It never changes the main post's `ok`. */
+export interface FollowUpResult {
+  kind: 'link_comment';
+  /**
+   * `succeeded`; `failed` (the post is live, the comment is not: offer 「补发」 with the same text); `skipped` (the
+   * post did not go live, the adapter cannot comment, or the host took the post over before it was live).
+   */
+  state: 'succeeded' | 'failed' | 'skipped';
+  /** The comment text (what 「补发」 sends again). */
+  text: string;
+  /** The comment's id / link on success. */
+  externalId?: string;
+  url?: string;
+  error?: { kind: ErrorKind; code: string; message: string };
 }
 
 /** What `Adapter.publish` resolves with. Only `url` is required, as before. */
@@ -305,6 +369,11 @@ export interface PublishOutput {
    * server stores it as `publish_tasks.pending`, so it must be plain JSON.
    */
   pending?: unknown;
+  /**
+   * SPEC-r12 §2.2: post this once the post is live (three-stage platforms: after `finalize`). The publisher calls
+   * `Adapter.followUp` with it and reports the outcome as `PlatformResult.followUp`.
+   */
+  followUp?: FollowUpRequest;
 }
 
 /**
@@ -320,6 +389,11 @@ export type PendingCheck =
 export interface RelayRequest {
   body: unknown;
   previous?: { external_id: string; url?: string };
+  /**
+   * SPEC-r12 §2.3: the link comment the runner posts once after the post succeeded (`POST …/comment`); its failure is
+   * only recorded (`result.follow_up`), the task still succeeds.
+   */
+  follow_up?: FollowUpInput;
 }
 
 /** Arguments of the pure renderers (`renderRequest` / `renderHandoff`): what `publish` gets, without the context. */
@@ -331,6 +405,8 @@ export interface AdapterRenderArgs<F = unknown> {
   content?: PublishContent;
   account?: AccountRef;
   previous?: PostRef;
+  /** SPEC-r12 §5.3: the tracking short link (also on the content, see `PublishContext.trackingUrl`). */
+  trackingUrl?: string;
 }
 
 export interface Adapter<S extends z.ZodType = z.ZodType> {
@@ -358,7 +434,8 @@ export interface Adapter<S extends z.ZodType = z.ZodType> {
     doc: Doc,
     form: z.infer<S>,
     common?: CommonFormShape,
-    content?: PublishContent
+    content?: PublishContent,
+    opts?: PreviewOptions
   ): AdapterPreview | Promise<AdapterPreview>;
   publish(args: {
     doc: Doc;
@@ -408,6 +485,21 @@ export interface Adapter<S extends z.ZodType = z.ZodType> {
   statsRequires?: StatsDriver['requires'];
   /** Types only for now (SPEC-r8 §7.4). */
   engage?: EngageDriver;
+  /**
+   * SPEC-r12 §1.1: a post link the user pasted back → the platform's id, in the same form `publish` returns as
+   * `externalId` (so `fetchStats` takes it as is). `null` when it is not a post link of this platform. Pure, no
+   * request. `parsePostUrl(platform, url)` in core knows every platform's rules; adapters delegate to it.
+   */
+  parsePostUrl?(url: string): { externalId: string; url: string } | null;
+  /**
+   * SPEC-r12 §2.2: post the follow-up (the link comment) under a post that is live. Called once by the publisher
+   * when `publish` returned `followUp`; never retried automatically (a write). A failure does not fail the post.
+   */
+  followUp?(
+    post: FollowUpParent,
+    input: FollowUpInput,
+    ctx: PublishContext
+  ): Promise<{ externalId: string; url?: string }>;
 }
 
 /**
@@ -428,7 +520,15 @@ export interface PublishTarget {
   idempotencyKey?: string;
   /** This target's content; else `perPlatformContent[platform]`, then `content`. */
   content?: PublishContent;
+  /**
+   * SPEC-r12 §5.3: the tracking short link for this platform / account (`POST /notes/{id}/short-links`). Handed to
+   * the adapter as `ctx.trackingUrl` and put on the content; links readers click use it, canonical fields do not.
+   */
+  trackingUrl?: string;
 }
+
+/** A target of `publisher.prepare` (the same shape as a publish target). */
+export type PrepareTarget = PublishTarget;
 
 export interface PublishJob {
   noteId: string;
@@ -477,6 +577,11 @@ export interface PlatformResult {
   accountId?: string;
   /** `state: 'processing'` with `pollProcessing: false`: hand to `checkStatus` / the server later. */
   pending?: unknown;
+  /**
+   * SPEC-r12 §2.2: the link comment, when the adapter asked for one. Its failure keeps `ok: true` (and adds a `warn`
+   * report item); `state: 'skipped'` with `pollProcessing: false` — the host posts it after the post went live.
+   */
+  followUp?: FollowUpResult;
 }
 
 export interface JobResult {
@@ -594,10 +699,19 @@ export interface Publisher {
   adapters: Adapter<any>[];
   /** How `platform` can be published from this host (`planRuntime` on the adapter or registry entry). */
   plan(platform: string, opts?: PlanOptions & { env?: Partial<HostEnv> }): RuntimeGuide[];
-  /** `adapter.preview` after validating the form; `undefined` when the adapter has no preview. */
+  /**
+   * `adapter.preview` after validating the form; `undefined` when the adapter has no preview. `trackingUrl`: the
+   * short link the post will carry (SPEC-r12 §5.3).
+   */
   preview(
     platform: string,
-    args: { doc: Doc; form?: unknown; common?: CommonFormShape; content?: PublishContent }
+    args: {
+      doc: Doc;
+      form?: unknown;
+      common?: CommonFormShape;
+      content?: PublishContent;
+      trackingUrl?: string;
+    }
   ): Promise<AdapterPreview | undefined>;
   /**
    * SPEC-r11 §12: the tasks of a scheduled publish — per target its runtime (`server` / `desktop` / `handoff`),

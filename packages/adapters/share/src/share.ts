@@ -30,7 +30,7 @@
  * Review; LinkedIn 要申请产品权限; Pinterest 见上). Reddit's share-intent stays as the fallback of the OAuth adapter
  * (`@starnote/publish-reddit`) while its app is not approved.
  */
-import { defineAdapter } from '@starnote/publish-core';
+import { defineAdapter, visibleLinkOf } from '@starnote/publish-core';
 import {
   codePoints,
   guard,
@@ -555,7 +555,10 @@ export function shareInputOf(
 ): ShareInput | { error: string } {
   const article = content?.kind === 'article' ? content : undefined;
   const short = content?.kind === 'short-text' ? content : undefined;
-  const link = form.link || short?.link || article?.canonicalUrl;
+  // SPEC-r12 §5.3: share pages get the tracking short link; Medium imports the article itself, so it keeps the
+  // canonical link (its import sets the canonical from it)
+  const link =
+    form.link || (key === 'medium' ? article?.canonicalUrl || short?.link : visibleLinkOf(content));
   if (!link) return { error: '还没有可分享的链接：先发布到辰记（或在表单里填写链接）' };
   const d = article?.doc ?? doc;
   const text = form.text || short?.thread?.[0] || short?.text || undefined;

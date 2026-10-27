@@ -1,5 +1,6 @@
-import { articleContent } from './content';
+import { articleContent, withTrackingUrl } from './content';
 import { platformMeta } from './platforms';
+import { shortcodeOf } from './post-url';
 import { prepareTasks } from './prepare';
 import { mergeReports } from './report';
 import { normalizeRuntime, planRuntime, resolveRuntimes, runtimeList } from './runtime';
@@ -16,6 +17,7 @@ import type {
   Doc,
   CreatePublisherOptions,
   ErrorKind,
+  FollowUpResult,
   JobResult,
   NeedInputRequest,
   PlatformResult,
@@ -150,13 +152,105 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
 
   async function preview(
     platform: string,
-    args: { doc: Doc; form?: unknown; common?: CommonFormShape; content?: PublishContent }
+    args: {
+      doc: Doc;
+      form?: unknown;
+      common?: CommonFormShape;
+      content?: PublishContent;
+      trackingUrl?: string;
+    }
   ): Promise<AdapterPreview | undefined> {
     const adapter = byKey.get(platform);
     if (!adapter?.preview) return undefined;
     const parsed = adapter.schema.safeParse(args.form ?? {});
     if (!parsed.success) throw new Error(formatZodError(parsed.error));
-    return adapter.preview(args.doc, parsed.data, args.common ?? {}, args.content);
+    // SPEC-r12 §5.3: the short link goes on the content, where the renderers read the visible link
+    const content = args.trackingUrl
+      ? withTrackingUrl(args.content ?? articleContent(args.doc), args.trackingUrl)
+      : args.content;
+    return adapter.preview(
+      args.doc,
+      parsed.data,
+      args.common ?? {},
+      content,
+      args.trackingUrl ? { trackingUrl: args.trackingUrl } : undefined
+    );
+  }
+
+  /**
+   * SPEC-r12 §2.2: the follow-up (link comment) of a post that is live — once, never retried. Its failure is
+   * returned (and reported as a `warn`), never thrown: the post itself succeeded.
+   */
+  async function postFollowUp(
+    adapter: Adapter<any>,
+    out: PublishOutput,
+    ctx: PublishContext
+  ): Promise<{ result: FollowUpResult; report: ReportItem[] } | undefined> {
+    const req = out.followUp;
+    if (!req) return undefined;
+    const base = { kind: req.kind, text: req.text };
+    // a draft / hand-off / review post has nothing to comment on yet; nor has a pasted-back `code:` id (no API id)
+    if (
+      (out.state ?? 'published') !== 'published' ||
+      !out.externalId ||
+      shortcodeOf(out.externalId) !== undefined
+    )
+      return { result: { ...base, state: 'skipped' }, report: [] };
+    if (!adapter.followUp)
+      return {
+        result: { ...base, state: 'skipped' },
+        report: [
+          {
+            kind: 'followup.failed',
+            level: 'warn',
+            text: `${adapter.label} 还不能自动发评论，原文链接没有发出：可以手动补一条评论`,
+            detail: { text: req.text },
+          },
+        ],
+      };
+    // the user cancelled: nothing more is sent
+    if (ctx.signal.aborted) return { result: { ...base, state: 'skipped' }, report: [] };
+    ctx.emit({ type: 'progress', percent: 97, text: '发链接评论' });
+    try {
+      const r = await adapter.followUp(
+        {
+          externalId: out.externalId,
+          url: out.url,
+          ...(req.meta !== undefined ? { meta: req.meta } : {}),
+        },
+        base,
+        ctx
+      );
+      return {
+        result: {
+          ...base,
+          state: 'succeeded',
+          ...(r.externalId ? { externalId: r.externalId } : {}),
+          ...(r.url ? { url: r.url } : {}),
+        },
+        report: [{ kind: 'followup.posted', text: '原文链接已作为第一条评论发出' }],
+      };
+    } catch (cause) {
+      const code = ctx.signal.aborted
+        ? 'aborted'
+        : typeof (cause as any)?.code === 'string' && (cause as any).code
+          ? String((cause as any).code)
+          : 'failed';
+      const message = ctx.signal.aborted ? '已取消' : errorMessage(cause);
+      // a write that failed without saying why may still have gone through
+      const kind: ErrorKind = errorKindOf(cause) ?? 'unknown';
+      return {
+        result: { ...base, state: 'failed', error: { kind, code, message } },
+        report: [
+          {
+            kind: 'followup.failed',
+            level: 'warn',
+            text: '链接评论没发出去，可以手动补发',
+            detail: { text: req.text, error: message, code },
+          },
+        ],
+      };
+    }
   }
 
   /** Polls `checkStatus` / `finalize` until `completed` (SPEC-r11 §2). */
@@ -263,11 +357,14 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       return { ok: false, error: reason, guides: plan(platform), ...who };
     }
 
-    const content: PublishContent =
+    // SPEC-r12 §5.3: the tracking short link rides on the content (`visibleLinkOf`) and on `ctx.trackingUrl`
+    const content: PublishContent = withTrackingUrl(
       target.content ??
-      job.perPlatformContent?.[platform] ??
-      job.content ??
-      articleContent(job.doc);
+        job.perPlatformContent?.[platform] ??
+        job.content ??
+        articleContent(job.doc),
+      target.trackingUrl
+    );
     const kinds = adapter.contentTypes ?? ['article'];
     if (!kinds.includes(content.kind)) {
       const reason = `${adapter.label} 不支持发布这种内容（${content.kind}）`;
@@ -311,6 +408,7 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       ...(target.idempotencyKey ? { idempotencyKey: target.idempotencyKey } : {}),
       ...(job.jobId ? { jobId: job.jobId } : {}),
       ...(job.jobId || job.attempt ? { attempt: Math.max(1, Math.floor(job.attempt ?? 1)) } : {}),
+      ...(target.trackingUrl ? { trackingUrl: target.trackingUrl } : {}),
       needInput: (req: NeedInputRequest) =>
         new Promise<string>((resolve, reject) => {
           const k = key(rkey, req.id);
@@ -343,12 +441,17 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       if (result.state === 'processing') {
         if (options.pollProcessing === false) {
           if (result.report?.length) report = mergeReports(report, result.report);
+          // the host takes the post over before it is live: the follow-up is left to it
+          const skipped: FollowUpResult | undefined = result.followUp
+            ? { kind: result.followUp.kind, text: result.followUp.text, state: 'skipped' }
+            : undefined;
           emit({
             type: 'done',
             url: result.url,
             ...(result.externalId ? { externalId: result.externalId } : {}),
             state: 'processing',
             ...(report.length ? { report } : {}),
+            ...(skipped ? { followUp: skipped } : {}),
           });
           return withReport({
             ok: true,
@@ -356,11 +459,16 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
             ...(result.externalId ? { externalId: result.externalId } : {}),
             state: 'processing',
             pending: result.pending,
+            ...(skipped ? { followUp: skipped } : {}),
           });
         }
         result = await settle(adapter, result, ctx);
       }
       if (result.report?.length) report = mergeReports(report, result.report);
+      // SPEC-r12 §2.2: the link comment, once the post is live (three-stage platforms: after `finalize`)
+      const follow = await postFollowUp(adapter, result, ctx);
+      if (follow?.report.length) report = mergeReports(report, follow.report);
+      const followUp = follow ? { followUp: follow.result } : {};
       // The adapter may already have emitted `done`; exactly one event ends the stream.
       emit({
         type: 'done',
@@ -369,6 +477,7 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
         ...(result.state ? { state: result.state } : {}),
         ...(report.length ? { report } : {}),
         ...(result.handoff ? { handoff: result.handoff } : {}),
+        ...followUp,
       });
       return withReport({
         ok: true,
@@ -376,6 +485,7 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
         externalId: result.externalId,
         ...(result.state ? { state: result.state } : {}),
         ...(result.handoff ? { handoff: result.handoff } : {}),
+        ...followUp,
       });
     } catch (cause) {
       const reason = signal.aborted ? '已取消' : errorMessage(cause);

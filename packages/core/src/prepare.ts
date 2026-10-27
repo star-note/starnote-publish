@@ -12,7 +12,7 @@
  *   alternative, so the host can offer 「开启云端代发」 or 「改为到点提醒」.
  */
 import { needsBinding } from './binding';
-import { articleContent } from './content';
+import { articleContent, visibleLinkOf, withTrackingUrl } from './content';
 import { planRuntime, resolveRuntimes } from './runtime';
 import { formatZodError } from './schema';
 import { CANONICAL_PLACEHOLDER, hasCanonicalPlaceholder, targetKey } from './targets';
@@ -56,13 +56,6 @@ function withCanonical(content: PublishContent, canonical: string | undefined): 
   }
 }
 
-function linkOf(content: PublishContent): string | undefined {
-  if (content.kind === 'article') return content.canonicalUrl;
-  if (content.kind === 'short-text') return content.link;
-  if (content.kind === 'image-set') return content.from?.canonicalUrl;
-  return undefined;
-}
-
 function pickAccount(
   accounts: readonly PrepareAccount[] | undefined,
   target: PublishTarget
@@ -94,7 +87,11 @@ export function prepareTasks(input: PrepareInput, deps: PrepareDeps): PreparedTa
       input.perPlatformContent?.[p] ??
       input.content ??
       articleContent(input.doc, known ? { canonicalUrl: known } : {});
-    const content = p === 'chenji' ? rawContent : withCanonical(rawContent, canonical);
+    // SPEC-r12 §5.3: 辰记 itself never gets a short link; the rest show it where readers click
+    const content =
+      p === 'chenji'
+        ? rawContent
+        : withTrackingUrl(withCanonical(rawContent, canonical), target.trackingUrl);
     const out: PreparedTask = {
       platform: p,
       ...(accountId ? { accountId } : {}),
@@ -136,6 +133,7 @@ export function prepareTasks(input: PrepareInput, deps: PrepareDeps): PreparedTa
         ? { account: target.account ?? chosen?.account }
         : {}),
       ...(previous ? { previous } : {}),
+      ...(target.trackingUrl && p !== 'chenji' ? { trackingUrl: target.trackingUrl } : {}),
     };
 
     const runtimes = resolveRuntimes(plan);
@@ -157,7 +155,7 @@ export function prepareTasks(input: PrepareInput, deps: PrepareDeps): PreparedTa
         }
       }
       // 「复制后手动发」: the title and the link, opened on the platform's home page
-      const link = linkOf(content);
+      const link = visibleLinkOf(content);
       const title = input.common.title || input.doc.title;
       return {
         open_url: plan.homepage ?? '',
@@ -199,7 +197,12 @@ export function prepareTasks(input: PrepareInput, deps: PrepareDeps): PreparedTa
       if (adapter?.renderRequest) {
         try {
           const r = adapter.renderRequest(args);
-          out.request = { body: r.body, ...(r.previous ? { previous: r.previous } : {}) };
+          out.request = {
+            body: r.body,
+            ...(r.previous ? { previous: r.previous } : {}),
+            // SPEC-r12 §2.3: the runner posts the link comment after the post
+            ...(r.follow_up ? { follow_up: r.follow_up } : {}),
+          };
           if (r.report?.length) out.report = r.report;
         } catch (e) {
           return fail('render_failed', e instanceof Error ? e.message : String(e));

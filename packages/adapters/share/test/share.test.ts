@@ -254,3 +254,19 @@ describe('share adapters', () => {
     });
   });
 });
+
+describe('SPEC-r12 tracking links', () => {
+  const S = 'https://starnote.app/s/AbCd1234';
+  it('share pages get the short link; Medium imports the canonical article', async () => {
+    const doc = fixtureDoc();
+    const x = await runPublish(createShareAdapter('x'), { trackingUrl: S });
+    expect(x.result.handoff?.openUrl).toContain(encodeURIComponent(S));
+    expect(x.result.handoff?.openUrl).not.toContain(encodeURIComponent(CANONICAL));
+    const medium = await runPublish(createShareAdapter('medium'), { trackingUrl: S });
+    expect(medium.result.handoff?.copyText).toBe(CANONICAL);
+    expect(
+      createShareAdapter('x').parsePostUrl!('https://twitter.com/me/status/5')?.externalId
+    ).toBe('5');
+    expect(doc.title).toBeTruthy();
+  });
+});

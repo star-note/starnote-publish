@@ -13,21 +13,36 @@
  * threads_manage_insights`), short-lived token exchanged for a 60-day one (`th_exchange_token`), renewed with
  * `th_refresh_token`. Text ≤ 500 characters (emoji by UTF-8 bytes ✅).
  *
+ * SPEC-r12 §2: `linkPlacement: 'first_comment'` drops `link_attachment` (and the link in an image post's text); after
+ * `finalize` the link follows as a reply — the relay's `…/comment` creates a `TEXT` container with
+ * `reply_to_id = {media id}` and publishes it (two steps, no polling).
+ *
  * Not bound: the existing threads intent hand-off (`@starnote/publish-share`).
  */
-import { defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
+import {
+  defineAdapter,
+  isUrlExternalId,
+  mediaReport,
+  mergeReports,
+  parsePostUrl,
+  platformMeta,
+  shortcodeOf,
+} from '@starnote/publish-core';
 import {
   cardOf,
   credentialOf,
   fitPost,
   guard,
   helpError,
+  linkPlacementField,
   missingLinkReport,
   newPostReport,
   num,
+  placeLink,
   readJson,
   relayCheck,
   relayFinalize,
+  relayFollowUp,
   relayPublish,
   relayRequestOf,
   stats,
@@ -42,6 +57,7 @@ import type {
   BindingSpec,
   CommonFormShape,
   Doc,
+  FollowUpInput,
   PlatformStats,
   PublishContent,
   PublishHandoff,
@@ -82,6 +98,8 @@ export const threadsSchema = z.object({
   include_tags: z.boolean().default(true).describe('带上话题'),
   /** Off (default): a text post with the link card. On: the cover as an image post, the link in the text. */
   with_cover: z.boolean().default(false).describe('发封面图（链接写进文案）'),
+  /** SPEC-r12 §2: the link as the card (or in an image post's text), or as the author's first reply. */
+  linkPlacement: linkPlacementField('threads'),
 });
 
 export type ThreadsForm = z.infer<typeof threadsSchema>;
@@ -118,6 +136,8 @@ export interface ThreadsRendered {
   text: string;
   body: ThreadsContainerBody;
   report: ReportItem[];
+  /** `linkPlacement: 'first_comment'`: the reply carrying the link. */
+  followUp?: FollowUpInput;
 }
 
 export function renderThreads(
@@ -133,6 +153,8 @@ export function renderThreads(
     link: form.link,
   });
   const report: ReportItem[] = [];
+  const placed = placeLink(form.linkPlacement, card.link, card.lang);
+  const link = placed.bodyLink;
   const image = form.with_cover ? card.cover : undefined;
   const allTags = form.include_tags ? card.tags : [];
   const fit = fitPost({
@@ -140,7 +162,7 @@ export function renderThreads(
     ...(form.include_summary && !card.text ? { summary: card.summary } : {}),
     tags: allTags.slice(0, THREADS_LIMITS.maxTags),
     // a text post shows the link as its card; an image post needs it in the text
-    ...(image && card.link ? { link: card.link } : {}),
+    ...(image && link ? { link } : {}),
     limit: THREADS_LIMITS.textMax,
     count: threadsLength,
   });
@@ -156,12 +178,13 @@ export function renderThreads(
       text: `Threads 每帖只带 ${THREADS_LIMITS.maxTags} 个话题`,
       count: allTags.length - fit.tags.length,
     });
-  if (card.link)
+  if (link)
     report.push({
       kind: 'link.card',
       text: image ? '以图片帖发出，原文链接写在文案里' : '以链接卡片发出',
-      detail: { url: card.link },
+      detail: { url: link },
     });
+  else if (placed.followUp) report.push(...placed.report);
   else report.push(missingLinkReport('Threads'));
   report.push({
     kind: 'processing',
@@ -177,9 +200,15 @@ export function renderThreads(
     : {
         media_type: 'TEXT',
         text: fit.text,
-        ...(card.link ? { link_attachment: card.link } : {}),
+        ...(link ? { link_attachment: link } : {}),
       };
-  return { text: fit.text, body, report };
+  report.push(...mediaReport('threads', 'Threads', content, common));
+  return {
+    text: fit.text,
+    body,
+    report,
+    ...(placed.followUp ? { followUp: placed.followUp } : {}),
+  };
 }
 
 export function threadsRef(links?: ErrorLinks): PlatformRef {
@@ -237,6 +266,14 @@ export async function fetchThreadsStats(
   graph: string = THREADS_GRAPH
 ): Promise<PlatformStats | null> {
   const token = ctx.credential?.access_token;
+  // a pasted-back link (SPEC-r12 §1.1) is `code:{shortcode}`: the media id is looked up among the account's
+  // recent posts (needs the token); not found → no stats, no error
+  const code =
+    shortcodeOf(externalId) ?? shortcodeOf(parsePostUrl('threads', externalId)?.externalId ?? '');
+  if (code || isUrlExternalId(externalId)) {
+    const id = code && token ? await threadsMediaIdOf(code, ctx, graph) : undefined;
+    return id ? fetchThreadsStats(id, ctx, graph) : null;
+  }
   const data = await readJson<{
     data?: Array<{
       name?: string;
@@ -267,6 +304,24 @@ export async function fetchThreadsStats(
         .map((k) => [k, m[k]!])
     ),
   });
+}
+
+/** The media id of a post by its shortcode, among the account's latest 100 posts (`GET /me/threads`). */
+export async function threadsMediaIdOf(
+  code: string,
+  ctx: StatsContext,
+  graph: string = THREADS_GRAPH
+): Promise<string | undefined> {
+  const token = ctx.credential?.access_token;
+  if (!token) return undefined;
+  const list = await readJson<{ data?: Array<{ id?: string; shortcode?: string }> }>(
+    ctx,
+    threadsRef(),
+    `${graph}/me/threads?fields=id,shortcode&limit=100`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const hit = list?.data?.find((p) => p.shortcode === code);
+  return hit?.id ? String(hit.id) : undefined;
 }
 
 export function threadsHandoff(
@@ -310,11 +365,24 @@ export function createThreadsAdapter(
     statsRequires: 'token',
     preview(doc, form, common, content): AdapterPreview {
       const r = renderThreads(doc, form, common, content, renderOpts);
-      return { format: 'text', title: common?.title || doc.title, body: r.text, report: r.report };
+      return {
+        format: 'text',
+        title: common?.title || doc.title,
+        body: r.text,
+        report: r.report,
+        ...(r.followUp ? { followUp: r.followUp } : {}),
+      };
     },
     renderRequest({ doc, form, common, content }) {
       const r = renderThreads(doc, form, common, content, renderOpts);
-      return relayRequestOf(r.body, undefined, undefined, r.report);
+      return relayRequestOf(r.body, undefined, undefined, r.report, r.followUp);
+    },
+    // SPEC-r12 §2.2: a reply container (`reply_to_id`) published right away, through the relay
+    followUp(post, input, ctx) {
+      return guard(ctx, ref, async () => {
+        const credential = await credentialOf(opts.credential, 'threads', ctx);
+        return relayFollowUp(ctx, ref, post, input, { credential });
+      });
     },
     renderHandoff({ doc, form, common, content }) {
       return threadsHandoff(doc, form, common, content, renderOpts);
@@ -332,14 +400,23 @@ export function createThreadsAdapter(
           credential,
         });
         const report = mergeReports(r.report, res.report);
+        // the publisher posts it after `finalize` (the reply needs the published media id)
+        const followUp = r.followUp ? { followUp: r.followUp } : {};
         if (res.state === 'processing')
-          return { url: res.url, state: 'processing' as const, pending: res.pending, report };
+          return {
+            url: res.url,
+            state: 'processing' as const,
+            pending: res.pending,
+            report,
+            ...followUp,
+          };
         ctx.emit({ type: 'progress', percent: 100, text: '完成' });
         return {
           url: res.url,
           externalId: res.externalId,
           state: res.state ?? 'published',
           report,
+          ...followUp,
         };
       });
     },

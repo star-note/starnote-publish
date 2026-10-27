@@ -50,3 +50,71 @@ describe('facebook adapter', () => {
     expect(result.actions!.map((a) => a.kind)).toEqual(['relogin', 'help']);
   });
 });
+
+describe('SPEC-r12 Facebook', () => {
+  const S = 'https://starnote.app/s/AbCd1234';
+
+  it('first_comment drops the link field; the Page comments it on the post', async () => {
+    const r = renderFacebook(
+      doc,
+      parse({ linkPlacement: 'first_comment' }),
+      { title: 'Hi' },
+      article
+    );
+    expect(r.body).not.toHaveProperty('link');
+    expect(r.followUp?.text).toBe(`原文：${CANONICAL}`);
+
+    const { fetch, calls } = mockFetch({
+      'POST /api/v1/notes/note-1/publish/facebook/comment': () =>
+        json({ code: 0, data: { platform: 'facebook', external_id: '1_2_3' } }),
+      'POST /api/v1/notes/note-1/publish/facebook': () =>
+        json({ code: 0, data: { url: 'https://www.facebook.com/2', external_id: '1_2' } }),
+    });
+    const { result } = await runPublish(
+      createFacebookAdapter(),
+      { form: { linkPlacement: 'first_comment' }, trackingUrl: S },
+      { runtime: 'electron', fetch }
+    );
+    expect(result.followUp).toMatchObject({
+      state: 'succeeded',
+      externalId: '1_2_3',
+      text: `原文：${S}`,
+    });
+    expect(calls[1]!.body).toMatchObject({ parent: { external_id: '1_2' }, text: `原文：${S}` });
+  });
+
+  it('body placement shares the short link; a pasted permalink gives the Graph id', () => {
+    const r = renderFacebook(doc, parse(), { title: 'Hi' }, { ...article, trackingUrl: S });
+    expect(r.body.link).toBe(S);
+    expect(
+      facebookAdapter.parsePostUrl!('https://www.facebook.com/permalink.php?story_fbid=2&id=1')
+        ?.externalId
+    ).toBe('1_2');
+  });
+
+  it('the cover is not checked against image rules (Facebook does not upload it)', () => {
+    const r = renderFacebook(
+      doc,
+      parse(),
+      { title: 'Hi', coverMeta: { mime: 'image/webp', bytes: 5 * 1024 * 1024 } },
+      article
+    );
+    expect(r.report.filter((i) => i.kind.startsWith('media.'))).toEqual([]);
+  });
+
+  it('a post with only the link comment is still an empty post', async () => {
+    const { convert } = await import('@starnote/publish-core');
+    const { fetch, calls } = mockFetch({});
+    const { terminal } = await runPublish(
+      createFacebookAdapter(),
+      {
+        doc: convert({ type: 'doc', content: [] }),
+        common: {},
+        form: { linkPlacement: 'first_comment', include_summary: false, include_tags: false },
+      },
+      { runtime: 'electron', fetch }
+    );
+    expect(terminal[0]).toMatchObject({ type: 'failed', code: 'invalid' });
+    expect(calls).toHaveLength(0);
+  });
+});

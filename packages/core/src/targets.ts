@@ -65,6 +65,14 @@ export function finalizeKeyOf(platform: string, containerId: string): string {
   return `finalize:${platform}:${containerId}`.slice(0, IDEMPOTENCY_KEY_MAX);
 }
 
+/**
+ * SPEC-r12 §2.2: the key of a post's follow-up (the link comment) — `comment:${platform}:${externalId}`, the same for
+ * the immediate publish, the scheduled runner and 「补发」, so the comment is posted at most once per post.
+ */
+export function followUpKeyOf(platform: string, externalId: string): string {
+  return `comment:${platform}:${externalId}`.slice(0, IDEMPOTENCY_KEY_MAX);
+}
+
 export function isErrorKind(v: unknown): v is ErrorKind {
   return typeof v === 'string' && (ERROR_KINDS as readonly string[]).includes(v);
 }

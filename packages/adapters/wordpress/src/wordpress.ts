@@ -10,7 +10,7 @@
  *
  * WordPress.com (OAuth) is `@starnote/publish-wordpress-com`.
  */
-import { defineAdapter, escapeHtml, mergeReports } from '@starnote/publish-core';
+import { defineAdapter, escapeHtml, mediaReport, mergeReports } from '@starnote/publish-core';
 import {
   articleOf,
   canonicalOf,
@@ -22,6 +22,7 @@ import {
   linkedImagesReport,
   relayPublish,
   relayRequestOf,
+  originLinkOf,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
@@ -174,9 +175,12 @@ export function renderWordpress(
 
   let html = degraded.body;
   const report: ReportItem[] = [...degraded.report];
+  // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
+  report.push(...mediaReport('wordpress', 'WordPress', content, common));
   if (canonical.url && form.origin_note) {
     const en = article.lang && !/^zh/i.test(article.lang);
-    const link = `<a href="${escapeHtml(canonical.url)}">${en ? escapeHtml(canonical.url) : '辰记'}</a>`;
+    const origin = originLinkOf(form, article, canonical.url);
+    const link = `<a href="${escapeHtml(origin)}">${en ? escapeHtml(origin) : '辰记'}</a>`;
     html += `\n<hr>\n<p><em>${en ? `Originally published at ${link}.` : `本文首发于${link}。`}</em></p>`;
     report.push({
       kind: 'canonical.note',
