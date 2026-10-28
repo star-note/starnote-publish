@@ -25,6 +25,8 @@ export type ComplianceRule =
   | 'qrcode'
   | 'ad-law'
   | 'ai-label'
+  /** SPEC-r13 §6.6 财经平台: 荐股 / 收益承诺 / 拉群带单, and a disclosure reminder when a stock is named. */
+  | 'finance'
   /** From a learned rule (`ComplianceInput.extraRules`, SPEC-r9-compliance-learning). */
   | 'learned';
 
@@ -192,6 +194,39 @@ const CONTACT_PATTERNS: { re: RegExp; what: string }[] = [
   { re: /(?:QQ|qq|扣扣|企鹅)\s*(?:号|群)?\s*[:：]?\s*[1-9]\d{4,11}/g, what: 'QQ 号' },
   { re: /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, what: '邮箱' },
 ];
+
+/**
+ * SPEC-r13 §6.6: what 财经平台 treat as 荐股 / 非法证券咨询 or 收益承诺 (雪球社区公约、东方财富股吧管理规定；
+ * 《证券期货投资咨询管理暂行办法》): flagged for the author to rephrase, never changed silently.
+ */
+export const FINANCE_WORDS: string[] = [
+  '稳赚',
+  '稳赚不赔',
+  '包赚',
+  '保证收益',
+  '保本保收益',
+  '必涨',
+  '必翻倍',
+  '翻倍股',
+  '内幕消息',
+  '荐股',
+  '带单',
+  '跟单',
+  '喊单',
+  '牛股推荐',
+  '加群领',
+  '进群领',
+];
+// longest first, so 「稳赚不赔」 is one match rather than 「稳赚」
+const FINANCE_RE = new RegExp(
+  [...FINANCE_WORDS]
+    .sort((a, b) => b.length - a.length)
+    .map((w) => escapeRe(w))
+    .join('|'),
+  'g'
+);
+/** A-share / HK codes (`600519`、`SH600519`、`00700.HK`) or a `$TICKER`: the article names a security. */
+const SECURITY_RE = /(?:\b(?:SH|SZ|BJ)?[036]\d{5}\b|\b\d{5}\.HK\b|\$[A-Z]{1,5}\b)/g;
 
 const QR_RE = /二维码|扫码|扫一扫|扫描[^，。,.\s]{0,4}码|QR\s?code/gi;
 const QR_IMAGE_RE = /qr[-_ ]?code|(?:^|[^a-z])qr(?:[^a-z]|$)|二维码|erweima|wxcode|mpqrcode/i;
@@ -413,6 +448,33 @@ export function checkCompliance(
         );
       }
     }
+    if (rules.finance) {
+      for (const m of value.matchAll(FINANCE_RE)) {
+        out.add(
+          {
+            rule: 'finance',
+            field,
+            level: 'warn',
+            message: `「${m[0]}」属于荐股或收益承诺类说法，财经平台会限流或删除，请换个说法`,
+            excerpt: around(value, m.index!, m[0].length),
+            needsAi: true,
+          },
+          m[0]
+        );
+      }
+      const named = value.match(SECURITY_RE);
+      if (named && field === 'body') {
+        out.add(
+          {
+            rule: 'finance',
+            field,
+            level: 'info',
+            message: `文中提到了 ${named[0]}：如果持有相关标的，记得在文末披露持仓或利益关系`,
+          },
+          `disclosure:${named[0]}`
+        );
+      }
+    }
     if (rules.adLawWords) {
       for (const m of value.matchAll(AD_LAW_RE)) {
         const word = m[0];
@@ -562,4 +624,7 @@ export const COMPLIANCE_LEXICON = {
   url: { source: URL_RE.source, flags: URL_RE.flags },
   aiDeclaration: { source: AI_DECLARATION_RE.source, flags: AI_DECLARATION_RE.flags },
   aiDeclarationText: AI_DECLARATION_TEXT,
+  /** SPEC-r13 §6.6 财经平台 (`rules.finance`). */
+  financeWords: FINANCE_WORDS,
+  security: { source: SECURITY_RE.source, flags: SECURITY_RE.flags },
 } as const;

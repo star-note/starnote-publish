@@ -1,0 +1,43 @@
+{
+  "name": "@starnote/publish-desk-generic",
+  "version": "0.1.0",
+  "description": "StarNote 通用模式 desk adapter (SPEC-r13 §4b): platforms whose editor nobody has verified with a real account yet — the 发布台 opens the author entry page, the user copies the title / body in and presses 发布 there.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./electron": {
+      "types": "./dist/electron.d.ts",
+      "import": "./dist/electron.js",
+      "default": "./dist/electron.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --root ../../.. packages/adapters/desk-generic"
+  },
+  "dependencies": {
+    "@starnote/publish-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "zod": "^3.25.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.1.0"
+  },
+  "license": "UNLICENSED"
+}

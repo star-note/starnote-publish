@@ -7,10 +7,12 @@
  * adapter is registered yet. Facts marked ⚠️ in SPEC-r8 are best guesses until verified with real
  * accounts.
  */
+import { PLATFORM_DOMAINS } from './domains';
 import { MEDIA_LIMITS } from './media';
 import { PLATFORM_RULES } from './rules';
 
 import type { CredentialKind, CredentialStore } from './binding';
+import type { PlatformDomains } from './domains';
 import type { MediaLimits } from './media';
 import type { PlatformRules } from './rules';
 import type { ContentKind } from './content';
@@ -45,6 +47,18 @@ export type PlatformKey =
   | 'oschina'
   | 'tencent-cloud'
   | '51cto'
+  // 国内垂类（SPEC-r13 §6，桌面端发布台）
+  | 'xueqiu'
+  | 'eastmoney'
+  | 'huxiu'
+  | 'woshipm'
+  | 'sspai'
+  | 'zsxq'
+  | 'dongchedi'
+  | 'hupu'
+  | 'douban'
+  | 'douban-read'
+  | 'mafengwo'
   // 海外
   | 'github-pages'
   | 'medium'
@@ -93,7 +107,9 @@ export type MonetizationModel =
   /** 商单（星图、花火、蒲公英…） */
   | 'brand-deals'
   /** 带货 / CPS */
-  | 'affiliate';
+  | 'affiliate'
+  /** 稿费 / 按篇付费（人人都是产品经理、少数派…） */
+  | 'contributor-fee';
 
 /** Delivery phase in SPEC-r8 §14 (P0 SDK … P7 video); absent = backlog. */
 export type PlatformPhase = 'P0' | 'P1' | 'P2' | 'P3' | 'P4' | 'P5' | 'P6' | 'P7';
@@ -165,6 +181,8 @@ export interface PlatformMeta {
    * platform form's `linkPlacement`). Absent: the platform has no such option.
    */
   linkPlacement?: { supported: true; default: LinkPlacement };
+  /** SPEC-r13 §1: 综合平台 or the domains it is good for (`domains.ts`), for recommendations and the guides. */
+  domains: PlatformDomains;
 }
 
 /** Where the link back to the article goes (SPEC-r12 §2). */
@@ -183,7 +201,7 @@ export const LINK_PLACEMENT: Partial<Record<PlatformKey, LinkPlacement>> = {
 };
 
 /** A registry entry as written below; `mobileFirst` defaults to false. */
-type PlatformEntry = Omit<PlatformMeta, 'mobileFirst'> & { mobileFirst?: boolean };
+type PlatformEntry = Omit<PlatformMeta, 'mobileFirst' | 'domains'> & { mobileFirst?: boolean };
 
 /* ---- shorthands ---- */
 
@@ -563,6 +581,92 @@ const ENTRIES: readonly PlatformEntry[] = [
     ['creator-fund']
   ),
   cnDesktop('51cto', '51CTO', '5', '#e4393c', 'https://blog.51cto.com/', ['creator-fund']),
+  /* ---- 国内垂类（SPEC-r13 §6）：都没有个人可用的发布 API，桌面端发布台；品牌色是近似值，等正式 logo ---- */
+  cnDesktop('xueqiu', '雪球', '雪', '#1c7df7', 'https://xueqiu.com/', ['tips'], 'P1'),
+  cnDesktop(
+    'eastmoney',
+    '东方财富',
+    '东',
+    '#e1322d',
+    'https://mp.eastmoney.com/',
+    ['creator-fund'],
+    'P1'
+  ),
+  cnDesktop('huxiu', '虎嗅', '嗅', '#e8541e', 'https://www.huxiu.com/contribute/', ['tips'], 'P1'),
+  cnDesktop(
+    'woshipm',
+    '人人都是产品经理',
+    '产',
+    '#f7a21b',
+    'https://www.woshipm.com/tougao',
+    ['contributor-fee'],
+    'P1'
+  ),
+  {
+    ...cnDesktop(
+      'sspai',
+      '少数派',
+      '少',
+      '#d71a1b',
+      'https://sspai.com/',
+      ['contributor-fee', 'paid-content'],
+      'P1'
+    ),
+    binding: {
+      ...COOKIE,
+      alternatives: [
+        {
+          kind: 'token',
+          store: 'server',
+          implemented: false,
+          note: '作者 Token（sspai.com/setting/token，MWeb 等编辑器在用）；接口文档不公开，服务端接入要先向少数派要文档（SPEC-r13 服务端优先）',
+        },
+      ],
+    },
+  },
+  {
+    ...cnDesktop(
+      'zsxq',
+      '知识星球',
+      '星',
+      '#16b998',
+      'https://wx.zsxq.com/',
+      ['subscription', 'paid-content'],
+      'P1'
+    ),
+    binding: {
+      ...COOKIE,
+      alternatives: [
+        {
+          kind: 'token',
+          store: 'server',
+          implemented: false,
+          note: '官方 zsxq-cli / MCP（2026-04 起，beta）：用户自建 api-key，可发「标题 + Markdown」主题、定时发；写不了网页长文。第三方服务端代发是否允许待官方确认（SPEC-r13 服务端优先）',
+        },
+      ],
+    },
+  },
+  cnDesktop(
+    'dongchedi',
+    '懂车帝',
+    '懂',
+    '#ffcc00',
+    'https://mp.dcdapp.com/',
+    ['creator-fund'],
+    'P2'
+  ),
+  cnDesktop('hupu', '虎扑', '扑', '#c60100', 'https://bbs.hupu.com/', [], 'P2'),
+  cnDesktop('douban', '豆瓣', '豆', '#007722', 'https://www.douban.com/', ['tips'], 'P2'),
+  cnDesktop(
+    'douban-read',
+    '豆瓣阅读',
+    '阅',
+    '#3a8c55',
+    'https://read.douban.com/submit/',
+    ['paid-content'],
+    'P2'
+  ),
+  cnDesktop('mafengwo', '马蜂窝', '马', '#ffd200', 'https://www.mafengwo.cn/', [], 'P2'),
 
   /* ---------------- 海外 ---------------- */
   {
@@ -1033,6 +1137,7 @@ const ENTRIES: readonly PlatformEntry[] = [
 export const PLATFORMS: readonly PlatformMeta[] = ENTRIES.map((p) => ({
   ...p,
   mobileFirst: p.mobileFirst ?? false,
+  domains: PLATFORM_DOMAINS[p.key],
   ...(PLATFORM_RULES[p.key] ? { rules: PLATFORM_RULES[p.key] } : {}),
   ...(MEDIA_LIMITS[p.key] ? { limits: { media: MEDIA_LIMITS[p.key] } } : {}),
   ...(LINK_PLACEMENT[p.key]

@@ -38,6 +38,15 @@ export interface PlatformRules {
     placement?: 'top' | 'bottom';
     note: string;
   };
+  /**
+   * SPEC-r13 §6.6 财经平台（雪球、东方财富…）: 荐股、收益承诺、拉群带单的说法会被处理，提到个股时提醒披露持仓
+   * （`checkCompliance` 的 `finance`）。
+   */
+  finance?: boolean;
+  /** SPEC-r13 §6.6: the platform takes first publications only (人人都是产品经理 投稿): warn when already published elsewhere. */
+  firstPublish?: boolean;
+  /** SPEC-r13 §6.6: signing there is exclusive (网文平台): warn before sending a signed work anywhere else. */
+  exclusive?: boolean;
   /** 依据: official document name / URL. */
   source: string;
   verified: boolean | '待核实';
@@ -144,6 +153,46 @@ export const PLATFORM_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     { note: CN_TOGGLE_UNVERIFIED },
     'CSDN 发文页限制'
   ),
+  // SPEC-r13 §6: 垂类平台（桌面端发布台）。字数等限制没有可靠来源，先不写；接入时按发文页补。
+  xueqiu: cn(
+    { finance: true },
+    { note: CN_TOGGLE_UNVERIFIED },
+    '雪球 社区公约 / 专栏协议 https://xueqiu.com/law/column'
+  ),
+  eastmoney: cn(
+    { finance: true, noContact: true, noQrcode: true },
+    { note: CN_TOGGLE_UNVERIFIED },
+    '东方财富 股吧管理规定 https://guba.eastmoney.com/gltl.aspx ；财富号公告 https://mp.eastmoney.com/collect/pc_writer/treaty.html'
+  ),
+  huxiu: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '虎嗅 投稿须知 https://www.huxiu.com/contribute/'),
+  woshipm: cn(
+    { firstPublish: true },
+    { note: CN_TOGGLE_UNVERIFIED },
+    '人人都是产品经理 原创激励计划（要求首发）https://zt.woshipm.com/media/author.html'
+  ),
+  sspai: cn(
+    {},
+    { note: CN_TOGGLE_UNVERIFIED },
+    '少数派 社区规则 https://sspai.com/page/community-rules'
+  ),
+  zsxq: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '知识星球 网页版长文（星主 / 成员发帖）'),
+  dongchedi: cn(
+    {},
+    { note: CN_TOGGLE_UNVERIFIED },
+    '懂车帝 创作者运营规范 https://dongchedi.com/public/protocol/opsspecs'
+  ),
+  hupu: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '虎扑 用户协议 https://www.hupu.com/policies/terms'),
+  douban: cn(
+    {},
+    { note: CN_TOGGLE_UNVERIFIED },
+    '豆瓣 使用协议 https://www.douban.com/about/agreement'
+  ),
+  'douban-read': cn(
+    {},
+    { note: CN_TOGGLE_UNVERIFIED },
+    '豆瓣阅读 作者帮助中心 https://read.douban.com/helpcenter/works_management/'
+  ),
+  mafengwo: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '马蜂窝 游记发布（网页编辑器待核实）'),
   xiaohongshu: cn(
     {
       title: { max: 20 },

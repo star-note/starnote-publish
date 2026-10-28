@@ -2,7 +2,7 @@
 
 由 `scripts/build-logos.mts` 生成（2026-10-19）。下载文件一律视为不可信：SVG 经白名单清洗（`src/sanitize.ts`），位图经 sharp 解码后重新编码为 64×64 / 128×128 PNG。
 
-合计 53 个：simple-icons 33，官网 18，自有 1，占位 1（2026-10-26 补 discord、slack）。
+合计 64 个：simple-icons 33，官网 18，自有 1，占位 12（2026-10-26 补 discord、slack；2026-10-28 补 SPEC-r13 的 11 个国内垂类平台，均为占位）。
 
 所有平台名称与 logo 均为其各自所有者的商标，此处仅用于指示发布目标平台，不表示任何合作或背书。
 
@@ -34,6 +34,17 @@
 | oschina         | oschina-64.png, oschina-128.png                 | https://static.oschina.net/oschina/web/v2/favicon.ico                                                                                                                                                                                     | 品牌商标，仅用于指示平台                                    | 2026-10-19 | 原图仅 32px，已放大              |
 | tencent-cloud   | tencent-cloud-64.png, tencent-cloud-128.png     | https://cloudcache.tencent-cloud.com/qcloud/favicon.ico?t=201902181234                                                                                                                                                                    | 品牌商标，仅用于指示平台                                    | 2026-10-19 | 原图仅 32px，已放大              |
 | 51cto           | 51cto-64.png, 51cto-128.png                     | https://blog.51cto.com/favicon.ico                                                                                                                                                                                                        | 品牌商标，仅用于指示平台                                    | 2026-10-19 | 原图仅 48px，已放大              |
+| xueqiu | xueqiu.svg | 占位 | 占位（辰记生成） | 2026-10-28 | SPEC-r13 新平台，品牌色为近似值；正式 logo 待下载 |
+| eastmoney | eastmoney.svg | 占位 | 占位（辰记生成） | 2026-10-28 | SPEC-r13 新平台，品牌色为近似值；正式 logo 待下载 |
+| huxiu | huxiu.svg | 占位 | 占位（辰记生成） | 2026-10-28 | SPEC-r13 新平台，品牌色为近似值；正式 logo 待下载 |
+| woshipm | woshipm.svg | 占位 | 占位（辰记生成） | 2026-10-28 | SPEC-r13 新平台，品牌色为近似值；正式 logo 待下载 |
+| sspai | sspai.svg | 占位 | 占位（辰记生成） | 2026-10-28 | SPEC-r13 新平台，品牌色为近似值；正式 logo 待下载 |
+| zsxq | zsxq.svg | 占位 | 占位（辰记生成） | 2026-10-28 | SPEC-r13 新平台，品牌色为近似值；正式 logo 待下载 |
+| dongchedi | dongchedi.svg | 占位 | 占位（辰记生成） | 2026-10-28 | SPEC-r13 新平台，品牌色为近似值；正式 logo 待下载 |
+| hupu | hupu.svg | 占位 | 占位（辰记生成） | 2026-10-28 | SPEC-r13 新平台，品牌色为近似值；正式 logo 待下载 |
+| douban | douban.svg | 占位 | 占位（辰记生成） | 2026-10-28 | SPEC-r13 新平台，品牌色为近似值；正式 logo 待下载 |
+| douban-read | douban-read.svg | 占位 | 占位（辰记生成） | 2026-10-28 | SPEC-r13 新平台，品牌色为近似值；正式 logo 待下载 |
+| mafengwo | mafengwo.svg | 占位 | 占位（辰记生成） | 2026-10-28 | SPEC-r13 新平台，品牌色为近似值；正式 logo 待下载 |
 | github-pages    | github-pages.svg                                | https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/github.svg（simple-icons@16.35.0；上游：https://github.com/logos）                                                                                                        | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-19 |                                  |
 | medium          | medium.svg                                      | https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/medium.svg（simple-icons@16.35.0；上游：https://medium.design/logos-and-brand-guidelines-f1a01a733592）                                                                   | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-19 |                                  |
 | substack        | substack.svg                                    | https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/substack.svg（simple-icons@16.35.0；上游：https://on.substack.com）                                                                                                       | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-19 |                                  |
