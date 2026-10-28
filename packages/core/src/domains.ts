@@ -118,6 +118,14 @@ export const PLATFORM_DOMAINS: Record<PlatformKey, PlatformDomains> = {
   bluesky: general(),
   mastodon: general(),
   tumblr: general('anime', 'humanities', 'entertainment'),
+  // 海外服务器代发（SPEC-r14 A1）
+  convertkit: general('business', 'tech', 'humanities'),
+  beehiiv: general('business', 'tech'),
+  buttondown: general('tech', 'humanities'),
+  hatena: general(),
+  qiita: focus('tech'),
+  zenn: focus('tech'),
+  telegraph: general(),
   // 海外通用模式（SPEC-r14 A2）
   note: general(),
   kakuyomu: focus('humanities'),

@@ -13,6 +13,16 @@ const devto = await load('devto');
 const hashnode = await load('hashnode');
 const ghost = await load('ghost');
 const wordpress = await load('wordpress');
+// SPEC-r14 A1
+const a1 = {
+  convertkit: await load('convertkit'),
+  beehiiv: await load('beehiiv'),
+  buttondown: await load('buttondown'),
+  hatena: await load('hatena'),
+  qiita: await load('qiita'),
+  zenn: await load('zenn'),
+  telegraph: await load('telegraph'),
+};
 
 const t = (text, marks) => (marks ? { type: 'text', text, marks } : { type: 'text', text });
 const p = (...content) => ({ type: 'paragraph', content });
@@ -42,7 +52,12 @@ const json = {
   ],
 };
 const doc = convert(json);
-const content = { kind: 'article', doc, canonicalUrl: 'https://starnote.app/@me/8Kq2xA7b' };
+const content = {
+  kind: 'article',
+  doc,
+  canonicalUrl: 'https://starnote.app/@me/8Kq2xA7b',
+  shortId: '8Kq2xA7b',
+};
 const common = {
   title: '标题 "引号" & <tag>',
   summary: '一句话摘要 第二行',
@@ -75,6 +90,13 @@ const golden = {
   ghost: entry(ghost.ghostRelayBody(g, gForm)),
   wordpress: entry(wordpress.wordpressRelayBody(w, wForm)),
 };
+// SPEC-r14 A1: each platform's default form
+const cap = (k) => k[0].toUpperCase() + k.slice(1);
+for (const [key, mod] of Object.entries(a1)) {
+  const form = mod[`${key}Schema`].parse({});
+  const r = mod[`render${cap(key)}`](doc, form, common, content);
+  golden[key] = entry(mod[`${key}RelayBody`](r));
+}
 
 const out = process.argv[2];
 const text = `${JSON.stringify(golden, null, 2)}\n`;

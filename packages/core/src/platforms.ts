@@ -88,6 +88,14 @@ export type PlatformKey =
   | 'bluesky'
   | 'mastodon'
   | 'tumblr'
+  // 海外：官方接口，服务器代发（SPEC-r14 A1）
+  | 'convertkit'
+  | 'beehiiv'
+  | 'buttondown'
+  | 'hatena'
+  | 'qiita'
+  | 'zenn'
+  | 'telegraph'
   // 海外：桌面端发布台通用模式（SPEC-r14 A2）
   | 'note'
   | 'kakuyomu'
@@ -118,6 +126,14 @@ export const PLATFORM_LANGS: Partial<Record<PlatformKey, PlatformLang[]>> = {
   wattpad: ['*'],
   steady: ['de', 'en'],
   kofi: ['*'],
+  // SPEC-r14 A1
+  convertkit: ['en'],
+  beehiiv: ['en'],
+  buttondown: ['en'],
+  hatena: ['ja'],
+  qiita: ['ja'],
+  zenn: ['ja'],
+  telegraph: ['*'],
 };
 
 /** How an author earns there (display only). */
@@ -1176,6 +1192,148 @@ const ENTRIES: readonly PlatformEntry[] = [
     runtimes: OWN_API,
     binding: OAUTH_LOCAL('tumblr'),
     monetization: ['tips'],
+    phase: 'P2',
+    stage: 'implemented',
+  },
+  /* ---- 海外：官方接口，服务器代发（SPEC-r14 A1）；凭据存服务器，网页 / 桌面渲染、服务器发送，可定时 ---- */
+  {
+    key: 'convertkit',
+    label: 'Kit',
+    short: 'K',
+    color: '#48b8f8',
+    region: 'global',
+    homepage: 'https://kit.com/',
+    contentTypes: ARTICLE,
+    runtimes: TOKEN_API,
+    // Kit v4 API key（X-Kit-Api-Key，✅ developers.kit.com/api-reference/authentication）；建 broadcast，默认存草稿
+    binding: {
+      kind: 'token',
+      store: 'server',
+      provider: 'convertkit',
+      fields: ['api_key'],
+      createUrl: 'https://app.kit.com/account_settings/developer_settings',
+    },
+    monetization: ['subscription'],
+    phase: 'P2',
+    stage: 'implemented',
+  },
+  {
+    key: 'beehiiv',
+    label: 'beehiiv',
+    short: 'b',
+    color: '#7a4fdc',
+    region: 'global',
+    homepage: 'https://www.beehiiv.com/',
+    contentTypes: ARTICLE,
+    runtimes: TOKEN_API,
+    // Posts API 只对 Pro / Enterprise 档位开放（developers.beehiiv.com，2026-10）
+    binding: {
+      kind: 'token',
+      store: 'server',
+      provider: 'beehiiv',
+      fields: ['api_key', 'publication_id'],
+      // ⚠️ Settings → Integrations → API（第三方集成文档的说法，官方指南页未能读取）
+      createUrl: 'https://app.beehiiv.com/settings/integrations',
+    },
+    monetization: ['subscription', 'ad-share'],
+    phase: 'P2',
+    stage: 'implemented',
+  },
+  {
+    key: 'buttondown',
+    label: 'Buttondown',
+    short: 'B',
+    color: '#0069ff',
+    region: 'global',
+    homepage: 'https://buttondown.com/',
+    contentTypes: ARTICLE,
+    runtimes: TOKEN_API,
+    binding: {
+      kind: 'token',
+      store: 'server',
+      provider: 'buttondown',
+      fields: ['api_key'],
+      // ✅ docs.buttondown.com/api-introduction：API key 在 API requests 页
+      createUrl: 'https://buttondown.com/requests',
+    },
+    monetization: ['subscription'],
+    phase: 'P2',
+    stage: 'implemented',
+  },
+  {
+    key: 'hatena',
+    label: 'はてなブログ',
+    short: 'は',
+    color: '#3d3f44',
+    region: 'global',
+    homepage: 'https://hatenablog.com/',
+    contentTypes: ARTICLE,
+    runtimes: TOKEN_API,
+    // AtomPub：Hatena ID + ブログ ID + API キー（ブログの詳細設定 → AtomPub）
+    binding: {
+      kind: 'token',
+      store: 'server',
+      provider: 'hatena',
+      fields: ['hatena_id', 'blog_id', 'api_key'],
+    },
+    monetization: ['ad-share', 'affiliate'],
+    phase: 'P2',
+    stage: 'implemented',
+  },
+  {
+    key: 'qiita',
+    label: 'Qiita',
+    short: 'Q',
+    color: '#55c500',
+    region: 'global',
+    homepage: 'https://qiita.com/',
+    contentTypes: ARTICLE,
+    runtimes: TOKEN_API,
+    binding: {
+      kind: 'token',
+      store: 'server',
+      provider: 'qiita',
+      fields: ['token'],
+      createUrl: 'https://qiita.com/settings/applications',
+    },
+    monetization: [],
+    phase: 'P2',
+    stage: 'implemented',
+  },
+  {
+    key: 'zenn',
+    label: 'Zenn',
+    short: 'Z',
+    color: '#3ea8ff',
+    region: 'global',
+    homepage: 'https://zenn.dev/',
+    contentTypes: ARTICLE,
+    runtimes: TOKEN_API,
+    // GitHub 仓库同步：复用 GitHub 令牌（同 GitHub Pages），选 Zenn 连携的仓库
+    binding: {
+      kind: 'token',
+      store: 'server',
+      provider: 'github',
+      fields: ['zenn_username', 'repo', 'token'],
+      // ⚠️ Zenn 后台「デプロイ管理」的地址按经验填写
+      createUrl: 'https://zenn.dev/dashboard/deploys',
+    },
+    monetization: ['tips', 'paid-content'],
+    phase: 'P2',
+    stage: 'implemented',
+  },
+  {
+    key: 'telegraph',
+    label: 'Telegraph',
+    short: 'T',
+    color: '#333333',
+    region: 'global',
+    homepage: 'https://telegra.ph/',
+    contentTypes: ARTICLE,
+    runtimes: TOKEN_API,
+    // createAccount 自动建号，access_token 存服务器；用户只可选填作者名
+    binding: { kind: 'token', store: 'server', provider: 'telegraph', fields: ['author_name'] },
+    monetization: [],
     phase: 'P2',
     stage: 'implemented',
   },
