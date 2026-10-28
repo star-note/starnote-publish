@@ -118,6 +118,18 @@ export const PLATFORM_DOMAINS: Record<PlatformKey, PlatformDomains> = {
   bluesky: general(),
   mastodon: general(),
   tumblr: general('anime', 'humanities', 'entertainment'),
+  // 海外通用模式（SPEC-r14 A2）
+  note: general(),
+  kakuyomu: focus('humanities'),
+  'naver-blog': general(),
+  tistory: general(),
+  brunch: focus('humanities', 'emotion', 'life'),
+  postype: focus('humanities', 'anime', 'entertainment'),
+  vocus: general(),
+  webnovel: focus('humanities'),
+  wattpad: focus('humanities'),
+  steady: general('business', 'humanities'),
+  kofi: general(),
 };
 
 /** Problems with a platform's labels (empty when fine): the registry test runs this over every platform. */

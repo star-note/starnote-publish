@@ -87,9 +87,38 @@ export type PlatformKey =
   | 'instagram'
   | 'bluesky'
   | 'mastodon'
-  | 'tumblr';
+  | 'tumblr'
+  // 海外：桌面端发布台通用模式（SPEC-r14 A2）
+  | 'note'
+  | 'kakuyomu'
+  | 'naver-blog'
+  | 'tistory'
+  | 'brunch'
+  | 'postype'
+  | 'vocus'
+  | 'webnovel'
+  | 'wattpad'
+  | 'steady'
+  | 'kofi';
 
 export type PlatformRegion = 'cn' | 'global';
+
+/** SPEC-r14 A4: a platform's main reader language. */
+export type PlatformLang =
+  'zh-CN' | 'zh-TW' | 'en' | 'ja' | 'ko' | 'de' | 'fr' | 'es' | 'pt' | 'ru' | '*';
+export const PLATFORM_LANGS: Partial<Record<PlatformKey, PlatformLang[]>> = {
+  note: ['ja'],
+  kakuyomu: ['ja'],
+  'naver-blog': ['ko'],
+  tistory: ['ko'],
+  brunch: ['ko'],
+  postype: ['ko'],
+  vocus: ['zh-TW'],
+  webnovel: ['en'],
+  wattpad: ['*'],
+  steady: ['de', 'en'],
+  kofi: ['*'],
+};
 
 /** How an author earns there (display only). */
 export type MonetizationModel =
@@ -183,6 +212,8 @@ export interface PlatformMeta {
   linkPlacement?: { supported: true; default: LinkPlacement };
   /** SPEC-r13 §1: 综合平台 or the domains it is good for (`domains.ts`), for recommendations and the guides. */
   domains: PlatformDomains;
+  /** SPEC-r14 A4: the readers' languages (`*` = any); absent = not labelled yet. */
+  langs?: PlatformLang[];
 }
 
 /** Where the link back to the article goes (SPEC-r12 §2). */
@@ -287,6 +318,22 @@ const NONE = { kind: 'none', store: 'none' } as const;
 
 const ARTICLE: ContentKind[] = ['article'];
 const SHORT: ContentKind[] = ['short-text'];
+
+/** SPEC-r14 A2: overseas platforms without a personal publishing API — the desktop 发布台, 通用模式. */
+function globalDesktop(
+  key: PlatformKey,
+  label: string,
+  short: string,
+  color: string,
+  homepage: string,
+  monetization: MonetizationModel[],
+  phase?: PlatformPhase
+): PlatformEntry {
+  return {
+    ...cnDesktop(key, label, short, color, homepage, monetization, phase),
+    region: 'global',
+  };
+}
 
 /** Desktop-only HTML 图文 platforms (头条号 / 百家号 / 网易号 …). */
 function cnDesktop(
@@ -1132,12 +1179,105 @@ const ENTRIES: readonly PlatformEntry[] = [
     phase: 'P2',
     stage: 'implemented',
   },
+  /* ---- 海外：桌面端发布台通用模式（SPEC-r14 A2）；品牌色是近似值 ---- */
+  globalDesktop(
+    'note',
+    'note',
+    'n',
+    '#41c9b4',
+    'https://note.com/',
+    ['paid-content', 'subscription', 'tips'],
+    'P2'
+  ),
+  globalDesktop(
+    'kakuyomu',
+    'カクヨム',
+    'カ',
+    '#4baae0',
+    'https://kakuyomu.jp/',
+    ['ad-share'],
+    'P2'
+  ),
+  globalDesktop(
+    'naver-blog',
+    'Naver 블로그',
+    'N',
+    '#03c75a',
+    'https://blog.naver.com/',
+    ['ad-share'],
+    'P2'
+  ),
+  globalDesktop(
+    'tistory',
+    'Tistory',
+    'T',
+    '#eb531f',
+    'https://www.tistory.com/',
+    ['ad-share'],
+    'P2'
+  ),
+  globalDesktop('brunch', '브런치스토리', 'b', '#00c3bd', 'https://brunch.co.kr/', ['tips'], 'P2'),
+  globalDesktop(
+    'postype',
+    '포스타입',
+    'P',
+    '#f0525c',
+    'https://www.postype.com/',
+    ['paid-content', 'subscription'],
+    'P2'
+  ),
+  globalDesktop(
+    'vocus',
+    '方格子 vocus',
+    '方',
+    '#ff6c2c',
+    'https://vocus.cc/',
+    ['paid-content', 'subscription', 'tips'],
+    'P2'
+  ),
+  globalDesktop(
+    'webnovel',
+    'Webnovel',
+    'W',
+    '#4c5fe2',
+    'https://www.webnovel.com/',
+    ['paid-content', 'creator-fund'],
+    'P2'
+  ),
+  globalDesktop(
+    'wattpad',
+    'Wattpad',
+    'W',
+    '#ff500a',
+    'https://www.wattpad.com/',
+    ['paid-content'],
+    'P2'
+  ),
+  globalDesktop(
+    'steady',
+    'Steady',
+    'S',
+    '#291e38',
+    'https://steadyhq.com/',
+    ['subscription'],
+    'P2'
+  ),
+  globalDesktop(
+    'kofi',
+    'Ko-fi',
+    'K',
+    '#13c3ff',
+    'https://ko-fi.com/',
+    ['tips', 'subscription'],
+    'P2'
+  ),
 ];
 
 export const PLATFORMS: readonly PlatformMeta[] = ENTRIES.map((p) => ({
   ...p,
   mobileFirst: p.mobileFirst ?? false,
   domains: PLATFORM_DOMAINS[p.key],
+  ...(PLATFORM_LANGS[p.key] ? { langs: PLATFORM_LANGS[p.key] } : {}),
   ...(PLATFORM_RULES[p.key] ? { rules: PLATFORM_RULES[p.key] } : {}),
   ...(MEDIA_LIMITS[p.key] ? { limits: { media: MEDIA_LIMITS[p.key] } } : {}),
   ...(LINK_PLACEMENT[p.key]

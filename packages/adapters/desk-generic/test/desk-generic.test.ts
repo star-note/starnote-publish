@@ -23,10 +23,12 @@ const doc = convert({
 });
 
 describe('通用模式 adapters', () => {
-  it('covers the eleven domestic vertical platforms, all in the registry', () => {
-    expect(GENERIC_DESK_KEYS).toHaveLength(11);
+  it('covers the eleven domestic vertical platforms and the eleven overseas ones (SPEC-r14 A2), all in the registry', () => {
+    expect(GENERIC_DESK_KEYS).toHaveLength(22);
     expect(createGenericDeskElectronAdapters().map((a) => a.key)).toEqual([...GENERIC_DESK_KEYS]);
-    for (const key of GENERIC_DESK_KEYS) expect(platformMeta(key)?.region, key).toBe('cn');
+    const regions = GENERIC_DESK_KEYS.map((key) => platformMeta(key)?.region);
+    expect(regions.filter((r) => r === 'cn')).toHaveLength(11);
+    expect(regions.filter((r) => r === 'global')).toHaveLength(11);
   });
 
   it('binds by logging in on the desktop and confirming, without a session check', () => {
