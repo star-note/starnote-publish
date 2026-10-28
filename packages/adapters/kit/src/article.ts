@@ -97,9 +97,22 @@ export function linkedImagesReport(n: number, platform: string): ReportItem[] {
 export function originNoteHtml(url: string, lang?: string): string {
   const esc = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  if (lang && /^ja/i.test(lang))
+    return `\n<hr>\n<p><em>この記事は <a href="${esc(url)}">StarNote（辰記）</a> で最初に公開されました。</em></p>`;
   const en = !!lang && !/^zh/i.test(lang);
   const link = `<a href="${esc(url)}">${en ? esc(url) : '辰记'}</a>`;
   return `\n<hr>\n<p><em>${en ? `Originally published at ${link}.` : `本文首发于${link}。`}</em></p>`;
+}
+
+/**
+ * SPEC-r14 A1: the same closing line in Markdown (Qiita, Zenn, はてなブログ, Buttondown): Chinese, Japanese for a
+ * Japanese article, English otherwise.
+ */
+export function originNoteMarkdown(url: string, lang?: string): string {
+  if (lang && /^ja/i.test(lang))
+    return `\n\n---\n\n*この記事は [StarNote（辰記）](${url}) で最初に公開されました。*`;
+  if (lang && !/^zh/i.test(lang)) return `\n\n---\n\n*Originally published at [${url}](${url}).*`;
+  return `\n\n---\n\n*本文首发于[辰记](${url})。*`;
 }
 
 /** Relative `/assets/…` (or `./…`) → absolute on `base`; absolute http(s) kept; anything else dropped. */

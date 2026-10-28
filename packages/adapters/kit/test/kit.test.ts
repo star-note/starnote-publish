@@ -117,6 +117,14 @@ const ENTRIES = [
   'packages/adapters/ghost/src/index.ts',
   'packages/adapters/wordpress/src/index.ts',
   'packages/adapters/share/src/index.ts',
+  // SPEC-r14 A1
+  'packages/adapters/convertkit/src/index.ts',
+  'packages/adapters/beehiiv/src/index.ts',
+  'packages/adapters/buttondown/src/index.ts',
+  'packages/adapters/hatena/src/index.ts',
+  'packages/adapters/qiita/src/index.ts',
+  'packages/adapters/zenn/src/index.ts',
+  'packages/adapters/telegraph/src/index.ts',
 ];
 const FORBIDDEN = new Set(['electron', ...builtinModules]);
 

@@ -39,6 +39,19 @@ importers:
         specifier: ^4.1.0
         version: 4.6.5
 
+  packages/adapters/beehiiv:
+    dependencies:
+      '@starnote/publish-core':
+        specifier: workspace:*
+        version: link:../../core
+      '@starnote/publish-kit':
+        specifier: workspace:*
+        version: link:../kit
+    devDependencies:
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.5
+
   packages/adapters/blogger:
     dependencies:
       '@starnote/publish-core':
@@ -65,11 +78,37 @@ importers:
         specifier: ^4.1.0
         version: 4.6.5
 
+  packages/adapters/buttondown:
+    dependencies:
+      '@starnote/publish-core':
+        specifier: workspace:*
+        version: link:../../core
+      '@starnote/publish-kit':
+        specifier: workspace:*
+        version: link:../kit
+    devDependencies:
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.5
+
   packages/adapters/chenji:
     dependencies:
       '@starnote/publish-core':
         specifier: workspace:*
         version: link:../../core
+    devDependencies:
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.5
+
+  packages/adapters/convertkit:
+    dependencies:
+      '@starnote/publish-core':
+        specifier: workspace:*
+        version: link:../../core
+      '@starnote/publish-kit':
+        specifier: workspace:*
+        version: link:../kit
     devDependencies:
       zod:
         specifier: ^4.1.0
@@ -173,6 +212,19 @@ importers:
         specifier: ^4.1.0
         version: 4.6.5
 
+  packages/adapters/hatena:
+    dependencies:
+      '@starnote/publish-core':
+        specifier: workspace:*
+        version: link:../../core
+      '@starnote/publish-kit':
+        specifier: workspace:*
+        version: link:../kit
+    devDependencies:
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.5
+
   packages/adapters/instagram:
     dependencies:
       '@starnote/publish-core':
@@ -251,6 +303,19 @@ importers:
         specifier: ^4.1.0
         version: 4.6.5
 
+  packages/adapters/qiita:
+    dependencies:
+      '@starnote/publish-core':
+        specifier: workspace:*
+        version: link:../../core
+      '@starnote/publish-kit':
+        specifier: workspace:*
+        version: link:../kit
+    devDependencies:
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.5
+
   packages/adapters/reddit:
     dependencies:
       '@starnote/publish-core':
@@ -304,6 +369,19 @@ importers:
       '@starnote/publish-share':
         specifier: workspace:*
         version: link:../share
+    devDependencies:
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.5
+
+  packages/adapters/telegraph:
+    dependencies:
+      '@starnote/publish-core':
+        specifier: workspace:*
+        version: link:../../core
+      '@starnote/publish-kit':
+        specifier: workspace:*
+        version: link:../kit
     devDependencies:
       zod:
         specifier: ^4.1.0
@@ -366,6 +444,22 @@ importers:
       '@starnote/publish-core':
         specifier: workspace:*
         version: link:../../core
+      '@starnote/publish-kit':
+        specifier: workspace:*
+        version: link:../kit
+    devDependencies:
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.5
+
+  packages/adapters/zenn:
+    dependencies:
+      '@starnote/publish-core':
+        specifier: workspace:*
+        version: link:../../core
+      '@starnote/publish-github-pages':
+        specifier: workspace:*
+        version: link:../github-pages
       '@starnote/publish-kit':
         specifier: workspace:*
         version: link:../kit

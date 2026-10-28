@@ -342,6 +342,63 @@ export const PLATFORM_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
 
   // ---------------------------------------------------------------- 海外
   'github-pages': intl({}, INTL_NO_RULE, '自有站点：无平台规则', true),
+  // SPEC-r14 A1: 海外服务器代发（官方接口）
+  convertkit: intl(
+    {
+      payout: {
+        mainland: 'no',
+        note: '付费 Newsletter 走 Stripe，大陆个人不能直接收款；港、新账户可以',
+      },
+    },
+    INTL_NO_RULE,
+    'Kit Acceptable Use Policy；developers.kit.com（broadcasts）'
+  ),
+  beehiiv: intl(
+    {
+      payout: {
+        mainland: 'no',
+        note: '付费订阅走 Stripe，大陆个人不能直接收款；广告网络收款条件未核实 ⚠️',
+      },
+    },
+    INTL_NO_RULE,
+    'beehiiv Terms of Use；developers.beehiiv.com（Posts API 限 Pro / Enterprise 档位）'
+  ),
+  buttondown: intl(
+    { payout: { mainland: 'no', note: '付费订阅走 Stripe，大陆个人不能直接收款；港、新账户可以' } },
+    INTL_NO_RULE,
+    'Buttondown Terms of Service；docs.buttondown.com'
+  ),
+  hatena: intl(
+    {
+      payout: {
+        mainland: 'unknown',
+        note: '收入来自 AdSense / 联盟（もしもアフィリエイト等），按各自的收款规则 ⚠️',
+      },
+    },
+    INTL_NO_RULE,
+    'はてなブログ 利用規約；developer.hatena.ne.jp（AtomPub）'
+  ),
+  // Qiita：标签 1–5 个（✅ help.qiita.com/ja/articles/qiita-tag「最大5個」），没有作者收入
+  qiita: intl(
+    { tags: { max: 5, min: 1, format: 'plain' } },
+    INTL_NO_RULE,
+    'Qiita 利用規約 / コミュニティガイドライン；qiita.com/api/v2/docs'
+  ),
+  // Zenn：标题 ≤ 70、topics ≤ 5（✅ zenn-editor 的校验 zenn-model/src/utils.ts）
+  zenn: intl(
+    {
+      title: { max: 70 },
+      tags: { max: 5, format: 'plain' },
+      payout: {
+        mainland: 'unknown',
+        note: '打赏 / 付费本的收益提到金融机构账户或换亚马逊礼品卡；是否接受海外账户官方未写明 ⚠️',
+      },
+    },
+    INTL_NO_RULE,
+    'Zenn 利用規約；zenn.dev/zenn/articles/zenn-cli-guide'
+  ),
+  // Telegraph：标题 1–256，正文 ≤ 64 KB（✅ telegra.ph/api），没有作者收入
+  telegraph: intl({ title: { max: 256 } }, INTL_NO_RULE, 'telegra.ph/api'),
   // SPEC-r14 A2: 海外通用模式；AI 规则没有找到专门条款的按 INTL_NO_RULE
   note: intl(
     { payout: { mainland: 'no', note: '收益只能提到日本国内的本人账户 ⚠️' } },

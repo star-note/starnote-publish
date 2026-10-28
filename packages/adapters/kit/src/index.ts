@@ -79,6 +79,7 @@ export {
   newPostReport,
   originLinkOf,
   originNoteHtml,
+  originNoteMarkdown,
   placeLink,
   type CardSource,
 } from './article';

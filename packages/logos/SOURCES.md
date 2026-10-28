@@ -2,7 +2,7 @@
 
 由 `scripts/build-logos.mts` 生成（2026-10-19）。下载文件一律视为不可信：SVG 经白名单清洗（`src/sanitize.ts`），位图经 sharp 解码后重新编码为 64×64 / 128×128 PNG。
 
-合计 75 个：simple-icons 33，官网 38，自有 1，占位 3（2026-10-26 补 discord、slack；2026-10-28 补 SPEC-r13 的 11 个国内垂类平台，10 个取自官网，马蜂窝官网只有 16px 图标，暂用占位；同日补 SPEC-r14 的 11 个海外平台，10 个取自官网，Webnovel 官网无法访问，暂用占位）。
+合计 82 个：simple-icons 33，官网 45，自有 1，占位 3（2026-10-26 补 discord、slack；2026-10-28 补 SPEC-r13 的 11 个国内垂类平台，10 个取自官网，马蜂窝官网只有 16px 图标，暂用占位；同日补 SPEC-r14 的 11 个海外平台，10 个取自官网，Webnovel 官网无法访问，暂用占位；同日补 SPEC-r14 A1 的 7 个服务器代发平台，全部取自官网，Kit、Telegraph 原图较小已放大）。
 
 所有平台名称与 logo 均为其各自所有者的商标，此处仅用于指示发布目标平台，不表示任何合作或背书。
 
@@ -56,6 +56,13 @@
 | wattpad | wattpad-64.png, wattpad-128.png | https://www.wattpad.com/apple-touch-icon.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 新平台；原图仅 57px，已放大 |
 | steady | steady-64.png, steady-128.png | https://steadyhq.com/apple-touch-icon.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 新平台 |
 | kofi | kofi-64.png, kofi-128.png | https://ko-fi.com/apple-touch-icon.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 新平台 |
+| convertkit | convertkit-64.png, convertkit-128.png | https://kit.com/favicon.ico | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 A1 新平台；原图最大 48px，已放大 |
+| beehiiv | beehiiv-64.png, beehiiv-128.png | https://beehiiv-marketing-images.s3.amazonaws.com/Redesign2023/favicon.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 A1 新平台；www.beehiiv.com 页面引用的图标 |
+| buttondown | buttondown-64.png, buttondown-128.png | https://static-assets.buttondown.com/images/icons/icon@192.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 A1 新平台 |
+| hatena | hatena-64.png, hatena-128.png | https://cdn.blog.st-hatena.com/images/common/meta-icon-global.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 A1 新平台 |
+| qiita | qiita-64.png, qiita-128.png | https://cdn.qiita.com/assets/favicons/public/apple-touch-icon-ec5ba42a24ae923f16825592efdc356f.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 A1 新平台 |
+| zenn | zenn-64.png, zenn-128.png | https://static.zenn.studio/images/icon.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 A1 新平台 |
+| telegraph | telegraph-64.png, telegraph-128.png | https://telegra.ph/images/favicon_2x.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 A1 新平台；原图仅 32px，已放大 |
 | github-pages    | github-pages.svg                                | https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/github.svg（simple-icons@16.35.0；上游：https://github.com/logos）                                                                                                        | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-19 |                                  |
 | medium          | medium.svg                                      | https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/medium.svg（simple-icons@16.35.0；上游：https://medium.design/logos-and-brand-guidelines-f1a01a733592）                                                                   | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-19 |                                  |
 | substack        | substack.svg                                    | https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/substack.svg（simple-icons@16.35.0；上游：https://on.substack.com）                                                                                                       | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-19 |                                  |

@@ -172,6 +172,37 @@ const RULES: Record<string, Rule> = {
     if (!/^\/[^/]+/.test(u.pathname)) return null;
     return asUrl(plainUrl(u, []).replace(/^http:/, 'https:'));
   },
+  // SPEC-r14 A1
+  qiita(u, host) {
+    // `qiita.com/{user}/items/{20 hex}`: the API's item id
+    if (host !== 'qiita.com') return null;
+    const m = /^\/([A-Za-z0-9_-]+)\/items\/([0-9a-f]{20})\/?$/.exec(u.pathname);
+    return m ? ok(m[2]!, `https://qiita.com/${m[1]}/items/${m[2]}`) : null;
+  },
+  zenn(u, host) {
+    // `zenn.dev/{user}/articles/{slug}`: the slug is the file name in the repository (`publish`'s id)
+    if (host !== 'zenn.dev') return null;
+    const m = /^\/([A-Za-z0-9_-]+)\/articles\/([0-9a-z_-]{12,50})\/?$/.exec(u.pathname);
+    return m ? ok(m[2]!, `https://zenn.dev/${m[1]}/articles/${m[2]}`) : null;
+  },
+  telegraph(u, host) {
+    // `telegra.ph/{path}`: `publish` returns the path percent-encoded (Telegraph keeps non-ASCII titles in it)
+    if (host !== 'telegra.ph' && host !== 'graph.org') return null;
+    const m = /^\/([^/]+)\/?$/.exec(u.pathname);
+    if (!m || m[1] === 'api') return null;
+    let path: string;
+    try {
+      path = encodeURIComponent(decodeURIComponent(m[1]!));
+    } catch {
+      return null;
+    }
+    return ok(path, `https://telegra.ph/${path}`);
+  },
+  hatena(u) {
+    // はてなブログ: `{blog}/entry/…` on a hatenablog / hateblo / hatenadiary domain or the blog's own domain
+    if (!/^\/entry\/./.test(u.pathname)) return null;
+    return asUrl(plainUrl(u, []).replace(/^http:/, 'https:'));
+  },
   mastodon(u) {
     const p = u.pathname;
     const m = /^\/@([^/]+)\/(\d+)\/?$/.exec(p) ?? /^\/users\/([^/]+)\/statuses\/(\d+)\/?$/.exec(p);
