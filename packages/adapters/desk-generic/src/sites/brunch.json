@@ -1,0 +1,29 @@
+{
+  "platform": "brunch",
+  "version": "0.1.0",
+  "minCore": "0.1.0",
+  "issuedAt": "2026-10-28T00:00:00.000Z",
+  "urls": {
+    "home": "https://brunch.co.kr/",
+    "write": "https://brunch.co.kr/",
+    "verify": "https://brunch.co.kr/"
+  },
+  "selectors": {},
+  "session": {
+    "loginUrl": "https://brunch.co.kr/",
+    "allowedHosts": ["brunch.co.kr", "accounts.kakao.com", "kauth.kakao.com", "kakao.com"],
+    "success": {
+      "manual": true
+    },
+    "fetchPage": "https://brunch.co.kr/robots.txt"
+  },
+  "flags": {
+    "generic": true
+  },
+  "unverified": [
+    "urls.write：只是平台首页，没有登录核实写作页地址",
+    "session.allowedHosts：平台主域名和常见第三方登录（Google、Apple 等）",
+    "selectors：未知，发布台走通用模式（复制后手动粘贴）",
+    "published：未知，由用户点「我已发布」"
+  ]
+}

@@ -2,7 +2,7 @@
 
 由 `scripts/build-logos.mts` 生成（2026-10-19）。下载文件一律视为不可信：SVG 经白名单清洗（`src/sanitize.ts`），位图经 sharp 解码后重新编码为 64×64 / 128×128 PNG。
 
-合计 64 个：simple-icons 33，官网 28，自有 1，占位 2（2026-10-26 补 discord、slack；2026-10-28 补 SPEC-r13 的 11 个国内垂类平台，10 个取自官网，马蜂窝官网只有 16px 图标，暂用占位）。
+合计 75 个：simple-icons 33，官网 38，自有 1，占位 3（2026-10-26 补 discord、slack；2026-10-28 补 SPEC-r13 的 11 个国内垂类平台，10 个取自官网，马蜂窝官网只有 16px 图标，暂用占位；同日补 SPEC-r14 的 11 个海外平台，10 个取自官网，Webnovel 官网无法访问，暂用占位）。
 
 所有平台名称与 logo 均为其各自所有者的商标，此处仅用于指示发布目标平台，不表示任何合作或背书。
 
@@ -45,6 +45,17 @@
 | douban | douban-64.png, douban-128.png | https://www.douban.com/favicon.ico | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r13 新平台；原图仅 32px，已放大 |
 | douban-read | douban-read-64.png, douban-read-128.png | https://static.arkread.com/ark/pics/favicon/v6/favicon.bdce50f0.svg | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r13 新平台 |
 | mafengwo | mafengwo.svg | 占位 | 占位（辰记生成） | 2026-10-28 | SPEC-r13 新平台；官网图标只有 16px，暂用占位（品牌色为近似值） |
+| note | note-64.png, note-128.png | https://assets.st-note.com/poc-image/manual/note-common-images/production/icons/android-chrome-512x512.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 新平台 |
+| kakuyomu | kakuyomu-64.png, kakuyomu-128.png | https://kakuyomu.jp/images/brand/favicons/app-256.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 新平台 |
+| naver-blog | naver-blog-64.png, naver-blog-128.png | https://ssl.pstatic.net/static/blog/icon/favicon.ico | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 新平台；原图仅 32px，已放大 |
+| tistory | tistory-64.png, tistory-128.png | https://t1.daumcdn.net/tistory_admin/top_v2/tistory-apple-touch-favicon.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 新平台 |
+| brunch | brunch-64.png, brunch-128.png | https://brunch.co.kr/favicon.ico | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 新平台 |
+| postype | postype-64.png, postype-128.png | https://www.postype.com/apple-icon.png?b3d836bf97dad8fc | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 新平台 |
+| vocus | vocus-64.png, vocus-128.png | https://vocus.cc/static/img/icon-180x180.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 新平台 |
+| webnovel | webnovel.svg | 占位 | 占位（辰记生成） | 2026-10-28 | SPEC-r14 新平台，品牌色为近似值 |
+| wattpad | wattpad-64.png, wattpad-128.png | https://www.wattpad.com/apple-touch-icon.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 新平台；原图仅 57px，已放大 |
+| steady | steady-64.png, steady-128.png | https://steadyhq.com/apple-touch-icon.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 新平台 |
+| kofi | kofi-64.png, kofi-128.png | https://ko-fi.com/apple-touch-icon.png | 品牌商标，仅用于指示平台 | 2026-10-28 | SPEC-r14 新平台 |
 | github-pages    | github-pages.svg                                | https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/github.svg（simple-icons@16.35.0；上游：https://github.com/logos）                                                                                                        | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-19 |                                  |
 | medium          | medium.svg                                      | https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/medium.svg（simple-icons@16.35.0；上游：https://medium.design/logos-and-brand-guidelines-f1a01a733592）                                                                   | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-19 |                                  |
 | substack        | substack.svg                                    | https://github.com/simple-icons/simple-icons/blob/16.35.0/icons/substack.svg（simple-icons@16.35.0；上游：https://on.substack.com）                                                                                                       | CC0-1.0（simple-icons）；品牌商标归其所有者，仅用于指示平台 | 2026-10-19 |                                  |

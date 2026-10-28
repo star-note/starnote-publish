@@ -47,6 +47,11 @@ export interface PlatformRules {
   firstPublish?: boolean;
   /** SPEC-r13 §6.6: signing there is exclusive (网文平台): warn before sending a signed work anywhere else. */
   exclusive?: boolean;
+  /**
+   * SPEC-r14 A2: can an author in mainland China be paid there (most payouts go through Stripe, which does not
+   * serve mainland individuals); shown in the publish panel and the comparison tables.
+   */
+  payout?: { mainland: 'yes' | 'no' | 'unknown'; note: string };
   /** 依据: official document name / URL. */
   source: string;
   verified: boolean | '待核实';
@@ -337,6 +342,62 @@ export const PLATFORM_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
 
   // ---------------------------------------------------------------- 海外
   'github-pages': intl({}, INTL_NO_RULE, '自有站点：无平台规则', true),
+  // SPEC-r14 A2: 海外通用模式；AI 规则没有找到专门条款的按 INTL_NO_RULE
+  note: intl(
+    { payout: { mainland: 'no', note: '收益只能提到日本国内的本人账户 ⚠️' } },
+    INTL_NO_RULE,
+    'note 利用規約 / ヘルプ（2026-10，research/r13/global-asia.md）'
+  ),
+  kakuyomu: intl(
+    { payout: { mainland: 'unknown', note: '广告分成换成 BOOK☆WALKER 币或亚马逊礼品卡 ⚠️' } },
+    INTL_NO_RULE,
+    'カクヨム リワードプログラム（research/r13/global-asia.md）'
+  ),
+  'naver-blog': intl(
+    { payout: { mainland: 'unknown', note: '애드포스트 需要实名认证的 Naver 账号 ⚠️' } },
+    INTL_NO_RULE,
+    'Naver 애드포스트（research/r13/global-asia.md）'
+  ),
+  tistory: intl(
+    { payout: { mainland: 'unknown', note: 'AdSense 按 Google 的规则；AdFit 未核实 ⚠️' } },
+    INTL_NO_RULE,
+    'Tistory 공지：Open API 2024-02 종료（research/r13/global-asia.md）'
+  ),
+  brunch: intl(
+    { payout: { mainland: 'unknown', note: '응원하기 很可能需要韩国本人认证 ⚠️' } },
+    INTL_NO_RULE,
+    '브런치스토리 응원하기（research/r13/global-asia.md）'
+  ),
+  postype: intl(
+    { payout: { mainland: 'unknown', note: '付费内容的提现条件未核实 ⚠️' } },
+    INTL_NO_RULE,
+    '포스타입（research/r13/global-asia.md）'
+  ),
+  vocus: intl(
+    { payout: { mainland: 'yes', note: '境外作者经 PayPal 收款；单次超过 NT$5,000 代扣 20%' } },
+    INTL_NO_RULE,
+    '方格子 vocus 收益說明（research/r13/global-asia.md）'
+  ),
+  webnovel: intl(
+    { exclusive: true, payout: { mainland: 'yes', note: '合同独家且永久；收款方式官方未写明 ⚠️' } },
+    INTL_NO_RULE,
+    'Webnovel Contract（research/r13/global-en.md）'
+  ),
+  wattpad: intl(
+    { payout: { mainland: 'unknown', note: 'Paid Stories 需受邀，收款条件未核实 ⚠️' } },
+    INTL_NO_RULE,
+    'Wattpad Paid Stories（research/r13/global-world.md）'
+  ),
+  steady: intl(
+    { payout: { mainland: 'unknown', note: '只经 PayPal 打款，满 €30；国家限制未写明 ⚠️' } },
+    INTL_NO_RULE,
+    'Steady AGB（research/r13/global-world.md）'
+  ),
+  kofi: intl(
+    { payout: { mainland: 'unknown', note: '走 PayPal 时取决于 PayPal 中国账户能否收款 ⚠️' } },
+    INTL_NO_RULE,
+    'Ko-fi Help（research/r13/global-en.md）'
+  ),
   medium: intl(
     { tags: { max: 5, format: 'plain' } },
     {
