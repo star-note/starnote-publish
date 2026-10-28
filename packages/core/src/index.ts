@@ -169,6 +169,14 @@ export {
   type PlatformRegion,
   type PlatformStage,
 } from './platforms';
+// SPEC-r13 §1: platforms by domain.
+export {
+  DOMAIN_SLUGS,
+  domainProblems,
+  PLATFORM_DOMAINS,
+  type DomainSlug,
+  type PlatformDomains,
+} from './domains';
 export { statsRow } from './insights';
 // SPEC-r12: pasted-back post links (§1.1) and media limits (§3).
 export {
@@ -321,6 +329,7 @@ export {
   charCount,
   checkCompliance,
   COMPLIANCE_LEXICON,
+  FINANCE_WORDS,
   type ComplianceDoc,
   type ComplianceField,
   type ComplianceFix,

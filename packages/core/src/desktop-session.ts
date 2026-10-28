@@ -13,6 +13,11 @@ export interface LoginSuccessRule {
   cookies?: Array<{ name: string; domain?: string }>;
   /** The window navigated to a URL matching this regular expression (source text). */
   urlMatch?: string;
+  /**
+   * SPEC-r13 §4b 通用模式: nothing above is known yet (no account has looked at the platform). The user logs in in the
+   * window and confirms when closing it; no session check runs, the account shows as 「未验证」.
+   */
+  manual?: true;
 }
 
 /** A read-only endpoint that tells whether the session is still valid and who is logged in. */
@@ -44,7 +49,8 @@ export interface DesktopSessionSpec {
   /** Hosts the login / editor window may navigate to (suffix match, https only). */
   allowedHosts: string[];
   success: LoginSuccessRule;
-  check: SessionCheckSpec;
+  /** Required unless `success.manual` (通用模式). */
+  check?: SessionCheckSpec;
   /**
    * A lightweight same-origin page that `sessionFetch` loads in a hidden window and fetches from (so the
    * request carries the site's own Origin and cookies, like the platform's editor does).

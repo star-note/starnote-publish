@@ -85,6 +85,16 @@ importers:
         specifier: ^4.1.0
         version: 4.6.5
 
+  packages/adapters/desk-generic:
+    dependencies:
+      '@starnote/publish-core':
+        specifier: workspace:*
+        version: link:../../core
+    devDependencies:
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.5
+
   packages/adapters/devto:
     dependencies:
       '@starnote/publish-core':

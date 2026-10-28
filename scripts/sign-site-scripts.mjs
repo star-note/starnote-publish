@@ -2,7 +2,8 @@
 /* global console, process, Buffer */
 /**
  * Signs the bundled site scripts: packages/adapters/<platform>/src/site-script.json →
- * src/site-script.signed.json ({kid, alg: 'Ed25519', payload: base64url(JSON), sig}).
+ * src/site-script.signed.json ({kid, alg: 'Ed25519', payload: base64url(JSON), sig}), and the 通用模式 scripts of
+ * platforms without an adapter yet (SPEC-r13 §4b): packages/adapters/desk-generic/src/sites/<platform>.json → <platform>.signed.json.
  *
  *   node scripts/sign-site-scripts.mjs                 # dev key (packages/core/test/fixtures/site-script-dev-key.json)
  *   node scripts/sign-site-scripts.mjs --key <file>    # production key, offline only (same JSON shape)
@@ -32,12 +33,25 @@ const publicKey = createPublicKey({
 
 let stale = 0;
 const adaptersDir = join(root, 'packages/adapters');
-for (const name of readdirSync(adaptersDir)) {
-  const src = join(adaptersDir, name, 'src/site-script.json');
+const genericDir = join(root, 'packages/adapters/desk-generic/src/sites');
+const targets = [
+  ...readdirSync(adaptersDir).map((name) => ({
+    name,
+    src: join(adaptersDir, name, 'src/site-script.json'),
+    out: join(adaptersDir, name, 'src/site-script.signed.json'),
+  })),
+  ...(existsSync(genericDir) ? readdirSync(genericDir) : [])
+    .filter((f) => f.endsWith('.json') && !f.endsWith('.signed.json'))
+    .map((f) => ({
+      name: `generic/${f.slice(0, -5)}`,
+      src: join(genericDir, f),
+      out: join(genericDir, `${f.slice(0, -5)}.signed.json`),
+    })),
+];
+for (const { name, src, out } of targets) {
   if (!existsSync(src)) continue;
   const script = JSON.parse(readFileSync(src, 'utf8'));
   const payload = Buffer.from(JSON.stringify(script), 'utf8').toString('base64url');
-  const out = join(adaptersDir, name, 'src/site-script.signed.json');
   if (check) {
     const cur = existsSync(out) ? JSON.parse(readFileSync(out, 'utf8')) : null;
     const ok =

@@ -1,0 +1,29 @@
+{
+  "platform": "eastmoney",
+  "version": "0.1.0",
+  "minCore": "0.1.0",
+  "issuedAt": "2026-10-28T00:00:00.000Z",
+  "urls": {
+    "home": "https://mp.eastmoney.com/",
+    "write": "https://mp.eastmoney.com/",
+    "verify": "https://mp.eastmoney.com/"
+  },
+  "selectors": {},
+  "session": {
+    "loginUrl": "https://mp.eastmoney.com/",
+    "allowedHosts": ["eastmoney.com", "open.weixin.qq.com", "graph.qq.com", "api.weibo.com"],
+    "success": {
+      "manual": true
+    },
+    "fetchPage": "https://mp.eastmoney.com/robots.txt"
+  },
+  "flags": {
+    "generic": true
+  },
+  "unverified": [
+    "urls.write：只是作者入口页，没有登录核实写作页地址",
+    "session.allowedHosts：只列了平台主域名和常见第三方登录",
+    "selectors：未知，发布台走通用模式（复制后手动粘贴）",
+    "published：未知，由用户点「我已发布」"
+  ]
+}
