@@ -1,5 +1,7 @@
 import { convertWechat, escapeHtml, mediaReport, truncateText } from '@starnote/publish-core';
 
+import { msg } from './i18n';
+
 import type {
   CommonFormShape,
   Doc,
@@ -38,15 +40,17 @@ export function renderWechatMp(
   opts: WechatOptions = {}
 ): WechatMpRendered {
   const report: ReportItem[] = [];
+  const lang = opts.lang;
+  const t = msg(lang);
   // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
-  report.push(...mediaReport('wechat', '公众号', undefined, common));
+  report.push(...mediaReport('wechat', '公众号', undefined, common, lang));
   const titleMax = script.limits?.titleMax ?? 64;
   const rawTitle = (common.title || doc.title || '').trim();
   const title = truncateText(rawTitle, titleMax);
   if (title.truncated)
     report.push({
       kind: 'title.truncated',
-      text: `标题超过 ${titleMax} 字，已截短`,
+      text: t.titleTruncated(titleMax),
       level: 'notice',
       samples: [rawTitle],
     });
@@ -58,14 +62,14 @@ export function renderWechatMp(
   if (digest.truncated)
     report.push({
       kind: 'summary.truncated',
-      text: `摘要超过 ${digestMax} 字，已截短`,
+      text: t.digestTruncated(digestMax),
       level: 'info',
     });
   const converted = convertWechat(doc.json, opts);
   if (converted.links.length)
     report.push({
       kind: 'link.footnoted',
-      text: `${converted.links.length} 处外链已转为文末参考链接（公众号正文里的外链不能点）`,
+      text: t.linksFootnoted(converted.links.length),
       count: converted.links.length,
       level: 'info',
     });

@@ -1,31 +1,73 @@
 import { z } from 'zod';
 
-import type { CommonFormShape } from './types';
+import { coreMessages } from './i18n/messages';
+import { byLang, normalizeLang } from './i18n/lang';
+
+import type { BindingSpec } from './binding';
+import type { SdkLang } from './i18n/lang';
+import type { Adapter, CommonFormShape } from './types';
+
+/** `commonSchema` with its messages in `lang` (SPEC-r14 B5). */
+export const commonSchemaFor = byLang((lang) => {
+  const m = coreMessages(lang).schema;
+  return z.object({
+    title: z.string().max(200, m.titleMax).optional(),
+    summary: z.string().max(500, m.summaryMax).optional(),
+    /** Asset hash or URL of the cover image. */
+    cover: z.string().optional(),
+    /**
+     * The same cover rendered for other surfaces, as asset hashes: `og` 1200×630 (share cards), `wide` 900×383
+     * (公众号头条), `square` 1080×1080 (次条 / thumbnails), `portrait` 1080×1440 (小红书). Missing keys fall back to `cover`.
+     */
+    coverVariants: z
+      .object({
+        og: z.string().optional(),
+        wide: z.string().optional(),
+        square: z.string().optional(),
+        portrait: z.string().optional(),
+      })
+      .optional(),
+    /** Alt text of the cover (defaults to the title on the server). */
+    coverAlt: z.string().max(255).optional(),
+    tags: z.array(z.string()).optional(),
+    /** ISO 8601; publish later instead of now. */
+    scheduleAt: z.string().optional(),
+  });
+});
 
 /** Fields every platform shares; adapters add their own through `Adapter.schema`. */
-export const commonSchema = z.object({
-  title: z.string().max(200, '标题最多 200 个字符').optional(),
-  summary: z.string().max(500, '摘要最多 500 个字符').optional(),
-  /** Asset hash or URL of the cover image. */
-  cover: z.string().optional(),
-  /**
-   * The same cover rendered for other surfaces, as asset hashes: `og` 1200×630 (share cards), `wide` 900×383
-   * (公众号头条), `square` 1080×1080 (次条 / thumbnails), `portrait` 1080×1440 (小红书). Missing keys fall back to `cover`.
-   */
-  coverVariants: z
-    .object({
-      og: z.string().optional(),
-      wide: z.string().optional(),
-      square: z.string().optional(),
-      portrait: z.string().optional(),
-    })
-    .optional(),
-  /** Alt text of the cover (defaults to the title on the server). */
-  coverAlt: z.string().max(255).optional(),
-  tags: z.array(z.string()).optional(),
-  /** ISO 8601; publish later instead of now. */
-  scheduleAt: z.string().optional(),
-});
+export const commonSchema = commonSchemaFor('zh-CN');
+
+/**
+ * SPEC-r14 B5: an adapter's form schema in `lang` (`Adapter.schemaFor`), else its plain `schema`. Use it for forms
+ * (`zodFieldMeta` / `zodToAntdRules`) and validation, so labels and messages follow the user's language.
+ */
+export function adapterSchema<S extends z.ZodType>(
+  adapter: Pick<Adapter<S>, 'schema' | 'schemaFor'>,
+  lang?: SdkLang | string | null
+): S {
+  return lang && adapter.schemaFor ? adapter.schemaFor(normalizeLangOf(lang)) : adapter.schema;
+}
+
+/** SPEC-r14 B5: a binding's key form in `lang` (`BindingSpec.formFor`), else `form`. */
+export function bindingForm(
+  spec: Pick<BindingSpec, 'form' | 'formFor'> | undefined,
+  lang?: SdkLang | string | null
+): BindingSpec['form'] {
+  if (!spec) return undefined;
+  return lang && spec.formFor ? spec.formFor(normalizeLangOf(lang)) : spec.form;
+}
+
+/** SPEC-r14 B5: a binding's step-by-step help in `lang` (`BindingSpec.instructionsFor`), else `instructions`. */
+export function bindingInstructions(
+  spec: Pick<BindingSpec, 'instructions' | 'instructionsFor'> | undefined,
+  lang?: SdkLang | string | null
+): string[] | undefined {
+  if (!spec) return undefined;
+  return lang && spec.instructionsFor
+    ? spec.instructionsFor(normalizeLangOf(lang))
+    : spec.instructions;
+}
 
 export type CommonForm = z.infer<typeof commonSchema> & CommonFormShape;
 
@@ -225,9 +267,14 @@ function label(name: string, description?: string): string {
 /**
  * Turns a `z.object` into antd `Form.Item` rules per field. Handles string
  * min/max/regex/optional, number min/max, enum and boolean; custom zod
- * messages are kept, everything else gets a Chinese default.
+ * messages are kept, everything else gets a default in `opts.lang` (default `zh-CN`). Pass the schema in the
+ * same language (`adapterSchema(adapter, lang)`) so the custom messages match.
  */
-export function zodToAntdRules(schema: z.ZodType): Record<string, AntdRule[]> {
+export function zodToAntdRules(
+  schema: z.ZodType,
+  opts: { lang?: SdkLang | string | null } = {}
+): Record<string, AntdRule[]> {
+  const m = coreMessages(opts.lang).schema;
   const out: Record<string, AntdRule[]> = {};
   for (const [name, field] of Object.entries(shapeOf(schema))) {
     const info = inspect(field);
@@ -236,7 +283,7 @@ export function zodToAntdRules(schema: z.ZodType): Record<string, AntdRule[]> {
     const requiredMessage =
       (info.type === 'string' && min && (min.value ?? 0) >= 1 && min.message) ||
       info.customMessage ||
-      `请填写${label(name, info.description)}`;
+      m.required(label(name, info.description));
     if (info.required) rules.push({ required: true, message: requiredMessage });
     switch (info.type) {
       case 'string':
@@ -247,41 +294,41 @@ export function zodToAntdRules(schema: z.ZodType): Record<string, AntdRule[]> {
             rules.push({
               type: 'string',
               min: check.value,
-              message: check.message ?? `至少 ${check.value} 个字符`,
+              message: check.message ?? m.minChars(check.value ?? 0),
             });
           } else if (check.kind === 'max') {
             rules.push({
               type: 'string',
               max: check.value,
-              message: check.message ?? `最多 ${check.value} 个字符`,
+              message: check.message ?? m.maxChars(check.value ?? 0),
             });
           } else if (check.kind === 'regex' && check.regex) {
-            rules.push({ pattern: check.regex, message: check.message ?? '格式不正确' });
+            rules.push({ pattern: check.regex, message: check.message ?? m.badFormat });
           }
         }
         break;
       case 'number':
-        rules.push({ type: 'number', message: '请输入数字' });
+        rules.push({ type: 'number', message: m.number });
         for (const check of info.checks) {
           if (check.kind === 'min')
             rules.push({
               type: 'number',
               min: check.value,
-              message: check.message ?? `不能小于 ${check.value}`,
+              message: check.message ?? m.notBelow(check.value ?? 0),
             });
           else if (check.kind === 'max')
             rules.push({
               type: 'number',
               max: check.value,
-              message: check.message ?? `不能大于 ${check.value}`,
+              message: check.message ?? m.notAbove(check.value ?? 0),
             });
         }
         break;
       case 'enum':
-        rules.push({ type: 'enum', enum: info.options ?? [], message: '请选择有效的选项' });
+        rules.push({ type: 'enum', enum: info.options ?? [], message: m.validOption });
         break;
       case 'boolean':
-        rules.push({ type: 'boolean', message: '请选择' });
+        rules.push({ type: 'boolean', message: m.choose });
         break;
       default:
         break;
@@ -307,8 +354,14 @@ export function zodFieldMeta(schema: z.ZodType): FieldMeta[] {
   });
 }
 
-/** Human-readable reasons from a failed `safeParse`. */
-export function formatZodError(error: unknown): string {
+/**
+ * Human-readable reasons from a failed `safeParse`. The messages come from the schema (parse with the schema of the
+ * user's language, `adapterSchema(adapter, lang)`); `opts.lang` only picks the separator.
+ */
+export function formatZodError(
+  error: unknown,
+  opts: { lang?: SdkLang | string | null } = {}
+): string {
   const issues: any[] = (error as any)?.issues ?? [];
   if (!issues.length) return error instanceof Error ? error.message : String(error);
   return issues
@@ -317,5 +370,29 @@ export function formatZodError(error: unknown): string {
         Array.isArray(issue.path) && issue.path.length ? `${issue.path.join('.')}: ` : '';
       return `${path}${issue.message}`;
     })
-    .join('；');
+    .join(coreMessages(opts.lang).schema.issueSeparator);
+}
+
+/** SPEC-r14 B5: a binding's permission list in `lang` (`BindingSpec.permissionsFor`), else `permissions`. */
+export function bindingPermissions(
+  spec: Pick<BindingSpec, 'permissions' | 'permissionsFor'> | undefined,
+  lang?: SdkLang | string | null
+): string[] | undefined {
+  if (!spec) return undefined;
+  return lang && spec.permissionsFor
+    ? spec.permissionsFor(normalizeLangOf(lang))
+    : spec.permissions;
+}
+
+/** SPEC-r14 B5: what to pick after binding, titles in `lang` (`BindingSpec.selectsFor`), else `selects`. */
+export function bindingSelects(
+  spec: Pick<BindingSpec, 'selects' | 'selectsFor'> | undefined,
+  lang?: SdkLang | string | null
+): BindingSpec['selects'] {
+  if (!spec) return undefined;
+  return lang && spec.selectsFor ? spec.selectsFor(normalizeLangOf(lang)) : spec.selects;
+}
+
+function normalizeLangOf(lang: SdkLang | string): SdkLang {
+  return lang === 'zh-CN' || lang === 'zh-TW' || lang === 'en' ? lang : normalizeLang(lang);
 }

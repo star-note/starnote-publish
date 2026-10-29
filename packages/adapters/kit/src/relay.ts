@@ -46,6 +46,7 @@ import {
   rateLimitError,
   retryAction,
 } from './errors';
+import { kitMessages, refIn } from './i18n';
 
 import type {
   ErrorKind,
@@ -80,7 +81,7 @@ export type RelayContext = Pick<PublishContext, 'fetch' | 'signal' | 'noteId' | 
   Partial<
     Pick<
       PublishContext,
-      'previous' | 'account' | 'accountId' | 'idempotencyKey' | 'jobId' | 'attempt'
+      'previous' | 'account' | 'accountId' | 'idempotencyKey' | 'jobId' | 'attempt' | 'lang'
     >
   >;
 
@@ -160,9 +161,9 @@ function envelopeError(
       p,
       kind,
       code === 'in_progress'
-        ? `${p.label} 的上一次发布请求还在进行中，结果未知：请稍后到平台确认`
+        ? kitMessages(p.lang).relay.inProgress(p.label)
         : !given && res.status >= 500
-          ? `${p.label} 的发布请求结果未知（HTTP ${res.status}）：可能已经发出，请先到平台确认，没有再重发`
+          ? kitMessages(p.lang).relay.unknown(p.label, res.status)
           : message,
       { code: code || (res.status >= 500 ? `http_${res.status}` : 'unknown'), ...extra }
     );
@@ -178,7 +179,7 @@ function envelopeError(
     code: e.code,
     ...(e.status !== undefined ? { status: e.status } : {}),
     retryAfterSec,
-    actions: kind === 'retry' ? [helpAction(p), retryAction(retryAfterSec)] : e.actions,
+    actions: kind === 'retry' ? [helpAction(p), retryAction(retryAfterSec, p.lang)] : e.actions,
     kind,
   });
 }
@@ -195,12 +196,10 @@ async function readEnvelope(res: Response): Promise<Envelope | null> {
 
 /** A 2xx write whose answer cannot be read: it may well have gone through. */
 function unreadableWrite(p: PlatformRef, res: Response): PlatformError {
-  return kindError(
-    p,
-    'unknown',
-    `${p.label} 的发布请求已被受理，但返回内容无法读取（HTTP ${res.status}）：请先到平台确认，没有再重发`,
-    { code: 'bad_response', status: res.status }
-  );
+  return kindError(p, 'unknown', kitMessages(p.lang).relay.unreadable(p.label, res.status), {
+    code: 'bad_response',
+    status: res.status,
+  });
 }
 
 async function post(
@@ -226,8 +225,10 @@ async function post(
     const e = networkError(p, cause, { write: opts.write });
     throw new PlatformError(
       opts.write && e.errorKind === 'unknown'
-        ? `连接辰记服务器中断，不确定${p.label}是否已发出：请先到平台确认，没有再重发`
-        : `连不上辰记服务器：${cause instanceof Error ? cause.message : String(cause)}`,
+        ? kitMessages(p.lang).relay.serverInterrupted(p.label)
+        : kitMessages(p.lang).relay.serverUnreachable(
+            cause instanceof Error ? cause.message : String(cause)
+          ),
       {
         platform: p.key,
         code: 'network',
@@ -249,6 +250,7 @@ export async function relayPublish(
   previousId?: string,
   opts: { credential?: PlatformCredential | undefined; idempotencyKey?: string } = {}
 ): Promise<RelayResult> {
+  p = refIn(p, ctx.lang);
   const prevId = ctx.previous?.externalId ?? previousId;
   const accountId = accountIdOf(ctx);
   const payload = {
@@ -283,7 +285,7 @@ export async function relayPublish(
   }
   // 2xx but no readable success envelope (cut body, HTML, `code` 0 without data): the post may exist
   if (res.ok && (!env || env.code === 0)) throw unreadableWrite(p, res);
-  throw envelopeError(p, res, env, `${p.label} 发布失败`, true);
+  throw envelopeError(p, res, env, kitMessages(p.lang).relay.publishFailed(p.label), true);
 }
 
 /**
@@ -298,6 +300,7 @@ export async function relayFollowUp(
   input: FollowUpInput,
   opts: { credential?: PlatformCredential | undefined; idempotencyKey?: string } = {}
 ): Promise<{ externalId: string; url?: string }> {
+  p = refIn(p, ctx.lang);
   const accountId = accountIdOf(ctx);
   const res = await post(
     ctx,
@@ -324,7 +327,7 @@ export async function relayFollowUp(
     return { externalId: String(d.external_id ?? ''), ...(url ? { url } : {}) };
   }
   if (res.ok && (!env || env.code === 0)) throw unreadableWrite(p, res);
-  throw envelopeError(p, res, env, `${p.label} 链接评论发送失败`, true);
+  throw envelopeError(p, res, env, kitMessages(p.lang).relay.commentFailed(p.label), true);
 }
 
 /** The container id inside a three-stage `pending` (`container_id`, `creation_id` or `id`). */
@@ -340,7 +343,7 @@ function toCheck(p: PlatformRef, d: any): PendingCheck {
   if (status === 'completed')
     return { status, url: String(d.url ?? ''), externalId: String(d.external_id ?? '') };
   if (status === 'pending' || status === 'ready') return { status, pending: d.pending ?? null };
-  throw helpError(p, `${p.label} 状态查询返回了无法识别的结果`, {
+  throw helpError(p, kitMessages(p.lang).relay.statusUnknown(p.label), {
     code: 'bad_response',
     kind: 'unknown',
   });
@@ -370,6 +373,7 @@ export async function relayCheck(
   pending: unknown,
   opts: { retries?: number; backoffMs?: number; credential?: PlatformCredential | undefined } = {}
 ): Promise<PendingCheck> {
+  p = refIn(p, ctx.lang);
   const accountId = accountIdOf(ctx);
   const extra = {
     ...(opts.credential ? { credential: opts.credential } : {}),
@@ -389,12 +393,12 @@ export async function relayCheck(
       if (res.ok && env && env.code === 0 && env.data) return toCheck(p, env.data);
       // a read: an unreadable answer is just asked again
       if (res.ok && (!env || env.code === 0))
-        throw helpError(p, `${p.label} 状态查询返回了无法读取的内容`, {
+        throw helpError(p, kitMessages(p.lang).relay.statusUnreadable(p.label), {
           code: 'bad_response',
           kind: 'retry',
           retryable: true,
         });
-      throw envelopeError(p, res, env, `${p.label} 状态查询失败`, false);
+      throw envelopeError(p, res, env, kitMessages(p.lang).relay.statusFailed(p.label), false);
     } catch (e) {
       if (ctx.signal.aborted) throw e;
       if (attempt >= retries || (e as PlatformError).errorKind !== 'retry') throw e;
@@ -413,6 +417,7 @@ export async function relayFinalize(
   pending: unknown,
   opts: { containerId?: string; credential?: PlatformCredential | undefined } = {}
 ): Promise<PendingCheck> {
+  p = refIn(p, ctx.lang);
   const accountId = accountIdOf(ctx);
   const containerId = opts.containerId ?? containerIdOf(pending);
   const res = await post(
@@ -435,7 +440,7 @@ export async function relayFinalize(
     }
   }
   if (res.ok && (!env || env.code === 0)) throw unreadableWrite(p, res);
-  throw envelopeError(p, res, env, `${p.label} 发布失败`, true);
+  throw envelopeError(p, res, env, kitMessages(p.lang).relay.publishFailed(p.label), true);
 }
 
 /**

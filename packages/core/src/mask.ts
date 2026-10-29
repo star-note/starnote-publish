@@ -5,6 +5,9 @@
  */
 import { maskHtml, maskText, type Hit, type MaskOptions } from '@starnote/moderation';
 
+import { coreMessages } from './i18n/messages';
+
+import type { SdkLang } from './i18n/lang';
 import type { ReportItem } from './report';
 import type { TiptapJSON } from './types';
 
@@ -24,7 +27,9 @@ export interface MaskSummary {
 }
 
 /** The options to use, or `null` when masking is off. */
-export function resolveMask(mask: ConvertMask | undefined): (MaskOptions & { preview?: boolean }) | null {
+export function resolveMask(
+  mask: ConvertMask | undefined
+): (MaskOptions & { preview?: boolean }) | null {
   if (mask === false) return null;
   if (mask === true || mask === undefined) return {};
   return mask;
@@ -128,14 +133,18 @@ export function maskPreviewHtml(html: string, opts: MaskOptions = {}): string {
 }
 
 /** The report line 「已自动打码 N 处」 (none when nothing was masked). */
-export function maskReport(summary: MaskSummary | undefined): ReportItem[] {
+export function maskReport(
+  summary: MaskSummary | undefined,
+  /** SPEC-r14 B5: language of the line. Default `zh-CN`. */
+  lang?: SdkLang | string
+): ReportItem[] {
   if (!summary?.count) return [];
   const samples = [...new Set(summary.hits.map((h) => h.text))].slice(0, 3);
   return [
     {
       kind: 'mask.applied',
       level: 'notice',
-      text: `已自动打码 ${summary.count} 处（敏感词替换为 **）`,
+      text: coreMessages(lang).mask.applied(summary.count),
       count: summary.count,
       samples,
     },

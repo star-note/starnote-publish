@@ -12,6 +12,7 @@ import { createGhostAdapter } from './ghost';
 import type { PlatformMeta } from '@starnote/publish-core';
 
 export * from './ghost';
+export { msg as ghostMessages } from './i18n';
 
 export const ghostAdapter = createGhostAdapter();
 

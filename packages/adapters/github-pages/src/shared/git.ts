@@ -5,6 +5,7 @@
  *
  * Python twin: `starnote-api/app/services/github_publish.py` `commit_files` (same calls, same skip / retry rules).
  */
+import { msg } from './i18n';
 import { github, GitHubApiError, refPath, repoPath } from './github';
 
 import type { GitHubClientOptions } from './github';
@@ -85,11 +86,12 @@ export async function commitFiles(opts: CommitFilesOptions): Promise<CommitFiles
       sha: f.content === null ? null : await gitBlobSha(f.content),
     }))
   );
+  const steps = msg(opts.lang).git;
   /** local sha → sha GitHub returned, so a retry does not upload blobs again. */
   const uploaded = new Map<string, string>();
 
   for (let attempt = 1; ; attempt++) {
-    opts.onStep?.('读取分支');
+    opts.onStep?.(steps.readBranch);
     const head = await github<{ object: { sha: string } }>(
       opts,
       'GET',
@@ -120,7 +122,7 @@ export async function commitFiles(opts: CommitFilesOptions): Promise<CommitFiles
       return { commitSha: null, baseSha, written: [], deleted: [], unchanged, attempts: attempt };
     }
 
-    opts.onStep?.('上传文件');
+    opts.onStep?.(steps.upload);
     for (const f of changed) {
       if (f.content === null || f.sha === null || uploaded.has(f.sha)) continue;
       const body =
@@ -131,7 +133,7 @@ export async function commitFiles(opts: CommitFilesOptions): Promise<CommitFiles
       uploaded.set(f.sha, blob.data.sha);
     }
 
-    opts.onStep?.('生成提交');
+    opts.onStep?.(steps.commit);
     const newTree = await github<{ sha: string }>(opts, 'POST', `${repo}/git/trees`, {
       base_tree: baseTree,
       tree: changed.map((f) => ({
@@ -153,7 +155,7 @@ export async function commitFiles(opts: CommitFilesOptions): Promise<CommitFiles
       });
     } catch (e) {
       if (e instanceof GitHubApiError && e.status === 422 && attempt < maxAttempts) {
-        opts.onStep?.('分支已更新，重新提交');
+        opts.onStep?.(steps.retry);
         continue;
       }
       throw e;

@@ -4,6 +4,9 @@
  * decorated headings → plain h2 / h3, callouts → quote with 「提示」, dividers → `<hr>`, math → platform
  * image or `$…$`, task lists → ☐ / ☑, folds flattened, videos → links. Each step is counted for `report`.
  */
+import { coreMessages } from './i18n/messages';
+
+import type { SdkLang } from './i18n/lang';
 import type { ReportItem } from './report';
 import type { TiptapJSON } from './types';
 
@@ -22,6 +25,11 @@ export interface DegradeOptions {
   flattenDetails?: boolean;
   /** Embedded videos → a link line (`label` + URL). */
   videoLabel?: string;
+  /**
+   * SPEC-r14 B5: language of the report. Default `zh-CN`. (The callout / video labels written into the content
+   * stay as given: they are part of the article.)
+   */
+  lang?: SdkLang;
 }
 
 export interface DegradeResult {
@@ -196,15 +204,16 @@ function firstBlockIndex(parent: TiptapJSON): number {
 function degradeReport(c: DegradeResult['counts'], opts: DegradeOptions): ReportItem[] {
   const items: ReportItem[] = [];
   const blocks: string[] = [];
-  if (c.headings) blocks.push(`${c.headings} 个标题改成普通二、三级标题`);
-  if (c.callouts) blocks.push(`${c.callouts} 个提示框改成引用块`);
-  if (c.dividers) blocks.push(`${c.dividers} 条装饰分割线改成普通分割线`);
-  if (c.tasks) blocks.push(`${c.tasks} 个任务列表改成 ☐ / ☑ 列表`);
-  if (c.details) blocks.push(`${c.details} 个折叠块已展开`);
+  const m = coreMessages(opts.lang).degrade;
+  if (c.headings) blocks.push(m.headings(c.headings));
+  if (c.callouts) blocks.push(m.callouts(c.callouts));
+  if (c.dividers) blocks.push(m.dividers(c.dividers));
+  if (c.tasks) blocks.push(m.tasks(c.tasks));
+  if (c.details) blocks.push(m.details(c.details));
   if (blocks.length)
     items.push({
       kind: 'block.degraded',
-      text: blocks.join('，'),
+      text: blocks.join(m.separator),
       count: c.headings + c.callouts + c.dividers + c.tasks + c.details,
       level: 'info',
     });
@@ -213,13 +222,13 @@ function degradeReport(c: DegradeResult['counts'], opts: DegradeOptions): Report
       opts.math.mode === 'image'
         ? {
             kind: 'math.rasterized',
-            text: `${c.math} 个公式改成平台的公式图片`,
+            text: m.mathImage(c.math),
             count: c.math,
             level: 'info',
           }
         : {
             kind: 'math.as-source',
-            text: `${c.math} 个公式保留为 $…$ 写法，以平台实际显示为准`,
+            text: m.mathSource(c.math),
             count: c.math,
             level: 'notice',
           }
@@ -227,14 +236,14 @@ function degradeReport(c: DegradeResult['counts'], opts: DegradeOptions): Report
   if (c.videos)
     items.push({
       kind: 'video.linkified',
-      text: `${c.videos} 个视频改成链接`,
+      text: m.videos(c.videos),
       count: c.videos,
       level: 'notice',
     });
   if (c.mergedTables)
     items.push({
       kind: 'table.merged-kept',
-      text: `${c.mergedTables} 个表格有合并单元格，暂时不能转成图片，已按表格保留，显示可能错位`,
+      text: m.mergedTables(c.mergedTables),
       count: c.mergedTables,
       level: 'warn',
     });

@@ -15,7 +15,7 @@
  * ⚠️ Not verified: which branch Zenn deploys by default (we commit to the repository's default branch), whether
  * topics are lowercased by Zenn, deploy status (no API: the author checks Zenn's deploy history).
  */
-import { defineAdapter, mediaReport, mergeReports } from '@starnote/publish-core';
+import { byLang, defineAdapter, mediaReport, mergeReports } from '@starnote/publish-core';
 import { frontMatter } from '@starnote/publish-github-pages';
 import {
   articleOf,
@@ -33,6 +33,8 @@ import {
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
+import { msg } from './i18n';
+
 import type {
   Adapter,
   AdapterPreview,
@@ -42,6 +44,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
 
@@ -92,78 +95,78 @@ export function zennSlugOf(shortId: string | undefined, title: string): string {
   return `starnote-${(id || fnv1a(title)).slice(0, 41)}`;
 }
 
-export const zennSchema = z.object({
-  /** false: 下書き (only the author sees it on Zenn). */
-  published: z.boolean().default(true).describe('直接公开'),
-  type: z.enum(['tech', 'idea']).default('tech').describe('类型（tech 技术 / idea 想法）'),
-  emoji: z
-    .string()
-    .trim()
-    .min(1)
-    .max(16)
-    .refine((s) => !/[\s\w]/.test(s), '请填一个 emoji')
-    .default('📝')
-    .describe('图标 emoji'),
-  /** File name: fixed once the article exists on Zenn (renaming it makes a new article). */
-  slug: z
-    .string()
-    .trim()
-    .regex(ZENN_SLUG, 'slug 为 12–50 位小写字母、数字、- 和 _')
-    .optional()
-    .describe('slug'),
-  /** `YYYY-MM-DD hh:mm` (JST): a future time with 直接公开 is a scheduled post. Can be set only once. */
-  published_at: z
-    .string()
-    .trim()
-    .regex(PUBLISHED_AT, '格式为 YYYY-MM-DD hh:mm（日本时间）')
-    .optional()
-    .describe('公开时间（日本时间）'),
-  /** Publication (Zenn Publication) the article belongs to. */
-  publication_name: z
-    .string()
-    .trim()
-    .regex(/^[0-9a-z_]{2,15}$/, 'Publication 名为 2–15 位小写字母、数字和 _')
-    .optional()
-    .describe('Publication'),
-  origin_note: z.boolean().default(true).describe('文末注明原文'),
-  canonical_url: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('原文链接'),
-  /** The slug of an earlier publish (the article's id on Zenn). */
-  external_id: z
-    .string()
-    .trim()
-    .regex(ZENN_SLUG, 'slug 格式不对')
-    .optional()
-    .describe('已发布文章 slug'),
+export const zennSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** false: 下書き (only the author sees it on Zenn). */
+    published: z.boolean().default(true).describe(t.published),
+    type: z.enum(['tech', 'idea']).default('tech').describe(t.type),
+    emoji: z
+      .string()
+      .trim()
+      .min(1)
+      .max(16)
+      .refine((s) => !/[\s\w]/.test(s), t.oneEmoji)
+      .default('📝')
+      .describe(t.emoji),
+    /** File name: fixed once the article exists on Zenn (renaming it makes a new article). */
+    slug: z.string().trim().regex(ZENN_SLUG, t.slugRule).optional().describe(t.slug),
+    /** `YYYY-MM-DD hh:mm` (JST): a future time with 直接公开 is a scheduled post. Can be set only once. */
+    published_at: z
+      .string()
+      .trim()
+      .regex(PUBLISHED_AT, t.publishedAtRule)
+      .optional()
+      .describe(t.publishedAt),
+    /** Publication (Zenn Publication) the article belongs to. */
+    publication_name: z
+      .string()
+      .trim()
+      .regex(/^[0-9a-z_]{2,15}$/, t.publicationRule)
+      .optional()
+      .describe(t.publication),
+    origin_note: z.boolean().default(true).describe(t.originNote),
+    canonical_url: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.canonicalUrl),
+    /** The slug of an earlier publish (the article's id on Zenn). */
+    external_id: z.string().trim().regex(ZENN_SLUG, t.badSlug).optional().describe(t.externalId),
+  });
 });
+
+export const zennSchema = zennSchemaFor('zh-CN');
 
 export type ZennForm = z.infer<typeof zennSchema>;
 export type ZennFormInput = z.input<typeof zennSchema>;
 
-export const zennKeyForm = z.object({
-  zenn_username: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9_]{1,40}$/, '请填写 Zenn 的用户名（zenn.dev/ 后面那段）')
-    .describe('Zenn 用户名'),
-  repo: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/, '仓库格式为 owner/name')
-    .describe('连携仓库'),
-  /** Empty: the token bound for GitHub Pages is used (it must reach this repository with Contents: write). */
-  token: z
-    .string()
-    .trim()
-    .regex(/^github_pat_[A-Za-z0-9_]{20,}$/, '请粘贴以 github_pat_ 开头的细粒度令牌')
-    .optional()
-    .or(z.literal(''))
-    .describe('GitHub 令牌（可选）'),
+export const zennKeyFormFor = byLang((lang) => {
+  const k = msg(lang).key;
+  return z.object({
+    zenn_username: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9_]{1,40}$/, k.usernameHint)
+      .describe(k.username),
+    repo: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/, k.repoHint)
+      .describe(k.repo),
+    /** Empty: the token bound for GitHub Pages is used (it must reach this repository with Contents: write). */
+    token: z
+      .string()
+      .trim()
+      .regex(/^github_pat_[A-Za-z0-9_]{20,}$/, k.tokenHint)
+      .optional()
+      .or(z.literal(''))
+      .describe(k.token),
+  });
 });
+
+export const zennKeyForm = zennKeyFormFor('zh-CN');
 
 export const zennBinding: BindingSpec = {
   kind: 'token',
@@ -171,16 +174,14 @@ export const zennBinding: BindingSpec = {
   provider: 'github',
   fields: ['zenn_username', 'repo', 'token'],
   form: zennKeyForm,
-  permissions: ['Contents: Read and write（只选 Zenn 连携的仓库）'],
+  formFor: zennKeyFormFor,
+  permissions: msg('zh-CN').permissions,
+  permissionsFor: (lang) => msg(lang).permissions,
   // ⚠️ Zenn 后台「デプロイ管理」的地址按经验填写
   createUrl: 'https://zenn.dev/dashboard/deploys',
   helpUrl: 'https://zenn.dev/zenn/articles/connect-to-github',
-  instructions: [
-    '先在 Zenn 的「GitHubからのデプロイ」里把一个 GitHub 仓库连携到 Zenn（没有就新建一个空仓库）',
-    '填 Zenn 用户名和这个仓库（owner/name）',
-    '已经绑定了 GitHub Pages、而且那个令牌能写这个仓库的，GitHub 令牌可以留空；否则新建一个只选这个仓库、Contents 可读写的细粒度令牌粘贴进来',
-    '辰记把文章提交为 articles/<slug>.md，推送后 Zenn 自动部署（约 1 分钟）',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 export interface ZennArticleBody {
@@ -209,9 +210,12 @@ export function renderZenn(
   form: ZennForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string; previousSlug?: string } = {}
+  /** `lang` (SPEC-r14 B5): language of the report. Default `zh-CN`. */
+  opts: { assetBase?: string; previousSlug?: string; lang?: SdkLang } = {}
 ): ZennRendered {
   const article = articleOf(doc, content);
+  const lang = opts.lang;
+  const m = msg(lang);
   const degraded = degradeArticle(
     article.doc,
     {
@@ -224,22 +228,29 @@ export function renderZenn(
       stripHighlight: true,
       ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
     },
-    'Zenn'
+    'Zenn',
+    lang
   );
   const title = fitTitle(
     common.title || article.doc.title || 'Untitled',
     ZENN_LIMITS.titleMax,
-    'Zenn'
+    'Zenn',
+    lang
   );
-  const topics = fitTags(common.tags, { max: ZENN_LIMITS.topics, normalize: zennTopic }, 'Zenn');
+  const topics = fitTags(
+    common.tags,
+    { max: ZENN_LIMITS.topics, normalize: zennTopic },
+    'Zenn',
+    lang
+  );
   const slug =
     form.external_id || opts.previousSlug || form.slug || zennSlugOf(article.shortId, title.title);
-  const report: ReportItem[] = [...mediaReport('zenn', 'Zenn', content, common)];
+  const report: ReportItem[] = [...mediaReport('zenn', 'Zenn', content, common, lang)];
   let markdown = degraded.body;
-  const canonical = canonicalOf({ canonical_url: form.canonical_url }, article, 'Zenn');
+  const canonical = canonicalOf({ canonical_url: form.canonical_url }, article, 'Zenn', lang);
   if (form.origin_note && canonical.url) {
     markdown += originNoteMarkdown(originLinkOf(form, article, canonical.url), article.lang);
-    report.push({ kind: 'origin.note', text: '文末注明首发于辰记并附原文链接' });
+    report.push({ kind: 'origin.note', text: m.originNote });
   }
   const file =
     frontMatter({
@@ -253,12 +264,12 @@ export function renderZenn(
     }) + `\n${markdown.replace(/\s+$/, '')}\n`;
   report.push(
     ...degraded.report,
-    ...linkedImagesReport(degraded.doc.images.length, 'Zenn'),
+    ...linkedImagesReport(degraded.doc.images.length, 'Zenn', lang),
     ...title.report,
     ...topics.report,
     {
       kind: 'zenn.file',
-      text: `提交为仓库里的 articles/${slug}.md，Zenn 部署后上线（约 1 分钟）；slug 之后不能再改`,
+      text: m.file(slug),
       detail: { slug },
     }
   );
@@ -266,13 +277,13 @@ export function renderZenn(
     report.push({
       kind: 'draft.only',
       level: 'notice',
-      text: '以下書き（published: false）提交，在 Zenn 上检查后把 published 改为 true',
+      text: m.draftOnly,
     });
   if (form.published_at)
     report.push({
       kind: 'scheduled',
       level: 'notice',
-      text: `Zenn 的公开时间设为 ${form.published_at}（日本时间），之后不能再改`,
+      text: m.scheduled(form.published_at),
     });
 
   return {
@@ -336,8 +347,12 @@ export function createZennAdapter(opts: ZennAdapterOptions = {}): Adapter<typeof
     binding: zennBinding,
     capabilities: { supportsUpdate: true, needsLogin: true, titleMax: ZENN_LIMITS.titleMax },
     schema: zennSchema,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderZenn(doc, form, common, content, base);
+    schemaFor: zennSchemaFor,
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderZenn(doc, form, common, content, {
+        ...base,
+        ...(popts?.lang ? { lang: popts.lang } : {}),
+      });
       return {
         format: 'files',
         title: r.title,
@@ -347,9 +362,10 @@ export function createZennAdapter(opts: ZennAdapterOptions = {}): Adapter<typeof
         report: r.report,
       };
     },
-    renderRequest({ doc, form, common, content, previous }) {
+    renderRequest({ doc, form, common, content, previous, lang }) {
       const r = renderZenn(doc, form, common, content, {
         ...base,
+        ...(lang ? { lang } : {}),
         ...(previous?.externalId ? { previousSlug: previous.externalId } : {}),
       });
       return relayRequestOf(zennRelayBody(r), previous, form.external_id, r.report);
@@ -359,12 +375,13 @@ export function createZennAdapter(opts: ZennAdapterOptions = {}): Adapter<typeof
         const prev = ctx.previous?.externalId;
         const r = renderZenn(doc, form, common, content, {
           ...base,
+          ...(ctx.lang ? { lang: ctx.lang } : {}),
           ...(prev ? { previousSlug: prev } : {}),
         });
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '由服务器提交到 Zenn 连携的 GitHub 仓库' });
+        ctx.emit({ type: 'progress', percent: 40, text: msg(ctx.lang).relaying });
         const res = await relayPublish(ctx, ref, zennRelayBody(r), form.external_id);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: msg(ctx.lang).done });
         return {
           url: res.url,
           externalId: res.externalId,

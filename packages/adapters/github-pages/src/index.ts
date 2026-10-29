@@ -48,6 +48,7 @@ export {
 } from './shared/render';
 export {
   githubPagesSchema,
+  githubPagesSchemaFor,
   type GithubPagesForm,
   type GithubPagesFormInput,
 } from './shared/schema';
@@ -60,6 +61,7 @@ export {
   GITHUB_TOKEN_PERMISSIONS,
   githubPagesBinding,
   githubTokenForm,
+  githubTokenFormFor,
   MANY_REPOS_WARNING,
   parseTokenExpiration,
   templateRepoUrl,
@@ -104,3 +106,4 @@ export { GithubPagesError, type TokenContext } from './shared/token';
 
 /** The registry entry (key, name, colour, runtimes, binding…). */
 export const githubPagesMeta = platformMeta('github-pages') as PlatformMeta;
+export { msg as githubPagesMessages } from './shared/i18n';

@@ -9,6 +9,7 @@ import { createWordpressComAdapter } from './wordpress-com';
 import type { PlatformMeta } from '@starnote/publish-core';
 
 export * from './wordpress-com';
+export { msg as wordpressComMessages } from './i18n';
 
 export const wordpressComAdapter = createWordpressComAdapter();
 

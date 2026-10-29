@@ -4,9 +4,12 @@
  * offline. Items whose verdict depends on context carry `needsAi: true`; the web app sends those to
  * `check.platform` for a judgement and a rewrite. Nothing here blocks publishing.
  */
+import { coreMessages } from './i18n/messages';
+import { fmt } from './i18n/lang';
 import { checkLearnedRules } from './learned';
-import { platformRules } from './rules';
+import { aiLabelNote, platformRules } from './rules';
 
+import type { SdkLang } from './i18n/lang';
 import type { LearnedRule } from './learned';
 import type { PlatformRules } from './rules';
 import type { TiptapJSON } from './types';
@@ -42,7 +45,7 @@ export interface ComplianceItem {
   /** Where the problem is: a platform field or the article body. */
   field: ComplianceField;
   level: 'warn' | 'info';
-  /** 中文说明 */
+  /** What is wrong, in `ComplianceInput.lang` (default `zh-CN`). */
   message: string;
   excerpt?: string;
   fix?: ComplianceFix;
@@ -76,6 +79,8 @@ export interface ComplianceInput {
    * e.g. the signed site script's `learnedRules`). Rules of other platforms are ignored.
    */
   extraRules?: readonly LearnedRule[];
+  /** SPEC-r14 B5: language of the messages (the lexicons stay Chinese). Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 /** `checkCompliance(platform, doc, extraRules?)`: the document fields without `platform`. */
@@ -176,7 +181,8 @@ export const AD_LAW_WORDS: { word: string; to: string }[] = [
 ];
 
 /** 「第一」 in ordinals / structure (第一章、第一次…) is not an advertising claim. */
-const ORDINAL_AFTER = /^[章节次步天日点期页部回届集季批条项层眼时步个种位类段轮篇版封份张句行列组周年月]/;
+const ORDINAL_AFTER =
+  /^[章节次步天日点期页部回届集季批条项层眼时步个种位类段轮篇版封份张句行列组周年月]/;
 
 function escapeRe(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -185,14 +191,16 @@ function escapeRe(text: string): string {
 const AD_LAW_RE = new RegExp(AD_LAW_WORDS.map((w) => escapeRe(w.word)).join('|'), 'g');
 const AD_LAW_TO = new Map(AD_LAW_WORDS.map((w) => [w.word, w.to]));
 
-const CONTACT_PATTERNS: { re: RegExp; what: string }[] = [
-  { re: /(?<![\d])1[3-9]\d[\s-]?\d{4}[\s-]?\d{4}(?![\d])/g, what: '手机号' },
+/** `id`: the message key of what was found (`compliance.contactWhat`); `what` is its `zh-CN` text. */
+const CONTACT_PATTERNS: { id: 'phone' | 'wechat' | 'qq' | 'email'; re: RegExp; what: string }[] = [
+  { id: 'phone', re: /(?<![\d])1[3-9]\d[\s-]?\d{4}[\s-]?\d{4}(?![\d])/g, what: '手机号' },
   {
+    id: 'wechat',
     re: /(?:微信号?|威信|薇信|[vV]信|[vV][xX]|[wW][xX]|weixin|wechat|WeChat)\s*(?:号)?\s*[:：]?\s*[a-zA-Z][-_a-zA-Z0-9]{5,19}/g,
     what: '微信号',
   },
-  { re: /(?:QQ|qq|扣扣|企鹅)\s*(?:号|群)?\s*[:：]?\s*[1-9]\d{4,11}/g, what: 'QQ 号' },
-  { re: /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, what: '邮箱' },
+  { id: 'qq', re: /(?:QQ|qq|扣扣|企鹅)\s*(?:号|群)?\s*[:：]?\s*[1-9]\d{4,11}/g, what: 'QQ 号' },
+  { id: 'email', re: /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, what: '邮箱' },
 ];
 
 /**
@@ -236,14 +244,6 @@ const URL_RE = /\bhttps?:\/\/[^\s<>"'，。）)]+/gi;
 /* entry                                                                    */
 /* ------------------------------------------------------------------------ */
 
-const FIELD_LABEL: Record<ComplianceField, string> = {
-  title: '标题',
-  summary: '摘要',
-  tags: '标签',
-  body: '正文',
-  images: '图片',
-};
-
 /**
  * Deterministic checks of one platform's rules (SPEC-r8 §12.9: the SDK is the judge). Two call forms:
  * `checkCompliance(input)` and `checkCompliance(platform, doc, extraRules?)`. Unknown platforms only get the
@@ -262,7 +262,8 @@ export function checkCompliance(
 ): ComplianceResult {
   const input: ComplianceInput =
     typeof first === 'string' ? { platform: first, ...(doc ?? {}), extraRules } : first;
-  const rules = platformRules(input.platform);
+  const m = coreMessages(input.lang).compliance;
+  const rules = platformRules(input.platform, input.lang);
   const out = new Items();
   const learned = checkLearnedRules(input, input.extraRules);
   if (!rules) return { items: learned };
@@ -283,7 +284,7 @@ export function checkCompliance(
           rule,
           field,
           level: 'warn',
-          message: `${FIELD_LABEL[field]} ${n} 字，超过平台上限 ${limit.max} 字`,
+          message: fmt(m.lengthMax, { field: m.field[field], n, max: limit.max }),
           ...(field === 'body'
             ? {}
             : {
@@ -300,7 +301,7 @@ export function checkCompliance(
           rule,
           field,
           level: 'warn',
-          message: `${FIELD_LABEL[field]} ${n} 字，少于平台下限 ${limit.min} 字`,
+          message: fmt(m.lengthMin, { field: m.field[field], n, min: limit.min }),
           excerpt: value,
           needsAi: true,
         },
@@ -320,7 +321,7 @@ export function checkCompliance(
           rule: 'tag-count',
           field: 'tags',
           level: 'warn',
-          message: `标签 ${tags.length} 个，平台最多 ${rules.tags.max} 个`,
+          message: fmt(m.tagsMax, { n: tags.length, max: rules.tags.max }),
           fix: { kind: 'trim', field: 'tags', max: rules.tags.max },
         },
         'tags:max'
@@ -331,7 +332,7 @@ export function checkCompliance(
           rule: 'tag-count',
           field: 'tags',
           level: 'warn',
-          message: `至少需要 ${rules.tags.min} 个标签`,
+          message: fmt(m.tagsMin, { min: rules.tags.min }),
         },
         'tags:min'
       );
@@ -347,7 +348,7 @@ export function checkCompliance(
           rule: 'image-count',
           field: 'images',
           level: 'warn',
-          message: `图片 ${images.length} 张，平台最多 ${max} 张`,
+          message: fmt(m.imagesMax, { n: images.length, max }),
           fix: { kind: 'trim', field: 'images', max },
         },
         'images:max'
@@ -358,7 +359,7 @@ export function checkCompliance(
           rule: 'image-count',
           field: 'images',
           level: 'warn',
-          message: `至少需要 ${min} 张图片`,
+          message: fmt(m.imagesMin, { min }),
         },
         'images:min'
       );
@@ -376,7 +377,12 @@ export function checkCompliance(
             rule: 'image-ratio',
             field: 'images',
             level: 'info',
-            message: `第 ${i + 1} 张图片比例 ${size.width}×${size.height}，平台推荐 ${ratios.join(' / ')}，可能被裁切`,
+            message: fmt(m.imageRatio, {
+              i: i + 1,
+              w: size.width,
+              h: size.height,
+              ratios: ratios.join(' / '),
+            }),
             excerpt: images[i],
           },
           `ratio:${images[i] ?? i}`
@@ -397,9 +403,7 @@ export function checkCompliance(
           rule: 'external-link',
           field: 'body',
           level: forbidden ? 'warn' : 'info',
-          message: forbidden
-            ? '平台禁止站外链接（视为导流），发布前删除'
-            : '公众号正文里的站外链接不可点击，导出时转为文末「参考链接」',
+          message: forbidden ? m.linkForbidden : m.linkStripped,
           excerpt: href,
           ...(forbidden ? { fix: { kind: 'replace' as const, from: href, to: '' } } : {}),
         },
@@ -417,49 +421,49 @@ export function checkCompliance(
   for (const [field, value] of texts) {
     if (!value) continue;
     if (rules.noContact) {
-      for (const { re, what } of CONTACT_PATTERNS) {
-        for (const m of value.matchAll(re)) {
+      for (const { id, re } of CONTACT_PATTERNS) {
+        for (const hit of value.matchAll(re)) {
           out.add(
             {
               rule: 'contact',
               field,
               level: 'warn',
-              message: `含${what}，平台禁止站外导流`,
-              excerpt: around(value, m.index!, m[0].length),
-              fix: { kind: 'replace', from: m[0], to: '' },
+              message: fmt(m.contact, { what: m.contactWhat[id] }),
+              excerpt: around(value, hit.index!, hit[0].length),
+              fix: { kind: 'replace', from: hit[0], to: '' },
             },
-            m[0]
+            hit[0]
           );
         }
       }
     }
     if (rules.noQrcode) {
-      for (const m of value.matchAll(QR_RE)) {
+      for (const hit of value.matchAll(QR_RE)) {
         out.add(
           {
             rule: 'qrcode',
             field,
             level: 'warn',
-            message: `提到「${m[0]}」，平台禁止二维码导流`,
-            excerpt: around(value, m.index!, m[0].length),
+            message: fmt(m.qrcode, { word: hit[0] }),
+            excerpt: around(value, hit.index!, hit[0].length),
             needsAi: true,
           },
-          m[0]
+          hit[0]
         );
       }
     }
     if (rules.finance) {
-      for (const m of value.matchAll(FINANCE_RE)) {
+      for (const hit of value.matchAll(FINANCE_RE)) {
         out.add(
           {
             rule: 'finance',
             field,
             level: 'warn',
-            message: `「${m[0]}」属于荐股或收益承诺类说法，财经平台会限流或删除，请换个说法`,
-            excerpt: around(value, m.index!, m[0].length),
+            message: fmt(m.finance, { word: hit[0] }),
+            excerpt: around(value, hit.index!, hit[0].length),
             needsAi: true,
           },
-          m[0]
+          hit[0]
         );
       }
       const named = value.match(SECURITY_RE);
@@ -469,16 +473,16 @@ export function checkCompliance(
             rule: 'finance',
             field,
             level: 'info',
-            message: `文中提到了 ${named[0]}：如果持有相关标的，记得在文末披露持仓或利益关系`,
+            message: fmt(m.financeDisclosure, { security: named[0] }),
           },
           `disclosure:${named[0]}`
         );
       }
     }
     if (rules.adLawWords) {
-      for (const m of value.matchAll(AD_LAW_RE)) {
-        const word = m[0];
-        const next = value.slice(m.index! + word.length);
+      for (const hit of value.matchAll(AD_LAW_RE)) {
+        const word = hit[0];
+        const next = value.slice(hit.index! + word.length);
         if (word === '第一' && ORDINAL_AFTER.test(next)) continue;
         const to = AD_LAW_TO.get(word) ?? '';
         out.add(
@@ -486,8 +490,8 @@ export function checkCompliance(
             rule: 'ad-law',
             field,
             level: 'warn',
-            message: `「${word}」属于《广告法》极限用语，商业推广语境下禁用`,
-            excerpt: around(value, m.index!, word.length),
+            message: fmt(m.adLaw, { word }),
+            excerpt: around(value, hit.index!, word.length),
             ...(to ? { fix: { kind: 'replace' as const, from: word, to } } : {}),
             needsAi: true,
           },
@@ -506,7 +510,7 @@ export function checkCompliance(
           rule: 'qrcode',
           field: 'images',
           level: 'warn',
-          message: `第 ${i + 1} 张图片看起来是二维码，平台禁止二维码导流`,
+          message: fmt(m.qrImage, { i: i + 1 }),
           excerpt: alt || file,
         },
         src
@@ -516,7 +520,8 @@ export function checkCompliance(
 
   // AI label
   if (input.aiAssisted) {
-    const { required, method, note } = rules.aiLabel;
+    const { required, method } = rules.aiLabel;
+    const note = aiLabelNote(rules.aiLabel, input.lang);
     const declared = !!input.text && AI_DECLARATION_RE.test(input.text);
     if (input.aiLabel === false) {
       if (required !== false)
@@ -525,7 +530,10 @@ export function checkCompliance(
             rule: 'ai-label',
             field: 'body',
             level: 'warn',
-            message: `已关闭 AI 标注。${required === true ? '依法须标注' : '平台规则待核实'}，不标注有合规风险（${note}）`,
+            message: fmt(m.aiLabelOff, {
+              why: required === true ? m.aiLabelRequired : m.aiLabelUnverified,
+              note,
+            }),
             fix: { kind: 'ai-label' },
           },
           'off'
@@ -537,10 +545,7 @@ export function checkCompliance(
             rule: 'ai-label',
             field: 'body',
             level: required === true ? 'warn' : 'info',
-            message:
-              rules.aiLabel.placement === 'top'
-                ? '正文缺少 AI 辅助声明，该平台要求放在开头'
-                : '正文缺少 AI 辅助声明，将在文末加一句',
+            message: rules.aiLabel.placement === 'top' ? m.aiFooterTop : m.aiFooterBottom,
             fix: { kind: 'ai-label' },
           },
           'footer'
@@ -551,7 +556,7 @@ export function checkCompliance(
             rule: 'ai-label',
             field: 'body',
             level: 'info',
-            message: '发布时在平台勾选「内容由 AI 生成」声明',
+            message: m.aiToggle,
             excerpt: note,
           },
           'toggle'
@@ -561,7 +566,6 @@ export function checkCompliance(
 
   return { items: [...out.list, ...learned], rules };
 }
-
 
 /* ------------------------------------------------------------------------ */
 /* AI declaration                                                           */
@@ -618,7 +622,12 @@ export const COMPLIANCE_LEXICON = {
   adLawWords: AD_LAW_WORDS,
   /** 「第一」 followed by one of these characters is an ordinal, not a claim. */
   ordinalAfter: ORDINAL_AFTER.source,
-  contactPatterns: CONTACT_PATTERNS.map((c) => ({ what: c.what, source: c.re.source, flags: c.re.flags })),
+  contactPatterns: CONTACT_PATTERNS.map((c) => ({
+    id: c.id,
+    what: c.what,
+    source: c.re.source,
+    flags: c.re.flags,
+  })),
   qrText: { source: QR_RE.source, flags: QR_RE.flags },
   qrImage: { source: QR_IMAGE_RE.source, flags: QR_IMAGE_RE.flags },
   url: { source: URL_RE.source, flags: URL_RE.flags },

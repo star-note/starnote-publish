@@ -13,6 +13,7 @@
  * ⚠️ 待核实：Telegram 的长度按 UTF-16 码元计（实体解析后）；这里按码点计，emoji 多时可能略超。
  */
 import {
+  byLang,
   defineAdapter,
   escapeHtml,
   mediaReport,
@@ -26,11 +27,14 @@ import {
   helpError,
   missingLinkReport,
   newPostReport,
+  refIn,
   relayPublish,
   relayRequestOf,
 } from '@starnote/publish-kit';
 import { buildShare, shareInputOf } from '@starnote/publish-share';
 import { z } from 'zod';
+
+import { msg } from './i18n';
 
 import type {
   Adapter,
@@ -42,6 +46,7 @@ import type {
   PublishHandoff,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type {
   ErrorLinks,
@@ -62,44 +67,44 @@ export const TELEGRAM_LIMITS = {
 
 const URL_RE = /^https?:\/\/\S+$/;
 
-export const telegramSchema = z.object({
-  /** Your own text instead of title + summary (still fitted to the limit). */
-  text: z.string().trim().max(5000).optional().describe('消息文案'),
-  link: z
-    .string()
-    .trim()
-    .regex(URL_RE, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('链接'),
-  include_summary: z.boolean().default(true).describe('带上摘要'),
-  include_tags: z.boolean().default(true).describe('带上话题'),
-  /** With a cover: a photo message (caption ≤ 1024); off: a text message with the link preview. */
-  with_cover: z.boolean().default(true).describe('带封面图'),
-  silent: z.boolean().default(false).describe('静默发送'),
+/** The form in a language (SPEC-r14 B5): labels and messages from `msg(lang)`. */
+export const telegramSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** Your own text instead of title + summary (still fitted to the limit). */
+    text: z.string().trim().max(5000).optional().describe(t.text),
+    link: z.string().trim().regex(URL_RE, t.httpUrl).optional().describe(t.link),
+    include_summary: z.boolean().default(true).describe(t.includeSummary),
+    include_tags: z.boolean().default(true).describe(t.includeTags),
+    /** With a cover: a photo message (caption ≤ 1024); off: a text message with the link preview. */
+    with_cover: z.boolean().default(true).describe(t.withCover),
+    silent: z.boolean().default(false).describe(t.silent),
+  });
 });
+
+export const telegramSchema = telegramSchemaFor('zh-CN');
 
 export type TelegramForm = z.infer<typeof telegramSchema>;
 export type TelegramFormInput = z.input<typeof telegramSchema>;
 
 /** The binding form: what the user pastes (validated again by the server with `getMe` / `getChatMember`). */
-export const telegramTokenForm = z.object({
-  bot_token: z
-    .string()
-    .trim()
-    .regex(
-      /^\d{5,16}:[A-Za-z0-9_-]{30,64}$/,
-      '机器人令牌形如 123456789:AA…（在 @BotFather 里获取）'
-    )
-    .describe('机器人令牌'),
-  chat_id: z
-    .string()
-    .trim()
-    .regex(
-      /^(@[A-Za-z][A-Za-z0-9_]{4,31}|-?\d{5,20})$/,
-      '填写 @频道用户名，或数字 ID（私有频道 / 群）'
-    )
-    .describe('频道 / 群'),
+export const telegramTokenFormFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    bot_token: z
+      .string()
+      .trim()
+      .regex(/^\d{5,16}:[A-Za-z0-9_-]{30,64}$/, t.tokenHint)
+      .describe(t.token),
+    chat_id: z
+      .string()
+      .trim()
+      .regex(/^(@[A-Za-z][A-Za-z0-9_]{4,31}|-?\d{5,20})$/, t.chatHint)
+      .describe(t.chat),
+  });
 });
+
+export const telegramTokenForm = telegramTokenFormFor('zh-CN');
 
 export type TelegramCredentials = z.infer<typeof telegramTokenForm>;
 
@@ -109,18 +114,13 @@ export const telegramBinding: BindingSpec = {
   provider: 'telegram',
   fields: ['bot_token', 'chat_id'],
   form: telegramTokenForm,
+  formFor: telegramTokenFormFor,
   createUrl: 'https://t.me/BotFather',
-  permissions: [
-    '频道：把机器人设为管理员，并打开「发布消息」权限',
-    '群组：把机器人拉进群（建议设为管理员）',
-  ],
+  permissions: msg('zh-CN').permissions,
+  permissionsFor: (lang) => msg(lang).permissions,
   helpUrl: 'https://core.telegram.org/bots/features#botfather',
-  instructions: [
-    '在 Telegram 里找 @BotFather，发送 /newbot 创建机器人，复制它给的令牌',
-    '把机器人加进你的频道（或群），设为管理员并允许「发布消息」',
-    '填写令牌和频道：公开频道写 @用户名，私有频道 / 群写数字 ID（以 -100 开头）',
-    '令牌加密存在辰记服务器，用来到点代发；不用时在这里解绑，并可在 @BotFather 里 /revoke 令牌',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 /** `sendMessage` / `sendPhoto` without `chat_id` (the server adds it from the bound account). */
@@ -150,6 +150,8 @@ export interface TelegramRendered {
 
 export interface TelegramRenderOptions {
   assetBase?: string;
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 /** Pure: the Bot API call body and the predicted report (articles, short texts, image sets). */
@@ -166,8 +168,10 @@ export function renderTelegram(
     link: form.link,
   });
   const report: ReportItem[] = [];
+  const ui = opts.lang;
+  const t = msg(ui);
   // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
-  report.push(...mediaReport('telegram', 'Telegram', content, common));
+  report.push(...mediaReport('telegram', 'Telegram', content, common, ui));
   const photo = form.with_cover ? card.cover : undefined;
   const limit = photo ? TELEGRAM_LIMITS.captionMax : TELEGRAM_LIMITS.textMax;
   const ownText = !!card.text;
@@ -194,22 +198,22 @@ export function renderTelegram(
     report.push({
       kind: 'share.truncated',
       level: 'notice',
-      text: `Telegram ${photo ? '图片说明最多 1024 字' : '消息最多 4096 字'}，已截短`,
+      text: t.truncated(!!photo),
     });
   const dropped = allTags.length - fit.tags.length;
   if (dropped > 0)
     report.push({
       kind: 'tags.trimmed',
-      text: `话题保留 ${fit.tags.length} 个，去掉 ${dropped} 个`,
+      text: t.tagsTrimmed(fit.tags.length, dropped),
       count: dropped,
     });
   if (card.link)
     report.push({
       kind: 'link.card',
-      text: photo ? '以封面图消息发出，文末附原文链接' : 'Telegram 会按链接生成预览卡片',
+      text: photo ? t.photoCard : t.linkCard,
       detail: { url: card.link },
     });
-  else report.push(missingLinkReport('Telegram'));
+  else report.push(missingLinkReport('Telegram', ui));
 
   const silent = form.silent ? { disable_notification: true } : {};
   const body: TelegramSendBody = photo
@@ -302,8 +306,11 @@ export function telegramHandoff(
 export function createTelegramAdapter(
   opts: TelegramAdapterOptions = {}
 ): Adapter<typeof telegramSchema> {
-  const ref = telegramRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const baseRef = telegramRef(opts.links);
+  const renderOpts = (lang?: SdkLang): TelegramRenderOptions => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'telegram',
     label: 'Telegram',
@@ -312,9 +319,10 @@ export function createTelegramAdapter(
     binding: telegramBinding,
     capabilities: { supportsUpdate: false, needsLogin: true },
     schema: telegramSchema,
+    schemaFor: telegramSchemaFor,
     maxConcurrent: 3,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderTelegram(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderTelegram(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'text',
         title: common?.title || doc.title,
@@ -323,22 +331,24 @@ export function createTelegramAdapter(
         report: r.report,
       };
     },
-    renderRequest({ doc, form, common, content }) {
-      const r = renderTelegram(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, lang }) {
+      const r = renderTelegram(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(r.body, undefined, undefined, r.report);
     },
-    renderHandoff({ doc, form, common, content }) {
-      return telegramHandoff(doc, form, common, content, renderOpts);
+    renderHandoff({ doc, form, common, content, lang }) {
+      return telegramHandoff(doc, form, common, content, renderOpts(lang));
     },
     publish({ doc, form, common, ctx, content }) {
+      const ref = refIn(baseRef, ctx.lang);
+      const t = msg(ctx.lang);
       return guard(ctx, ref, async () => {
-        const r = renderTelegram(doc, form, common, content, renderOpts);
-        if (!r.text.trim()) throw helpError(ref, '消息是空的', { code: 'invalid' });
-        const report = [...r.report, ...newPostReport(ctx.previous)];
+        const r = renderTelegram(doc, form, common, content, renderOpts(ctx.lang));
+        if (!r.text.trim()) throw helpError(ref, t.empty, { code: 'invalid' });
+        const report = [...r.report, ...newPostReport(ctx.previous, ctx.lang)];
         ctx.emit({ type: 'report', items: report });
-        ctx.emit({ type: 'progress', percent: 40, text: '由机器人发到 Telegram' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.sending });
         const res = await relayPublish({ ...ctx, previous: undefined }, ref, r.body);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

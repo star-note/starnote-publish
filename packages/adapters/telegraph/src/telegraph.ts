@@ -14,6 +14,7 @@
  * string), error strings other than `SHORT_NAME_REQUIRED`, rate limits, whether external image URLs always display.
  */
 import {
+  byLang,
   defineAdapter,
   isUrlExternalId,
   mediaReport,
@@ -37,6 +38,8 @@ import {
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
+import { msg } from './i18n';
+
 import type {
   Adapter,
   AdapterPreview,
@@ -49,6 +52,7 @@ import type {
   RuntimeSupport,
   StatsContext,
   TiptapJSON,
+  SdkLang,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
 
@@ -99,45 +103,50 @@ export interface TelegraphElement {
 }
 export type TelegraphNode = string | TelegraphElement;
 
-export const telegraphSchema = z.object({
-  /** Shown under the title; defaults to the one given when binding. */
-  author_name: z.string().trim().max(128, '作者名最多 128 字').optional().describe('作者名'),
-  /** Opened when readers click the author name. */
-  author_url: z
-    .string()
-    .trim()
-    .max(512)
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('作者链接'),
-  origin_note: z.boolean().default(true).describe('文末注明原文'),
-  canonical_url: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('原文链接'),
-  /** The page path of an earlier publish (percent-encoded), to edit instead of creating. */
-  external_id: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9_%-]{1,512}$/, '页面路径格式不对')
-    .optional()
-    .describe('已发布页面'),
+export const telegraphSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** Shown under the title; defaults to the one given when binding. */
+    author_name: z.string().trim().max(128, t.authorMax).optional().describe(t.authorName),
+    /** Opened when readers click the author name. */
+    author_url: z
+      .string()
+      .trim()
+      .max(512)
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.authorUrl),
+    origin_note: z.boolean().default(true).describe(t.originNote),
+    canonical_url: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.canonicalUrl),
+    /** The page path of an earlier publish (percent-encoded), to edit instead of creating. */
+    external_id: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9_%-]{1,512}$/, t.badPath)
+      .optional()
+      .describe(t.externalId),
+  });
 });
+
+export const telegraphSchema = telegraphSchemaFor('zh-CN');
 
 export type TelegraphForm = z.infer<typeof telegraphSchema>;
 export type TelegraphFormInput = z.input<typeof telegraphSchema>;
 
 /** Nothing secret to paste: the server creates the account. The author name is optional. */
-export const telegraphKeyForm = z.object({
-  author_name: z
-    .string()
-    .trim()
-    .max(128, '作者名最多 128 字')
-    .optional()
-    .describe('作者名（可选）'),
+export const telegraphKeyFormFor = byLang((lang) => {
+  const k = msg(lang).key;
+  return z.object({
+    author_name: z.string().trim().max(128, k.authorMax).optional().describe(k.authorName),
+  });
 });
+
+export const telegraphKeyForm = telegraphKeyFormFor('zh-CN');
 
 export const telegraphBinding: BindingSpec = {
   kind: 'token',
@@ -145,12 +154,10 @@ export const telegraphBinding: BindingSpec = {
   provider: 'telegraph',
   fields: ['author_name'],
   form: telegraphKeyForm,
+  formFor: telegraphKeyFormFor,
   helpUrl: 'https://telegra.ph/api',
-  instructions: [
-    'Telegraph 不用注册：点「绑定」后辰记自动为你创建一个 Telegraph 账号，令牌只存在辰记服务器',
-    '作者名可选，会显示在每篇文章标题下面',
-    '解绑后令牌作废，已经发出的页面不能再从辰记修改',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 export interface TelegraphPageBody {
@@ -350,9 +357,12 @@ export function renderTelegraph(
   form: TelegraphForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  /** `lang` (SPEC-r14 B5): language of the report. Default `zh-CN`. */
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): TelegraphRendered {
   const article = articleOf(doc, content);
+  const lang = opts.lang;
+  const m = msg(lang);
   const degraded = degradeArticle(
     article.doc,
     {
@@ -365,38 +375,40 @@ export function renderTelegraph(
       stripHighlight: true,
       ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
     },
-    'Telegraph'
+    'Telegraph',
+    lang
   );
   const counts: Counts = { table: 0, task: 0, dropped: 0 };
   const nodes = blocks(degraded.json, counts);
   const title = fitTitle(
     common.title || article.doc.title || 'Untitled',
     TELEGRAPH_LIMITS.titleMax,
-    'Telegraph'
+    'Telegraph',
+    lang
   );
-  const report: ReportItem[] = [...mediaReport('telegraph', 'Telegraph', content, common)];
-  const canonical = canonicalOf({ canonical_url: form.canonical_url }, article, 'Telegraph');
+  const report: ReportItem[] = [...mediaReport('telegraph', 'Telegraph', content, common, lang)];
+  const canonical = canonicalOf({ canonical_url: form.canonical_url }, article, 'Telegraph', lang);
   if (form.origin_note && canonical.url) {
     nodes.push(...originNodes(originLinkOf(form, article, canonical.url), article.lang));
-    report.push({ kind: 'origin.note', text: '文末注明首发于辰记并附原文链接' });
+    report.push({ kind: 'origin.note', text: m.originNote });
   }
   report.push(
     ...degraded.report,
-    ...linkedImagesReport(degraded.doc.images.length - counts.dropped, 'Telegraph'),
+    ...linkedImagesReport(degraded.doc.images.length - counts.dropped, 'Telegraph', lang),
     ...title.report
   );
   if (counts.table)
     report.push({
       kind: 'table.flattened',
       level: 'notice',
-      text: `Telegraph 没有表格：${counts.table} 个表格改为每行一段、单元格用 | 分隔`,
+      text: m.tablesFlattened(counts.table),
       count: counts.table,
     });
   if (counts.dropped)
     report.push({
       kind: 'image.dropped',
       level: 'warn',
-      text: `${counts.dropped} 张图片没有公网地址，Telegraph 显示不了，已去掉`,
+      text: m.imagesDropped(counts.dropped),
       count: counts.dropped,
     });
   const bytes = telegraphContentBytes(nodes);
@@ -404,7 +416,7 @@ export function renderTelegraph(
     report.push({
       kind: 'body.too_large',
       level: 'error',
-      text: `正文约 ${Math.ceil(bytes / 1024)} KB，超过 Telegraph 的 64 KB 上限，请拆成几篇`,
+      text: m.tooLarge(Math.ceil(bytes / 1024)),
     });
 
   return {
@@ -489,7 +501,10 @@ export function createTelegraphAdapter(
   opts: TelegraphAdapterOptions = {}
 ): Adapter<typeof telegraphSchema> {
   const ref = telegraphRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'telegraph',
     label: 'Telegraph',
@@ -498,12 +513,13 @@ export function createTelegraphAdapter(
     binding: telegraphBinding,
     capabilities: { supportsUpdate: true, needsLogin: true, titleMax: TELEGRAPH_LIMITS.titleMax },
     schema: telegraphSchema,
+    schemaFor: telegraphSchemaFor,
     statsRequires: 'none',
     fetchStats(externalId, ctx) {
       return fetchTelegraphStats(externalId, ctx);
     },
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderTelegraph(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderTelegraph(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'html',
         title: r.title,
@@ -512,17 +528,17 @@ export function createTelegraphAdapter(
         report: r.report,
       };
     },
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderTelegraph(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderTelegraph(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(telegraphRelayBody(r), previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderTelegraph(doc, form, common, content, renderOpts);
+        const r = renderTelegraph(doc, form, common, content, renderOpts(ctx.lang));
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '由服务器代发到 Telegraph' });
+        ctx.emit({ type: 'progress', percent: 40, text: msg(ctx.lang).relaying });
         const res = await relayPublish(ctx, ref, telegraphRelayBody(r), form.external_id);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: msg(ctx.lang).done });
         return {
           url: res.url,
           externalId: res.externalId,

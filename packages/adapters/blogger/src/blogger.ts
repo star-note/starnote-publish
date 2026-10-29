@@ -8,7 +8,7 @@
  * 辰记's API with the token the web page holds in memory (`credential`, never stored), or 辰记's API with its
  * encrypted copy when 「云端代发」 is on.
  */
-import { defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
+import { byLang, defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
 import {
   absoluteUrl,
   articleOf,
@@ -26,6 +26,8 @@ import {
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
+import { msg } from './i18n';
+
 import type {
   Adapter,
   AdapterPreview,
@@ -35,6 +37,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type {
   CredentialSource,
@@ -53,25 +56,26 @@ export const BLOGGER_LIMITS = {
   labelMax: 50,
 } as const;
 
-export const bloggerSchema = z.object({
-  /** The blog to publish to (from the binding's list); absent: the one picked when binding. */
-  blog_id: z.string().trim().regex(/^\d+$/, '博客 ID 是数字').optional().describe('博客'),
-  status: z.enum(['publish', 'draft']).default('publish').describe('发布方式'),
-  origin_note: z.boolean().default(true).describe('文末注明首发于辰记'),
-  set_canonical: z.boolean().default(true).describe('附原文链接'),
-  canonical_url: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('原文链接'),
-  external_id: z
-    .string()
-    .trim()
-    .regex(/^\d+$/, '文章 ID 是数字')
-    .optional()
-    .describe('已发布文章 ID'),
+/** The form in a language (SPEC-r14 B5): labels and messages from `msg(lang)`. */
+export const bloggerSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** The blog to publish to (from the binding's list); absent: the one picked when binding. */
+    blog_id: z.string().trim().regex(/^\d+$/, t.blogIdDigits).optional().describe(t.blog),
+    status: z.enum(['publish', 'draft']).default('publish').describe(t.status),
+    origin_note: z.boolean().default(true).describe(t.originNote),
+    set_canonical: z.boolean().default(true).describe(t.setCanonical),
+    canonical_url: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.canonicalUrl),
+    external_id: z.string().trim().regex(/^\d+$/, t.idDigits).optional().describe(t.externalId),
+  });
 });
+
+export const bloggerSchema = bloggerSchemaFor('zh-CN');
 
 export type BloggerForm = z.infer<typeof bloggerSchema>;
 export type BloggerFormInput = z.input<typeof bloggerSchema>;
@@ -82,13 +86,11 @@ export const bloggerBinding: BindingSpec = {
   provider: 'google',
   scopes: [BLOGGER_SCOPE],
   helpUrl: 'https://www.blogger.com/',
-  instructions: [
-    '点「用 Google 授权」，在 Google 页面选择账号并允许辰记管理你的 Blogger 博客',
-    '回到辰记后选择要发布到的博客',
-    '桌面端：令牌加密存在本机；网页：令牌只在当前页面，关闭即失效；打开「云端代发」才会存到辰记服务器',
-    '不用时到 Google 账号「第三方应用和服务」里移除辰记',
-  ],
-  selects: [{ id: 'blog_id', title: '发布到哪个博客' }],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
+  // the title in other languages: `msg(lang).selectBlog` (exported as `bloggerMessages`)
+  selects: [{ id: 'blog_id', title: msg('zh-CN').selectBlog }],
+  selectsFor: (lang) => [{ id: 'blog_id', title: msg(lang).selectBlog }],
 };
 
 export interface BloggerPostBody {
@@ -118,9 +120,12 @@ export function renderBlogger(
   form: BloggerForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  /** `lang` (SPEC-r14 B5): language of the report (not of the closing line). Default `zh-CN`. */
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): BloggerRendered {
   const article = articleOf(doc, content);
+  const lang = opts.lang;
+  const t = msg(lang);
   const degraded = degradeArticle(
     article.doc,
     {
@@ -131,38 +136,45 @@ export function renderBlogger(
       video: 'link',
       ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
     },
-    'Blogger'
+    'Blogger',
+    lang
   );
-  const title = fitTitle(common.title || article.doc.title || 'Untitled', undefined, 'Blogger');
+  const title = fitTitle(
+    common.title || article.doc.title || 'Untitled',
+    undefined,
+    'Blogger',
+    lang
+  );
   const labels = fitTags(
     common.tags,
     {
       max: BLOGGER_LIMITS.labels,
-      normalize: (t) => t.trim().slice(0, BLOGGER_LIMITS.labelMax) || null,
+      normalize: (tag) => tag.trim().slice(0, BLOGGER_LIMITS.labelMax) || null,
     },
-    'Blogger'
+    'Blogger',
+    lang
   );
-  const canonical = canonicalOf(form, article, 'Blogger');
+  const canonical = canonicalOf(form, article, 'Blogger', lang);
 
   let html = degraded.body;
   const report: ReportItem[] = [...degraded.report];
   const cover = absoluteUrl(common.cover, opts.assetBase);
   if (cover) {
     html = `<p><img src="${cover.replace(/"/g, '&quot;')}" alt=""></p>\n${html}`;
-    report.push({ kind: 'cover.inline', text: 'Blogger 没有封面字段，封面图放在正文开头' });
+    report.push({ kind: 'cover.inline', text: t.coverInline });
   }
   if (canonical.url && form.origin_note) {
     html += originNoteHtml(originLinkOf(form, article, canonical.url), article.lang);
     report.push({
       kind: 'canonical.note',
-      text: 'Blogger 没有 canonical 字段，已在文末注明首发于辰记并附原文链接',
+      text: t.originNoted,
       detail: { url: canonical.url },
     });
   } else {
     report.push(...canonical.report.filter((i) => i.kind !== 'canonical.set'));
   }
   report.push(
-    ...linkedImagesReport(degraded.doc.images.length + (cover ? 1 : 0), 'Blogger'),
+    ...linkedImagesReport(degraded.doc.images.length + (cover ? 1 : 0), 'Blogger', lang),
     ...title.report,
     ...labels.report
   );
@@ -170,7 +182,7 @@ export function renderBlogger(
     report.push({
       kind: 'draft.only',
       level: 'notice',
-      text: '保存为 Blogger 草稿，检查后在 Blogger 后台发布',
+      text: t.draftOnly,
     });
 
   return {
@@ -229,7 +241,10 @@ export function createBloggerAdapter(
   opts: BloggerAdapterOptions = {}
 ): Adapter<typeof bloggerSchema> {
   const ref = bloggerRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'blogger',
     label: 'Blogger',
@@ -238,8 +253,9 @@ export function createBloggerAdapter(
     binding: bloggerBinding,
     capabilities: { supportsUpdate: true, needsLogin: true },
     schema: bloggerSchema,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderBlogger(doc, form, common, content, renderOpts);
+    schemaFor: bloggerSchemaFor,
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderBlogger(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'html',
         title: r.title,
@@ -249,18 +265,19 @@ export function createBloggerAdapter(
       };
     },
     // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderBlogger(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderBlogger(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(r.body, previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderBlogger(doc, form, common, content, renderOpts);
+        const r = renderBlogger(doc, form, common, content, renderOpts(ctx.lang));
+        const t = msg(ctx.lang);
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '发布到 Blogger' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.publishing });
         const credential = await credentialOf(opts.credential, 'blogger', ctx);
         const res = await relayPublish(ctx, ref, r.body, form.external_id, { credential });
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

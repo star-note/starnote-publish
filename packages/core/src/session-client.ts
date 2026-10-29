@@ -6,6 +6,7 @@
  * risk-control page is a `challenge` that the run hands to the user (`openSessionRun`), never solved by us.
  */
 import { readPath } from './desktop-session';
+import { coreMessages } from './i18n/messages';
 import { fillTemplate } from './site-script';
 
 import type {
@@ -15,6 +16,7 @@ import type {
   SessionResponse,
 } from './desktop-session';
 import type { SiteEndpoint, SiteErrorRule, SiteScript } from './site-script';
+import type { SdkLang } from './i18n/lang';
 import type { PublishEventAction } from './types';
 
 export type PlatformErrorKind = 'relogin' | 'retry' | 'help' | 'challenge';
@@ -26,11 +28,12 @@ const CODE: Record<PlatformErrorKind, string> = {
   challenge: 'challenge',
 };
 
-function retryLabel(sec?: number): string {
-  if (!sec) return '稍后重试';
-  if (sec >= 3600) return `${Math.ceil(sec / 3600)} 小时后重试`;
-  if (sec >= 60) return `${Math.ceil(sec / 60)} 分钟后重试`;
-  return `${sec} 秒后重试`;
+function retryLabel(sec?: number, lang?: string): string {
+  const m = coreMessages(lang);
+  if (!sec) return m.common.retryLater;
+  if (sec >= 3600) return m.common.retryAfter(m.wait.hours(Math.ceil(sec / 3600)));
+  if (sec >= 60) return m.common.retryAfter(m.wait.minutes(Math.ceil(sec / 60)));
+  return m.common.retryAfter(m.wait.seconds(sec));
 }
 
 /** Thrown by session adapters; `createPublisher` forwards `code` and `actions` on the `failed` event. */
@@ -52,9 +55,12 @@ export class PlatformSessionError extends Error {
       platformCode?: string | number;
       retryAfterSec?: number;
       challengeUrl?: string;
+      /** SPEC-r14 B5: language of the action labels. Default `zh-CN`. */
+      lang?: SdkLang;
     } = {}
   ) {
     super(message);
+    const m = coreMessages(opts.lang).common;
     this.name = 'PlatformSessionError';
     this.code = CODE[kind];
     this.status = opts.status;
@@ -63,17 +69,17 @@ export class PlatformSessionError extends Error {
     if (opts.challengeUrl) this.challengeUrl = opts.challengeUrl;
     this.actions =
       kind === 'relogin'
-        ? [{ id: 'relogin', label: '重新登录', kind: 'relogin' }]
+        ? [{ id: 'relogin', label: m.relogin, kind: 'relogin' }]
         : kind === 'retry'
-          ? [{ id: 'retry', label: retryLabel(opts.retryAfterSec), kind: 'retry' }]
+          ? [{ id: 'retry', label: retryLabel(opts.retryAfterSec, opts.lang), kind: 'retry' }]
           : [
               {
                 id: 'help',
-                label: '查看帮助',
+                label: m.viewHelp,
                 kind: 'help',
                 ...(opts.helpUrl ? { href: opts.helpUrl } : {}),
               },
-              { id: 'retry', label: '重试', kind: 'retry' },
+              { id: 'retry', label: m.retry, kind: 'retry' },
             ];
   }
 }
@@ -119,7 +125,12 @@ function parseJson(text: string): unknown {
 export function classifyResponse(
   script: Pick<SiteScript, 'errors'>,
   endpoint: Pick<SiteEndpoint, 'ok' | 'format'>,
-  res: Pick<SessionResponse, 'status' | 'text'> & { url?: string; headers?: Record<string, string> }
+  res: Pick<SessionResponse, 'status' | 'text'> & {
+    url?: string;
+    headers?: Record<string, string>;
+  },
+  /** SPEC-r14 B5: language of `detail`. Default `zh-CN`. */
+  lang?: SdkLang
 ): {
   kind: PlatformErrorKind;
   detail: string;
@@ -134,13 +145,13 @@ export function classifyResponse(
   if (res.status === 429 && gate && typeof gate === 'object')
     return {
       kind: 'retry',
-      detail: gate.text ?? '发得太频繁',
+      detail: gate.text ?? coreMessages(lang).session.tooFrequent,
       gate: true,
       ...(gate.retryAfterSec ? { retryAfterSec: gate.retryAfterSec } : {}),
     };
   const challenge = script.errors?.challenge;
   if (challenge && matchesChallenge(challenge, res, json))
-    return { kind: 'challenge', detail: '平台要求验证' };
+    return { kind: 'challenge', detail: coreMessages(lang).session.verifyRequired };
   const codePath = script.errors?.relogin?.codePath ?? script.errors?.rateLimit?.codePath;
   const code = codePath ? (readPath(json, codePath) as string | number | undefined) : undefined;
   if (matchesRule(script.errors?.relogin, res.status, json))
@@ -157,7 +168,7 @@ export function classifyResponse(
   if (json === undefined) {
     // Empty answers (HEAD, 204, PATCH without body) are fine unless a value was required.
     if (!res.text.trim() && !endpoint.ok) return null;
-    return { kind: 'help', detail: '返回不是 JSON' };
+    return { kind: 'help', detail: coreMessages(lang).session.notJson };
   }
   if (endpoint.ok && readPath(json, endpoint.ok.path) !== endpoint.ok.equals) {
     const message =
@@ -168,7 +179,10 @@ export function classifyResponse(
       readPath(json, 'msg');
     return {
       kind: 'help',
-      detail: typeof message === 'string' && message ? message : `${endpoint.ok.path} 不是预期值`,
+      detail:
+        typeof message === 'string' && message
+          ? message
+          : coreMessages(lang).session.unexpected(endpoint.ok.path),
       ...(code !== undefined ? { code } : {}),
     };
   }
@@ -201,8 +215,10 @@ export interface SessionClientOptions {
   script: SiteScript;
   partition: string;
   sessionFetch: SessionFetch;
-  /** 「知乎」, for messages. */
+  /** 「知乎」, for messages (in `lang`, see `localizedLabel`). */
   label: string;
+  /** SPEC-r14 B5: language of the error messages and their actions. Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 function setPath(target: Record<string, unknown>, path: string, value: unknown): void {
@@ -271,7 +287,9 @@ export function buildSessionRequest(
 }
 
 export function createSessionClient(opts: SessionClientOptions): SessionClient {
-  const { script, partition, sessionFetch, label } = opts;
+  const { script, partition, sessionFetch, label, lang } = opts;
+  const m = coreMessages(lang).session;
+  const L = lang ? { lang } : {};
   const helpUrl = script.urls.help ?? script.urls.home;
   const endpoint = (name: string): SiteEndpoint | undefined => script.endpoints?.[name];
   return {
@@ -282,16 +300,12 @@ export function createSessionClient(opts: SessionClientOptions): SessionClient {
     },
     async call(name, args = {}) {
       const e = endpoint(name);
-      if (!e)
-        throw new PlatformSessionError('help', `${label}站点脚本里没有接口 ${name}`, { helpUrl });
+      if (!e) throw new PlatformSessionError('help', m.noEndpoint(label, name), { helpUrl, ...L });
       if (e.signed)
-        throw new PlatformSessionError(
-          'help',
-          `${label}的接口 ${name} 需要平台签名，不能直接调用`,
-          {
-            helpUrl,
-          }
-        );
+        throw new PlatformSessionError('help', m.signedEndpoint(label, name), {
+          helpUrl,
+          ...L,
+        });
       const { url, init } = buildSessionRequest(e, args);
       let res: SessionResponse;
       try {
@@ -299,22 +313,22 @@ export function createSessionClient(opts: SessionClientOptions): SessionClient {
       } catch (cause) {
         throw new PlatformSessionError(
           'help',
-          `${label}请求失败：${cause instanceof Error ? cause.message : String(cause)}`,
-          { helpUrl }
+          m.requestFailed(label, cause instanceof Error ? cause.message : String(cause)),
+          { helpUrl, ...L }
         );
       }
-      const problem = classifyResponse(script, e, res);
+      const problem = classifyResponse(script, e, res, lang);
       if (problem) {
         const text =
           problem.kind === 'relogin'
-            ? `${label}登录已失效，需要重新登录`
+            ? m.loginExpired(label)
             : problem.kind === 'challenge'
-              ? `${label}要求完成验证`
+              ? m.challenge(label)
               : problem.kind === 'retry'
                 ? problem.gate
-                  ? `${problem.detail}，为了像平时一样的发文节奏，这篇先不发`
-                  : `${label}提示操作太频繁，请稍后再试`
-                : `${label}返回错误：${problem.detail}`;
+                  ? m.gated(problem.detail)
+                  : m.rateLimited(label)
+                : m.platformError(label, problem.detail);
         const retryAfter =
           problem.retryAfterSec ?? (Number(res.headers['retry-after']) || undefined);
         const challengeUrl =
@@ -330,6 +344,7 @@ export function createSessionClient(opts: SessionClientOptions): SessionClient {
           ...(problem.code !== undefined ? { platformCode: problem.code } : {}),
           ...(retryAfter ? { retryAfterSec: retryAfter } : {}),
           ...(challengeUrl ? { challengeUrl } : {}),
+          ...L,
         });
       }
       const json = parseJson(res.text);

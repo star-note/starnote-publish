@@ -7,7 +7,12 @@
  * could not find is left out — a missing limit is never checked. The registry carries them as
  * `PlatformMeta.limits.media`, so hosts can check platforms whose adapter is not loaded (小红书 has none).
  */
+import { localizedLabel } from './i18n/labels';
+import { coreMessages } from './i18n/messages';
+
 import type { MediaAsset, PublishContent } from './content';
+import type { SdkLang } from './i18n/lang';
+import type { CoreMessages } from './i18n/messages';
 import type { PlatformKey } from './platforms';
 import type { ReportItem } from './report';
 import type { CommonFormShape } from './types';
@@ -233,8 +238,6 @@ export function mediaFormat(raw: string | undefined): string | undefined {
   return f || undefined;
 }
 
-const ROLE_NAME = { cover: '封面', image: '图片', video: '视频' } as const;
-
 type Problem = 'count' | 'too_large' | 'format' | 'size' | 'aspect' | 'duration';
 
 interface Finding {
@@ -251,14 +254,14 @@ function inRange(r: number, range: AspectRange): boolean {
   return true;
 }
 
-function rangeText(range: AspectRange): string {
+function rangeText(range: AspectRange, m: CoreMessages['media']): string {
   const { min, max } = range;
   if (min !== undefined && max !== undefined)
     return Math.abs(min - max) / max < TOLERANCE
-      ? `为 ${formatRatio(min)}`
-      : `在 ${formatRatio(min)} 到 ${formatRatio(max)} 之间`;
-  if (min !== undefined) return `不小于 ${formatRatio(min)}`;
-  return `不大于 ${formatRatio(max!)}`;
+      ? m.ratioIs(formatRatio(min))
+      : m.ratioBetween(formatRatio(min), formatRatio(max));
+  if (min !== undefined) return m.ratioMin(formatRatio(min));
+  return m.ratioMax(formatRatio(max!));
 }
 
 /**
@@ -271,10 +274,13 @@ function rangeText(range: AspectRange): string {
 export function checkMedia(
   limits: MediaLimits | undefined,
   items: readonly MediaItem[],
-  opts: { platform?: string } = {}
+  opts: { platform?: string; lang?: SdkLang | string } = {}
 ): ReportItem[] {
   if (!limits) return [];
-  const who = opts.platform ?? '平台';
+  const all = coreMessages(opts.lang);
+  const m = all.media;
+  const duration = (sec: number) => durationText(sec, all.wait);
+  const who = opts.platform ?? all.common.platform;
   const found = new Map<string, { role: MediaItem['role']; problem: Problem; list: Finding[] }>();
   const add = (role: MediaItem['role'], problem: Problem, f: Finding) => {
     const key = `${role}.${problem}`;
@@ -288,15 +294,15 @@ export function checkMedia(
   if (maxCount !== undefined && images.length > maxCount)
     add('image', 'count', {
       level: 'warn',
-      text: `${who} 最多 ${maxCount} 张图片，只会用前 ${maxCount} 张（共 ${images.length} 张）`,
+      text: m.tooManyImages(who, maxCount, images.length),
     });
 
   const seen = { cover: 0, image: 0, video: 0 };
   for (const item of items) {
     const role = item.role;
-    const name = ROLE_NAME[role];
+    const name = m.role[role];
     seen[role] += 1;
-    const label = role === 'cover' ? name : `第 ${seen[role]} 个${name}`;
+    const label = role === 'cover' ? name : m.nth(seen[role], name);
     const lim = role === 'video' ? limits.video : role === 'cover' ? limits.cover : limits.image;
     if (!lim) continue;
     const l = lim as NonNullable<MediaLimits['image']> & NonNullable<MediaLimits['video']>;
@@ -306,17 +312,17 @@ export function checkMedia(
         level: role === 'video' ? 'error' : 'warn',
         text:
           role === 'video'
-            ? `${name}超过 ${who} 上限 ${formatBytes(l.maxBytes)}`
-            : `${name}超过 ${who} 上限 ${formatBytes(l.maxBytes)}，会压缩后上传`,
-        sample: `${label}：${formatBytes(item.bytes)}`,
+            ? m.videoTooLarge(name, who, formatBytes(l.maxBytes))
+            : m.tooLarge(name, who, formatBytes(l.maxBytes)),
+        sample: m.sample(label, formatBytes(item.bytes)),
       });
 
     const format = mediaFormat(item.format);
     if (l.formats?.length && format && !l.formats.includes(format))
       add(role, 'format', {
         level: 'error',
-        text: `${who} 的${name}只支持 ${l.formats.map((f) => f.toUpperCase()).join(' / ')}`,
-        sample: `${label}：${format.toUpperCase()}`,
+        text: m.format(who, name, l.formats.map((f) => f.toUpperCase()).join(' / ')),
+        sample: m.sample(label, format.toUpperCase()),
       });
 
     const { width: w, height: h } = item;
@@ -327,14 +333,14 @@ export function checkMedia(
       ) {
         const need =
           l.minWidth !== undefined && l.minHeight !== undefined
-            ? `至少 ${l.minWidth}×${l.minHeight}`
+            ? m.needSize(l.minWidth, l.minHeight)
             : l.minWidth !== undefined
-              ? `宽至少 ${l.minWidth}`
-              : `高至少 ${l.minHeight}`;
+              ? m.needWidth(l.minWidth)
+              : m.needHeight(l.minHeight!);
         add(role, 'size', {
           level: 'error',
-          text: `${name}太小，${who} 要求${need}`,
-          sample: `${label}：${w}×${h}`,
+          text: m.tooSmall(name, who, need),
+          sample: m.sample(label, `${w}×${h}`),
         });
       } else if (
         (l.maxWidth !== undefined && w > l.maxWidth) ||
@@ -342,16 +348,22 @@ export function checkMedia(
       )
         add(role, 'size', {
           level: 'warn',
-          text: `${name}超过 ${who} 的最大尺寸，会被缩小`,
-          sample: `${label}：${w}×${h}`,
+          text: m.tooBig(name, who),
+          sample: m.sample(label, `${w}×${h}`),
         });
       if (l.aspect && !inRange(w / h, l.aspect))
         add(role, 'aspect', {
           level: l.aspect.soft ? 'warn' : 'error',
           text: l.aspect.soft
-            ? `${name}宽高比 ${formatRatio(w / h)}，${who} 建议宽高比${rangeText(l.aspect)}，可能会被裁切`
-            : `${name}太${l.aspect.min !== undefined && w / h < l.aspect.min ? '窄' : '宽'}（${formatRatio(w / h)}），${who} 要求宽高比${rangeText(l.aspect)}`,
-          sample: `${label}：${w}×${h}`,
+            ? m.aspectSoft(name, formatRatio(w / h), who, rangeText(l.aspect, m))
+            : m.aspectHard(
+                name,
+                l.aspect.min !== undefined && w / h < l.aspect.min,
+                formatRatio(w / h),
+                who,
+                rangeText(l.aspect, m)
+              ),
+          sample: m.sample(label, `${w}×${h}`),
         });
     }
 
@@ -359,14 +371,14 @@ export function checkMedia(
       if (l.maxSeconds !== undefined && item.seconds > l.maxSeconds)
         add(role, 'duration', {
           level: 'error',
-          text: `视频超过 ${who} 时长上限 ${duration(l.maxSeconds)}`,
-          sample: `${label}：${duration(item.seconds)}`,
+          text: m.durationMax(who, duration(l.maxSeconds)),
+          sample: m.sample(label, duration(item.seconds)),
         });
       else if (l.minSeconds !== undefined && item.seconds < l.minSeconds)
         add(role, 'duration', {
           level: 'error',
-          text: `视频短于 ${who} 要求的 ${duration(l.minSeconds)}`,
-          sample: `${label}：${duration(item.seconds)}`,
+          text: m.durationMin(who, duration(l.minSeconds)),
+          sample: m.sample(label, duration(item.seconds)),
         });
     }
   }
@@ -378,8 +390,7 @@ export function checkMedia(
     return {
       kind: `media.${role}.${problem}`,
       level,
-      text:
-        list.length > 1 && problem !== 'count' ? `${first.text}（${list.length} 个）` : first.text,
+      text: list.length > 1 && problem !== 'count' ? m.times(first.text, list.length) : first.text,
       ...(problem !== 'count' ? { count: list.length } : {}),
       ...(samples.length ? { samples: samples.slice(0, 3) } : {}),
       detail: { role, problem },
@@ -387,11 +398,11 @@ export function checkMedia(
   });
 }
 
-function duration(sec: number): string {
-  if (sec < 60) return `${Math.round(sec)} 秒`;
+function durationText(sec: number, w: CoreMessages['wait']): string {
+  if (sec < 60) return w.seconds(Math.round(sec));
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
-  return s ? `${m} 分 ${s} 秒` : `${m} 分钟`;
+  return s ? w.minSec(m, s) : w.minutes(m);
 }
 
 function itemOf(
@@ -438,7 +449,12 @@ export function mediaReport(
   platform: string,
   label: string,
   content: PublishContent | undefined,
-  common: CommonFormShape = {}
+  common: CommonFormShape = {},
+  /** SPEC-r14 B5: language of the report (the platform's name too). Default `zh-CN`. */
+  lang?: SdkLang | string
 ): ReportItem[] {
-  return checkMedia(mediaLimitsOf(platform), mediaItemsOf(content, common), { platform: label });
+  return checkMedia(mediaLimitsOf(platform), mediaItemsOf(content, common), {
+    platform: localizedLabel(platform, label, lang),
+    ...(lang ? { lang } : {}),
+  });
 }

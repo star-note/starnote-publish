@@ -10,7 +10,13 @@
  *
  * WordPress.com (OAuth) is `@starnote/publish-wordpress-com`.
  */
-import { defineAdapter, escapeHtml, mediaReport, mergeReports } from '@starnote/publish-core';
+import {
+  byLang,
+  defineAdapter,
+  escapeHtml,
+  mediaReport,
+  mergeReports,
+} from '@starnote/publish-core';
 import {
   articleOf,
   canonicalOf,
@@ -26,6 +32,8 @@ import {
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
+import { msg } from './i18n';
+
 import type {
   Adapter,
   AdapterPreview,
@@ -35,6 +43,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
 
@@ -43,33 +52,34 @@ export const WORDPRESS_LIMITS = {
   tags: 10,
 } as const;
 
-export const wordpressSchema = z.object({
-  status: z.enum(['publish', 'draft', 'pending']).default('publish').describe('发布方式'),
-  /** Category ids on the site (`listWordpressCategories`); empty: the site's default category. */
-  categories: z.array(z.number().int().positive()).default([]).describe('分类'),
-  slug: z
-    .string()
-    .trim()
-    .regex(/^[a-z0-9][a-z0-9-]*$/, '只能用小写字母、数字和 -')
-    .optional()
-    .describe('网址'),
-  upload_images: z.boolean().default(true).describe('图片上传到媒体库'),
-  /** Core has no canonical field: a 「首发于辰记」 line with the link closes the post instead. */
-  origin_note: z.boolean().default(true).describe('文末注明首发于辰记'),
-  set_canonical: z.boolean().default(true).describe('附原文链接'),
-  canonical_url: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('原文链接'),
-  external_id: z
-    .string()
-    .trim()
-    .regex(/^\d+$/, '文章 ID 是数字')
-    .optional()
-    .describe('已发布文章 ID'),
+/** The form in a language (SPEC-r14 B5): labels and messages from `msg(lang)`. */
+export const wordpressSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    status: z.enum(['publish', 'draft', 'pending']).default('publish').describe(t.status),
+    /** Category ids on the site (`listWordpressCategories`); empty: the site's default category. */
+    categories: z.array(z.number().int().positive()).default([]).describe(t.categories),
+    slug: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9][a-z0-9-]*$/, t.slugFormat)
+      .optional()
+      .describe(t.slug),
+    upload_images: z.boolean().default(true).describe(t.uploadImages),
+    /** Core has no canonical field: a 「首发于辰记」 line with the link closes the post instead. */
+    origin_note: z.boolean().default(true).describe(t.originNote),
+    set_canonical: z.boolean().default(true).describe(t.setCanonical),
+    canonical_url: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.canonicalUrl),
+    external_id: z.string().trim().regex(/^\d+$/, t.idDigits).optional().describe(t.externalId),
+  });
 });
+
+export const wordpressSchema = wordpressSchemaFor('zh-CN');
 
 export type WordpressForm = z.infer<typeof wordpressSchema>;
 export type WordpressFormInput = z.input<typeof wordpressSchema>;
@@ -85,19 +95,24 @@ export interface WordpressCredentials {
   restStyle?: WordpressRestStyle;
 }
 
-export const wordpressPasswordForm = z.object({
-  site_url: z
-    .string()
-    .trim()
-    .regex(/^(https?:\/\/)?[^\s/]+\.[^\s]+$/, '请填写站点地址')
-    .describe('站点地址'),
-  username: z.string().trim().min(1, '请填写 WordPress 用户名').describe('用户名'),
-  app_password: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9]{4}( ?[A-Za-z0-9]{4}){5}$/, '应用密码是 24 位字母数字（可带空格）')
-    .describe('应用密码'),
+export const wordpressPasswordFormFor = byLang((lang) => {
+  const t = msg(lang).key;
+  return z.object({
+    site_url: z
+      .string()
+      .trim()
+      .regex(/^(https?:\/\/)?[^\s/]+\.[^\s]+$/, t.siteUrlRequired)
+      .describe(t.siteUrl),
+    username: z.string().trim().min(1, t.usernameRequired).describe(t.username),
+    app_password: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9]{4}( ?[A-Za-z0-9]{4}){5}$/, t.appPasswordFormat)
+      .describe(t.appPassword),
+  });
 });
+
+export const wordpressPasswordForm = wordpressPasswordFormFor('zh-CN');
 
 export const wordpressBinding: BindingSpec = {
   kind: 'token',
@@ -105,12 +120,12 @@ export const wordpressBinding: BindingSpec = {
   provider: 'wordpress',
   fields: ['site_url', 'username', 'app_password'],
   form: wordpressPasswordForm,
-  instructions: [
-    '在你的站点后台「用户 → 个人资料」底部的「应用密码」区，新建一个名为「辰记」的密码并复制',
-    '填入站点地址、用户名和这串密码，点「测试连接」（站点需要 HTTPS，WordPress 才会启用应用密码）',
-    '不用时在同一处撤销这个应用密码即可',
-  ],
-  selects: [{ id: 'categories', title: '默认分类' }],
+  formFor: wordpressPasswordFormFor,
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
+  // the title in other languages: `msg(lang).selectCategories` (exported as `wordpressMessages`)
+  selects: [{ id: 'categories', title: msg('zh-CN').selectCategories }],
+  selectsFor: (lang) => [{ id: 'categories', title: msg(lang).selectCategories }],
 };
 
 export interface WordpressPostBody {
@@ -152,9 +167,12 @@ export function renderWordpress(
   form: WordpressForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  /** `lang` (SPEC-r14 B5): language of the report (not of the closing line). Default `zh-CN`. */
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): WordpressRendered {
   const article = articleOf(doc, content);
+  const lang = opts.lang;
+  const t = msg(lang);
   const degraded = degradeArticle(
     article.doc,
     {
@@ -165,18 +183,24 @@ export function renderWordpress(
       video: 'link',
       ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
     },
-    'WordPress'
+    'WordPress',
+    lang
   );
-  const title = fitTitle(common.title || article.doc.title || 'Untitled', undefined, 'WordPress');
-  const tags = fitTags(common.tags, { max: WORDPRESS_LIMITS.tags }, 'WordPress');
-  const canonical = canonicalOf(form, article, 'WordPress');
+  const title = fitTitle(
+    common.title || article.doc.title || 'Untitled',
+    undefined,
+    'WordPress',
+    lang
+  );
+  const tags = fitTags(common.tags, { max: WORDPRESS_LIMITS.tags }, 'WordPress', lang);
+  const canonical = canonicalOf(form, article, 'WordPress', lang);
   const cover = absolute(common.cover, opts.assetBase);
   const images = degraded.doc.images.filter((s) => /^https?:\/\//i.test(s));
 
   let html = degraded.body;
   const report: ReportItem[] = [...degraded.report];
   // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
-  report.push(...mediaReport('wordpress', 'WordPress', content, common));
+  report.push(...mediaReport('wordpress', 'WordPress', content, common, lang));
   if (canonical.url && form.origin_note) {
     const en = article.lang && !/^zh/i.test(article.lang);
     const origin = originLinkOf(form, article, canonical.url);
@@ -184,7 +208,7 @@ export function renderWordpress(
     html += `\n<hr>\n<p><em>${en ? `Originally published at ${link}.` : `本文首发于${link}。`}</em></p>`;
     report.push({
       kind: 'canonical.note',
-      text: 'WordPress 没有 canonical 字段，已在文末注明首发于辰记并附原文链接',
+      text: t.originNoted,
       detail: { url: canonical.url },
     });
   } else {
@@ -196,12 +220,12 @@ export function renderWordpress(
         ? [
             {
               kind: 'image.rehosted',
-              text: `${images.length} 张图片将上传到站点媒体库`,
+              text: t.imagesWillUpload(images.length),
               count: images.length,
             },
           ]
         : []
-      : linkedImagesReport(images.length, 'WordPress')),
+      : linkedImagesReport(images.length, 'WordPress', lang)),
     ...title.report,
     ...tags.report
   );
@@ -209,10 +233,7 @@ export function renderWordpress(
     report.push({
       kind: 'draft.only',
       level: 'notice',
-      text:
-        form.status === 'pending'
-          ? '提交为「待审」，由站点编辑审核后发布'
-          : '以未公开状态保存到 WordPress',
+      text: form.status === 'pending' ? t.pending : t.draftOnly,
     });
 
   return {
@@ -320,7 +341,10 @@ export function createWordpressAdapter(
   opts: WordpressAdapterOptions = {}
 ): Adapter<typeof wordpressSchema> {
   const ref = wordpressRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'wordpress',
     label: 'WordPress',
@@ -329,8 +353,9 @@ export function createWordpressAdapter(
     binding: wordpressBinding,
     capabilities: { supportsUpdate: true, needsLogin: true },
     schema: wordpressSchema,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderWordpress(doc, form, common, content, renderOpts);
+    schemaFor: wordpressSchemaFor,
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderWordpress(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'html',
         title: r.title,
@@ -340,17 +365,18 @@ export function createWordpressAdapter(
       };
     },
     // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderWordpress(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderWordpress(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(wordpressRelayBody(r, form), previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderWordpress(doc, form, common, content, renderOpts);
+        const r = renderWordpress(doc, form, common, content, renderOpts(ctx.lang));
+        const t = msg(ctx.lang);
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '由服务器代发到 WordPress' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.relaying });
         const res = await relayPublish(ctx, ref, wordpressRelayBody(r, form), form.external_id);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

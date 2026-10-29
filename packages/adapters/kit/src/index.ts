@@ -132,3 +132,6 @@ export interface VerifiedAccount {
   url?: string;
   meta?: Record<string, unknown>;
 }
+
+// SPEC-r14 B5: the kit's dictionaries and the `PlatformRef` language helper.
+export { kitMessages, refIn, waitText, type KitMessages } from './i18n';

@@ -26,7 +26,14 @@ export {
   type CsdnAdapterOptions,
 } from './adapter';
 export { isCsdnImage, renderCsdn, withImages, type CsdnRendered } from './render';
-export { CSDN_ARTICLE_TYPES, csdnSchema, type CsdnForm, type CsdnFormInput } from './schema';
+export {
+  CSDN_ARTICLE_TYPES,
+  csdnSchema,
+  csdnSchemaFor,
+  type CsdnForm,
+  type CsdnFormInput,
+} from './schema';
+export { msg as csdnMessages } from './i18n';
 
 export const csdnMeta = platformMeta('csdn') as PlatformMeta;
 

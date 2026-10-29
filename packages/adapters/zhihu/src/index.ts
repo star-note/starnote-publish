@@ -26,7 +26,8 @@ export {
   type ZhihuAdapterOptions,
 } from './adapter';
 export { isZhihuImage, renderZhihu, toZhihuHtml, withImages, type ZhihuRendered } from './render';
-export { zhihuSchema, type ZhihuForm, type ZhihuFormInput } from './schema';
+export { zhihuSchema, zhihuSchemaFor, type ZhihuForm, type ZhihuFormInput } from './schema';
+export { msg as zhihuMessages } from './i18n';
 
 export const zhihuMeta = platformMeta('zhihu') as PlatformMeta;
 

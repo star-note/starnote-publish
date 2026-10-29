@@ -17,7 +17,9 @@ import { base64url, oauthState, pkcePair, randomToken } from '@starnote/publish-
 
 import { BLUESKY_LIMITS, postUrl } from './limits';
 
-import type { ReportItem } from '@starnote/publish-core';
+import { msg } from './i18n';
+
+import type { ReportItem, SdkLang } from '@starnote/publish-core';
 import type { BlueskyPostRecord, BlueskyRelayBody } from './bluesky';
 
 export const BLUESKY_SCOPE = 'atproto transition:generic';
@@ -41,6 +43,8 @@ export class BlueskyOAuthError extends Error {
 interface Deps {
   fetch: typeof fetch;
   now?: () => number;
+  /** SPEC-r14 B5: language of the error messages and the report. Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 function subtle(): SubtleCrypto {
@@ -58,25 +62,29 @@ async function getJson(deps: Deps, url: string): Promise<any> {
   try {
     res = await deps.fetch(url, { headers: { Accept: 'application/json' }, credentials: 'omit' });
   } catch (e) {
-    throw new BlueskyOAuthError(`连不上 ${new URL(url).host}：${(e as Error).message}`, 'network');
+    throw new BlueskyOAuthError(
+      msg(deps.lang).oauth.unreachable(new URL(url).host, (e as Error).message),
+      'network'
+    );
   }
   if (!res.ok)
     throw new BlueskyOAuthError(
-      `${new URL(url).host} 返回 HTTP ${res.status}`,
+      msg(deps.lang).oauth.http(new URL(url).host, res.status),
       'resolve',
       res.status
     );
   return res.json();
 }
 
-function httpsOrigin(raw: unknown, what: string): string {
+function httpsOrigin(raw: unknown, what: string, lang?: SdkLang): string {
   let u: URL;
   try {
     u = new URL(String(raw));
   } catch {
-    throw new BlueskyOAuthError(`${what} 地址无效`, 'resolve');
+    throw new BlueskyOAuthError(msg(lang).oauth.badUrl(what), 'resolve');
   }
-  if (u.protocol !== 'https:') throw new BlueskyOAuthError(`${what} 必须是 https`, 'resolve');
+  if (u.protocol !== 'https:')
+    throw new BlueskyOAuthError(msg(lang).oauth.notHttps(what), 'resolve');
   return u.origin;
 }
 
@@ -89,26 +97,26 @@ export async function resolveHandle(deps: Deps, handle: string): Promise<string>
   );
   const did = String(data?.did ?? '');
   if (!/^did:(plc|web):[A-Za-z0-9._:%-]+$/.test(did))
-    throw new BlueskyOAuthError(`找不到 handle「${handle}」`, 'resolve');
+    throw new BlueskyOAuthError(msg(deps.lang).oauth.handleNotFound(handle), 'resolve');
   return did;
 }
 
 /** The PDS from the DID document (`#atproto_pds`). */
 export async function resolvePds(deps: Deps, did: string): Promise<string> {
   if (!/^did:(plc|web):[A-Za-z0-9._:%-]{1,2048}$/.test(did))
-    throw new BlueskyOAuthError(`不支持的 DID：${did}`, 'resolve');
+    throw new BlueskyOAuthError(msg(deps.lang).oauth.badDid(did), 'resolve');
   const url = did.startsWith('did:plc:')
     ? `${PLC_DIRECTORY}/${did}`
     : did.startsWith('did:web:')
       ? `https://${decodeURIComponent(did.slice('did:web:'.length)).split(':')[0]}/.well-known/did.json`
       : '';
-  if (!url) throw new BlueskyOAuthError(`不支持的 DID：${did}`, 'resolve');
+  if (!url) throw new BlueskyOAuthError(msg(deps.lang).oauth.badDid(did), 'resolve');
   const doc = await getJson(deps, url);
   const svc = (Array.isArray(doc?.service) ? doc.service : []).find(
     (s: any) => s?.id === '#atproto_pds' || s?.id === `${did}#atproto_pds`
   );
-  if (!svc?.serviceEndpoint) throw new BlueskyOAuthError('DID 文档里没有 PDS 地址', 'resolve');
-  return httpsOrigin(svc.serviceEndpoint, 'PDS');
+  if (!svc?.serviceEndpoint) throw new BlueskyOAuthError(msg(deps.lang).oauth.noPds, 'resolve');
+  return httpsOrigin(svc.serviceEndpoint, 'PDS', deps.lang);
 }
 
 export interface AuthServer {
@@ -119,19 +127,19 @@ export interface AuthServer {
 }
 
 export async function authServerOf(deps: Deps, pdsOrEntryway: string): Promise<AuthServer> {
-  const origin = httpsOrigin(pdsOrEntryway, 'PDS');
+  const t = msg(deps.lang).oauth;
+  const origin = httpsOrigin(pdsOrEntryway, 'PDS', deps.lang);
   const pr = await getJson(deps, `${origin}/.well-known/oauth-protected-resource`);
-  const as = httpsOrigin(pr?.authorization_servers?.[0], '授权服务器');
+  const as = httpsOrigin(pr?.authorization_servers?.[0], t.authServer, deps.lang);
   const meta = await getJson(deps, `${as}/.well-known/oauth-authorization-server`);
-  if (meta?.issuer !== as) throw new BlueskyOAuthError('授权服务器的 issuer 不一致', 'resolve');
+  if (meta?.issuer !== as) throw new BlueskyOAuthError(t.issuerMismatch, 'resolve');
   const need = [
     'pushed_authorization_request_endpoint',
     'authorization_endpoint',
     'token_endpoint',
   ];
   for (const k of need)
-    if (typeof meta?.[k] !== 'string')
-      throw new BlueskyOAuthError(`授权服务器缺少 ${k}`, 'resolve');
+    if (typeof meta?.[k] !== 'string') throw new BlueskyOAuthError(t.serverMissing(k), 'resolve');
   return {
     issuer: as,
     par: meta.pushed_authorization_request_endpoint,
@@ -213,7 +221,10 @@ async function asPost(
         credentials: 'omit',
       });
     } catch (e) {
-      throw new BlueskyOAuthError(`连不上 Bluesky 授权服务器：${(e as Error).message}`, 'network');
+      throw new BlueskyOAuthError(
+        msg(deps.lang).oauth.asUnreachable((e as Error).message),
+        'network'
+      );
     }
     const fresh = res.headers.get('DPoP-Nonce');
     if (fresh) nonces.set(origin, fresh);
@@ -223,12 +234,12 @@ async function asPost(
     const code =
       data?.error === 'invalid_grant' ? 'relogin' : String(data?.error ?? `http_${res.status}`);
     throw new BlueskyOAuthError(
-      `Bluesky 授权失败：${data?.error_description ?? data?.error ?? res.status}`,
+      msg(deps.lang).oauth.authFailed(String(data?.error_description ?? data?.error ?? res.status)),
       code,
       res.status
     );
   }
-  throw new BlueskyOAuthError('Bluesky 授权失败：DPoP nonce', 'dpop');
+  throw new BlueskyOAuthError(msg(deps.lang).oauth.authFailed('DPoP nonce'), 'dpop');
 }
 
 /* ---------------- session ---------------- */
@@ -295,7 +306,7 @@ export async function startBlueskyAuthorization(
     ...(opts.handle ? { login_hint: opts.handle } : {}),
   });
   if (typeof par?.request_uri !== 'string')
-    throw new BlueskyOAuthError('PAR 没有返回 request_uri', 'par');
+    throw new BlueskyOAuthError(msg(deps.lang).oauth.noRequestUri, 'par');
   const url = new URL(server.authorize);
   url.searchParams.set('client_id', config.clientId);
   url.searchParams.set('request_uri', par.request_uri);
@@ -317,10 +328,11 @@ function sessionFromToken(
   tok: any,
   did: string,
   pds: string,
-  now: number
+  now: number,
+  lang?: SdkLang
 ): BlueskySession {
   if (typeof tok?.access_token !== 'string' || String(tok?.token_type).toLowerCase() !== 'dpop')
-    throw new BlueskyOAuthError('Bluesky 返回的令牌不是 DPoP 令牌', 'token');
+    throw new BlueskyOAuthError(msg(lang).oauth.notDpop, 'token');
   return {
     did,
     ...(pending.handle ? { handle: pending.handle } : {}),
@@ -347,12 +359,13 @@ export async function completeBlueskyAuthorization(
     error_description?: string;
   }
 ): Promise<BlueskySession> {
+  const t = msg(deps.lang).oauth;
   if (callback.error)
     throw new BlueskyOAuthError(callback.error_description || callback.error, 'denied');
   if (!callback.code || callback.state !== pending.state)
-    throw new BlueskyOAuthError('授权回跳与本次请求不匹配，请重新授权', 'state_mismatch');
+    throw new BlueskyOAuthError(t.stateMismatch, 'state_mismatch');
   if (callback.iss !== pending.server.issuer)
-    throw new BlueskyOAuthError('授权回跳的 iss 与授权服务器不一致', 'issuer_mismatch');
+    throw new BlueskyOAuthError(t.issMismatch, 'issuer_mismatch');
   const tok = await asPost(deps, pending.key, pending.nonces, pending.server.token, {
     grant_type: 'authorization_code',
     code: callback.code,
@@ -361,15 +374,15 @@ export async function completeBlueskyAuthorization(
     client_id: pending.config.clientId,
   });
   const did = String(tok?.sub ?? '');
-  if (!/^did:(plc|web):/.test(did)) throw new BlueskyOAuthError('令牌里没有账号 DID', 'token');
+  if (!/^did:(plc|web):/.test(did)) throw new BlueskyOAuthError(t.noDid, 'token');
   if (pending.expectedDid && did !== pending.expectedDid)
-    throw new BlueskyOAuthError('登录的账号与填写的 handle 不一致', 'account_mismatch');
+    throw new BlueskyOAuthError(t.accountMismatch, 'account_mismatch');
   const pds = await resolvePds(deps, did);
   // the account's PDS must trust the issuer that signed us in
   const server = await authServerOf(deps, pds);
   if (server.issuer !== pending.server.issuer)
-    throw new BlueskyOAuthError('这个账号的 PDS 不认可该授权服务器', 'issuer_mismatch');
-  return sessionFromToken(pending, tok, did, pds, deps.now?.() ?? Date.now());
+    throw new BlueskyOAuthError(t.pdsRejects, 'issuer_mismatch');
+  return sessionFromToken(pending, tok, did, pds, deps.now?.() ?? Date.now(), deps.lang);
 }
 
 /** New tokens (refresh tokens are single-use: the session gets the new one). */
@@ -377,14 +390,15 @@ export async function refreshBlueskySession(
   deps: Deps,
   s: BlueskySession
 ): Promise<BlueskySession> {
-  if (!s.refreshToken) throw new BlueskyOAuthError('Bluesky 授权已过期，请重新授权', 'relogin');
+  const t = msg(deps.lang).oauth;
+  if (!s.refreshToken) throw new BlueskyOAuthError(t.expired, 'relogin');
   const tok = await asPost(deps, s.key, s.nonces, s.server.token, {
     grant_type: 'refresh_token',
     refresh_token: s.refreshToken,
     client_id: s.clientId,
   });
   if (tok?.sub && tok.sub !== s.did)
-    throw new BlueskyOAuthError('刷新得到的账号不一致', 'account_mismatch');
+    throw new BlueskyOAuthError(t.refreshMismatch, 'account_mismatch');
   const next = sessionFromToken(
     {
       server: s.server,
@@ -396,7 +410,8 @@ export async function refreshBlueskySession(
     tok,
     s.did,
     s.pds,
-    deps.now?.() ?? Date.now()
+    deps.now?.() ?? Date.now(),
+    deps.lang
   );
   Object.assign(s, next);
   return s;
@@ -411,6 +426,7 @@ export async function xrpc(
   nsid: string,
   body?: { json?: unknown; bytes?: Uint8Array; mime?: string }
 ): Promise<any> {
+  const t = msg(deps.lang).oauth;
   const now = () => deps.now?.() ?? Date.now();
   if (s.expiresAt - 30_000 <= now()) await refreshBlueskySession(deps, s);
   const url = `${s.pds}/xrpc/${nsid}`;
@@ -445,7 +461,7 @@ export async function xrpc(
         ...(deps.signal ? { signal: deps.signal } : {}),
       });
     } catch (e) {
-      throw new BlueskyOAuthError(`连不上你的 PDS：${(e as Error).message}`, 'network');
+      throw new BlueskyOAuthError(t.pdsUnreachable((e as Error).message), 'network');
     }
     const fresh = res.headers.get('DPoP-Nonce');
     if (fresh) s.nonces.set(origin, fresh);
@@ -461,17 +477,15 @@ export async function xrpc(
       await refreshBlueskySession(deps, s);
       continue;
     }
-    if (res.status === 401)
-      throw new BlueskyOAuthError('Bluesky 授权已失效，请重新授权', 'relogin', 401);
-    if (res.status === 429)
-      throw new BlueskyOAuthError('Bluesky 请求太频繁，请稍后重试', 'rate_limited', 429);
+    if (res.status === 401) throw new BlueskyOAuthError(t.revoked, 'relogin', 401);
+    if (res.status === 429) throw new BlueskyOAuthError(t.rateLimited, 'rate_limited', 429);
     throw new BlueskyOAuthError(
-      `Bluesky 拒绝了请求：${data?.message ?? data?.error ?? res.status}`,
+      t.refused(String(data?.message ?? data?.error ?? res.status)),
       res.status === 413 ? 'too_large' : 'invalid',
       res.status
     );
   }
-  throw new BlueskyOAuthError('Bluesky 请求失败（DPoP nonce）', 'dpop');
+  throw new BlueskyOAuthError(t.dpopFailed, 'dpop');
 }
 
 export interface DirectResult {
@@ -493,25 +507,26 @@ export async function publishBlueskyDirect(
   deps: Deps & { signal?: AbortSignal }
 ): Promise<DirectResult> {
   const report: ReportItem[] = [];
+  const t = msg(deps.lang).oauth;
   const record = { ...body.record, createdAt: new Date(deps.now?.() ?? Date.now()).toISOString() };
   if (body.thumb_url && record.embed) {
     try {
       if (!/^https:\/\//i.test(body.thumb_url) && !body.thumb_url.startsWith('/'))
-        throw new Error('只接受 https 图片');
+        throw new Error(t.httpsOnly);
       const res = await deps.fetch(body.thumb_url, { credentials: 'omit' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const mime = (res.headers.get('Content-Type') ?? '').split(';')[0]!.trim();
-      if (!/^image\/(png|jpe?g|webp|gif)$/.test(mime)) throw new Error('不是图片');
+      if (!/^image\/(png|jpe?g|webp|gif)$/.test(mime)) throw new Error(t.notImage);
       const bytes = new Uint8Array(await res.arrayBuffer());
-      if (bytes.length > BLUESKY_LIMITS.thumbBytes) throw new Error('超过 1MB');
+      if (bytes.length > BLUESKY_LIMITS.thumbBytes) throw new Error(t.over1mb);
       const up = await xrpc(deps, s, 'POST', 'com.atproto.repo.uploadBlob', { bytes, mime });
       record.embed = { ...record.embed, external: { ...record.embed.external, thumb: up.blob } };
-      report.push({ kind: 'image.rehosted', text: '链接卡片缩略图已上传到 Bluesky', count: 1 });
+      report.push({ kind: 'image.rehosted', text: t.thumbUploaded, count: 1 });
     } catch (e) {
       report.push({
         kind: 'image.failed',
         level: 'warn',
-        text: `链接卡片缩略图没有上传（${(e as Error).message}），卡片不带图`,
+        text: t.thumbFailed((e as Error).message),
       });
     }
   }

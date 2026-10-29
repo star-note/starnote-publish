@@ -6,10 +6,13 @@ import {
   truncateText,
 } from '@starnote/publish-core';
 
+import { msg } from './i18n';
+
 import type {
   CommonFormShape,
   Doc,
   ReportItem,
+  SdkLang,
   SiteScript,
   TiptapJSON,
 } from '@starnote/publish-core';
@@ -41,8 +44,11 @@ export function juejinBrief(
   preferred: string,
   text: string,
   min = 50,
-  max = 100
+  max = 100,
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
 ): { value: string; report: ReportItem[] } {
+  const t = msg(lang);
   const clean = (s: string) => s.replace(/\s+/g, ' ').trim();
   let value = clean(preferred);
   const report: ReportItem[] = [];
@@ -53,19 +59,19 @@ export function juejinBrief(
     if ([...value].length >= min)
       report.push({
         kind: 'summary.generated',
-        text: `掘金要求摘要至少 ${min} 字，已用正文补齐`,
+        text: t.briefFilled(min),
         level: 'notice',
       });
     else
       report.push({
         kind: 'summary.short',
-        text: `正文不足 ${min} 字，掘金可能拒绝发布`,
+        text: t.briefShort(min),
         level: 'warn',
       });
   }
   const cut = truncateText(value, max);
   if (cut.truncated)
-    report.push({ kind: 'summary.truncated', text: `摘要超过 ${max} 字，已截短`, level: 'info' });
+    report.push({ kind: 'summary.truncated', text: t.briefTruncated(max), level: 'info' });
   return { value: cut.value, report };
 }
 
@@ -74,18 +80,20 @@ export function renderJuejin(
   doc: Doc,
   common: CommonFormShape,
   script: Pick<SiteScript, 'limits'>,
-  brief?: string
+  brief?: string,
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
 ): JuejinRendered {
   const report: ReportItem[] = [];
   // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
-  report.push(...mediaReport('juejin', '掘金', undefined, common));
+  report.push(...mediaReport('juejin', '掘金', undefined, common, lang));
   const rawTitle = (common.title || doc.title || '').trim();
   const titleMax = script.limits?.titleMax ?? 100;
   const cut = truncateText(rawTitle, titleMax);
   if (cut.truncated)
     report.push({
       kind: 'title.truncated',
-      text: `标题超过 ${titleMax} 字，已截短`,
+      text: msg(lang).titleTruncated(titleMax),
       level: 'notice',
       samples: [rawTitle],
     });
@@ -97,13 +105,15 @@ export function renderJuejin(
     taskList: 'keep',
     flattenDetails: true,
     videoLabel: '视频',
+    ...(lang ? { lang } : {}),
   });
   report.push(...degraded.report);
   const b = juejinBrief(
     brief || common.summary || doc.summary,
     doc.text,
     script.limits?.summaryMin ?? 50,
-    script.limits?.summaryMax ?? 100
+    script.limits?.summaryMax ?? 100,
+    lang
   );
   report.push(...b.report);
   const converted = convert(degraded.json);

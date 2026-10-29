@@ -6,6 +6,9 @@
  * This file only declares the contract. The implementation — the login window, the success check, the
  * in-page `sessionFetch` — lives in `starnote-desktop/src/main/platform-login/`.
  */
+import { coreMessages } from './i18n/messages';
+
+import type { SdkLang } from './i18n/lang';
 
 /** Login succeeded as soon as ANY rule matches. */
 export interface LoginSuccessRule {
@@ -170,24 +173,27 @@ export interface SessionCheckResult {
 /** Pure: turns the check endpoint's answer into ok / needs-relogin / error (shared with the desktop). */
 export function interpretSessionCheck(
   spec: SessionCheckSpec,
-  res: { status: number; text: string }
+  res: { status: number; text: string },
+  /** SPEC-r14 B5: language of `detail`. Default `zh-CN`. */
+  lang?: SdkLang
 ): SessionCheckResult {
+  const m = coreMessages(lang).session;
   const relogin = spec.reloginStatus ?? [401, 403];
   if (relogin.includes(res.status)) return { state: 'needs-relogin', detail: `HTTP ${res.status}` };
-  if (spec.format === 'text') return interpretTextCheck(spec, res);
+  if (spec.format === 'text') return interpretTextCheck(spec, res, lang);
   let json: unknown;
   try {
     json = JSON.parse(res.text);
   } catch {
     return {
       state: res.status >= 300 && res.status < 400 ? 'needs-relogin' : 'error',
-      detail: `HTTP ${res.status}，返回不是 JSON`,
+      detail: m.httpNotJson(res.status),
     };
   }
   if (spec.codePath && spec.reloginCodes?.length) {
     const code = readPath(json, spec.codePath);
     if (spec.reloginCodes.some((c) => String(c) === String(code)))
-      return { state: 'needs-relogin', detail: `错误码 ${String(code)}` };
+      return { state: 'needs-relogin', detail: m.errorCode(String(code)) };
   }
   if (res.status < 200 || res.status >= 300)
     return { state: 'error', detail: `HTTP ${res.status}` };
@@ -199,7 +205,7 @@ export function interpretSessionCheck(
   }
   const uid = readPath(json, spec.uid);
   if (uid === undefined || uid === null || uid === '')
-    return { state: 'needs-relogin', detail: '返回里没有用户 id' };
+    return { state: 'needs-relogin', detail: m.noUserId };
   const nickname = readPath(json, spec.nickname);
   const avatar = spec.avatar ? readPath(json, spec.avatar) : undefined;
   return {
@@ -223,12 +229,13 @@ function firstGroup(source: string | undefined, text: string): string | undefine
 /** `format: 'text'`: the account is read from the page with regexes; no uid means「not logged in」. */
 function interpretTextCheck(
   spec: SessionCheckSpec,
-  res: { status: number; text: string }
+  res: { status: number; text: string },
+  lang?: SdkLang
 ): SessionCheckResult {
   if (res.status >= 500 || res.status === 0)
     return { state: 'error', detail: `HTTP ${res.status}` };
   const uid = firstGroup(spec.uid, res.text);
-  if (!uid) return { state: 'needs-relogin', detail: '页面里没有登录信息' };
+  if (!uid) return { state: 'needs-relogin', detail: coreMessages(lang).session.noLoginInfo };
   const nickname = firstGroup(spec.nickname, res.text);
   const avatar = firstGroup(spec.avatar, res.text);
   return {

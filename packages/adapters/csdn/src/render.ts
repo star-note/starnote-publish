@@ -1,9 +1,12 @@
 import { convert, degradeTree, rewriteImageSrcs, truncateText } from '@starnote/publish-core';
 
+import { msg } from './i18n';
+
 import type {
   CommonFormShape,
   Doc,
   ReportItem,
+  SdkLang,
   SiteScript,
   TiptapJSON,
 } from '@starnote/publish-core';
@@ -30,7 +33,9 @@ export function isCsdnImage(src: string): boolean {
 export function renderCsdn(
   doc: Doc,
   common: CommonFormShape,
-  script: Pick<SiteScript, 'limits'>
+  script: Pick<SiteScript, 'limits'>,
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
 ): CsdnRendered {
   const report: ReportItem[] = [];
   const rawTitle = (common.title || doc.title || '').trim();
@@ -40,14 +45,14 @@ export function renderCsdn(
   if (cut.truncated)
     report.push({
       kind: 'title.truncated',
-      text: `标题超过 ${max} 字，已截短`,
+      text: msg(lang).titleTruncated(max),
       level: 'notice',
       samples: [rawTitle],
     });
   if ([...cut.value].length < min)
     report.push({
       kind: 'title.short',
-      text: `CSDN 要求标题至少 ${min} 个字，请在编辑器里补全`,
+      text: msg(lang).titleShort(min),
       level: 'warn',
     });
   const degraded = degradeTree(doc.json, {
@@ -58,6 +63,7 @@ export function renderCsdn(
     taskList: 'keep',
     flattenDetails: true,
     videoLabel: '视频',
+    ...(lang ? { lang } : {}),
   });
   report.push(...degraded.report);
   const converted = convert(degraded.json);

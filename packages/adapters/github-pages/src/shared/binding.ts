@@ -9,12 +9,14 @@
  * `verify_token`, `ensure_pages`) for `POST /me/platform-accounts/github-pages/connect`, because the token
  * must never reach the browser; keep the two in step (step ids, titles, order, error codes).
  */
+import { byLang } from '@starnote/publish-core';
 import { z } from 'zod';
 
 import { github, repoPath } from './github';
+import { msg } from './i18n';
 import { GITHUB_PAGES_LAYOUT } from './layout';
 
-import type { BindingSpec } from '@starnote/publish-core';
+import type { BindingSpec, SdkLang } from '@starnote/publish-core';
 import type { GitHubClientOptions } from './github';
 
 /** The template repository blogs are generated from (configurable; the template is not final yet). */
@@ -73,19 +75,24 @@ export function tokenCreateUrl(opts: { repo?: string; expiresInDays?: number } =
 }
 
 /** What the user pastes when binding: the token; the repository is detected (or picked) afterwards. */
-export const githubTokenForm = z.object({
-  token: z
-    .string()
-    .trim()
-    .regex(/^github_pat_[A-Za-z0-9_]{20,}$/, '请粘贴以 github_pat_ 开头的细粒度令牌')
-    .describe('访问令牌'),
-  repo: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/, '仓库格式为 owner/name')
-    .optional()
-    .describe('博客仓库'),
+export const githubTokenFormFor = byLang((lang) => {
+  const t = msg(lang).key;
+  return z.object({
+    token: z
+      .string()
+      .trim()
+      .regex(/^github_pat_[A-Za-z0-9_]{20,}$/, t.tokenFormat)
+      .describe(t.token),
+    repo: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/, t.repoFormat)
+      .optional()
+      .describe(t.repo),
+  });
 });
+
+export const githubTokenForm = githubTokenFormFor('zh-CN');
 
 export type GithubTokenForm = z.infer<typeof githubTokenForm>;
 
@@ -95,18 +102,20 @@ export const githubPagesBinding: BindingSpec & { kind: 'token'; provider: 'githu
   store: 'server',
   fields: ['token'],
   form: githubTokenForm,
+  formFor: githubTokenFormFor,
   permissions: [...GITHUB_TOKEN_PERMISSIONS],
   createUrl: GITHUB_TOKEN_CREATE_URL,
-  instructions: [
-    '点「创建博客仓库」，在 GitHub 上点 Create repository（已有 <用户名>.github.io 会自动跳过）',
-    '点「生成令牌」，Repository access 选 Only select repositories，只勾博客仓库，再点 Generate token',
-    `需要的权限：${GITHUB_TOKEN_PERMISSIONS.join('、')}`,
-    '把令牌粘贴到这里，剩下的辰记自动完成；令牌到期前会提醒你更换',
-  ],
+  instructions: bindingSteps('zh-CN'),
+  instructionsFor: bindingSteps,
   helpUrl:
     'https://docs.github.com/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens',
   checkEvery: 24 * 3600,
 };
+
+function bindingSteps(lang: SdkLang): string[] {
+  const b = msg(lang).binding;
+  return b.steps(GITHUB_TOKEN_PERMISSIONS.join(b.listSeparator));
+}
 
 export interface DetectRepoResult {
   exists: boolean;
@@ -152,7 +161,8 @@ export interface VerifyTokenResult {
 /** Repositories the token can reach (a fine-grained token lists only its selected ones ⚠️ 待实测). */
 const USER_REPOS = '/user/repos?affiliation=owner,collaborator,organization_member';
 
-export const MANY_REPOS_WARNING = '这个令牌能访问多个仓库，建议只选博客仓库';
+/** The `zh-CN` text; `msg(lang).binding.manyRepos` in other languages. */
+export const MANY_REPOS_WARNING = msg('zh-CN').binding.manyRepos;
 
 /**
  * `2026-12-01 08:00:00 UTC` / `2026-12-01 08:00:00 -0800` → ISO 8601; `undefined` when absent or
@@ -191,7 +201,7 @@ export async function verifyGithubToken(
     permissions?: { push?: boolean; admin?: boolean };
   }>(opts, 'GET', repoPath(opts.repo));
   if (!repo.data.permissions?.push) {
-    throw Object.assign(new Error('这个令牌对仓库没有写权限：请把 Contents 设为 Read and write'), {
+    throw Object.assign(new Error(msg(opts.lang).binding.noPush), {
       code: 'forbidden',
     });
   }
@@ -203,7 +213,7 @@ export async function verifyGithubToken(
     count = Array.isArray(repos.data) ? repos.data.length : 0;
     expiry ??= repos.headers.get('github-authentication-token-expiration');
   }
-  if (count > 1) warnings.push(MANY_REPOS_WARNING);
+  if (count > 1) warnings.push(msg(opts.lang).binding.manyRepos);
   const expiresAt = parseTokenExpiration(expiry);
   return {
     repo: repo.data.full_name,
@@ -296,12 +306,15 @@ export interface ConnectResult {
   templateUrl?: string;
 }
 
-const STEP_TITLES: Record<ConnectStepId, string> = {
-  user: '读取 GitHub 账号',
-  repos: '找到博客仓库',
-  verify: '检查令牌权限',
-  pages: '开启 GitHub Pages',
-  publish: '发布现有文章',
+const stepTitles = (lang?: SdkLang): Record<ConnectStepId, string> => {
+  const b = msg(lang).binding;
+  return {
+    user: b.stepUser,
+    repos: b.stepRepos,
+    verify: b.stepVerify,
+    pages: b.stepPages,
+    publish: b.stepPublish,
+  };
 };
 
 /**
@@ -310,9 +323,11 @@ const STEP_TITLES: Record<ConnectStepId, string> = {
  * first publish. Never throws; every step reports its state for the UI checklist.
  */
 export async function connect(token: string, opts: ConnectOptions): Promise<ConnectResult> {
-  const steps: ConnectStep[] = (Object.keys(STEP_TITLES) as ConnectStepId[]).map((id) => ({
+  const titles = stepTitles(opts.lang);
+  const b = msg(opts.lang).binding;
+  const steps: ConnectStep[] = (Object.keys(titles) as ConnectStepId[]).map((id) => ({
     id,
-    title: STEP_TITLES[id],
+    title: titles[id],
     state: 'waiting',
   }));
   const step = (id: ConnectStepId) => steps.find((s) => s.id === id)!;
@@ -357,11 +372,11 @@ export async function connect(token: string, opts: ConnectOptions): Promise<Conn
   if (!chosen) {
     step('repos').state = 'waiting';
     if (!repos.length) {
-      step('repos').detail = '令牌还不能访问任何仓库';
+      step('repos').detail = b.noRepo;
       result.status = 'no-repo';
       result.templateUrl = templateRepoUrl({ login: user.login });
     } else {
-      step('repos').detail = `令牌能访问 ${repos.length} 个仓库，请选择博客仓库`;
+      step('repos').detail = b.chooseRepo(repos.length);
       result.status = 'choose-repo';
     }
     return result;
@@ -371,7 +386,7 @@ export async function connect(token: string, opts: ConnectOptions): Promise<Conn
 
   const verified = await run('verify', async () => {
     const v = await verifyGithubToken({ ...client, repo: chosen, repoCount: repos.length });
-    step('verify').detail = v.expiresAt ? `令牌到期：${v.expiresAt.slice(0, 10)}` : '令牌不过期';
+    step('verify').detail = v.expiresAt ? b.expiresAt(v.expiresAt.slice(0, 10)) : b.noExpiry;
     return v;
   });
   if (!verified) return result;
@@ -382,7 +397,7 @@ export async function connect(token: string, opts: ConnectOptions): Promise<Conn
 
   const pages = await run('pages', async () => {
     const p = await ensurePages({ ...client, repo: verified.repo });
-    step('pages').detail = p.changed ? '已开启（GitHub Actions 构建）' : '已是开启状态';
+    step('pages').detail = p.changed ? b.pagesOn : b.pagesAlreadyOn;
     return p;
   });
   if (!pages) return result;
@@ -393,7 +408,7 @@ export async function connect(token: string, opts: ConnectOptions): Promise<Conn
       opts.publishExisting!({ repo: verified.repo, branch: verified.defaultBranch, token })
     );
     if (!published) return result;
-    step('publish').detail = `已发布 ${published.count} 篇`;
+    step('publish').detail = b.published(published.count);
   } else {
     step('publish').state = 'skipped';
   }

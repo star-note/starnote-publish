@@ -8,6 +8,7 @@
  * Browser-safe: render + relay body only; 辰记's Python API holds the token and calls Qiita (服务器代发).
  */
 import {
+  byLang,
   defineAdapter,
   isUrlExternalId,
   mediaReport,
@@ -33,6 +34,8 @@ import {
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
+import { msg } from './i18n';
+
 import type {
   Adapter,
   AdapterPreview,
@@ -44,6 +47,7 @@ import type {
   ReportItem,
   RuntimeSupport,
   StatsContext,
+  SdkLang,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
 
@@ -71,43 +75,48 @@ export function qiitaTag(tag: string): string | null {
   return t ? [...t].slice(0, QIITA_LIMITS.tagMax).join('') : null;
 }
 
-export const qiitaSchema = z.object({
-  /** true: 限定共有記事 (only people with the link can read it) — the API has no draft. */
-  private: z.boolean().default(false).describe('限定共有（不公开）'),
-  /** Appends 「この記事は StarNote で最初に公開されました」 with the link (Qiita has no canonical field). */
-  origin_note: z.boolean().default(true).describe('文末注明原文'),
-  canonical_url: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('原文链接'),
-  /** Post as an Organization member (the organization's URL name). */
-  organization_url_name: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9_-]{1,64}$/, '组织名只能用字母、数字、_ 和 -')
-    .optional()
-    .describe('Organization'),
-  /** The Qiita item id from an earlier publish: set it to update instead of creating. */
-  external_id: z
-    .string()
-    .trim()
-    .regex(ITEM_ID, '文章 ID 是 20 位十六进制')
-    .optional()
-    .describe('已发布文章 ID'),
+export const qiitaSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** true: 限定共有記事 (only people with the link can read it) — the API has no draft. */
+    private: z.boolean().default(false).describe(t.private),
+    /** Appends 「この記事は StarNote で最初に公開されました」 with the link (Qiita has no canonical field). */
+    origin_note: z.boolean().default(true).describe(t.originNote),
+    canonical_url: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.canonicalUrl),
+    /** Post as an Organization member (the organization's URL name). */
+    organization_url_name: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9_-]{1,64}$/, t.orgRule)
+      .optional()
+      .describe(t.organization),
+    /** The Qiita item id from an earlier publish: set it to update instead of creating. */
+    external_id: z.string().trim().regex(ITEM_ID, t.itemId).optional().describe(t.externalId),
+  });
 });
+
+export const qiitaSchema = qiitaSchemaFor('zh-CN');
 
 export type QiitaForm = z.infer<typeof qiitaSchema>;
 export type QiitaFormInput = z.input<typeof qiitaSchema>;
 
-export const qiitaKeyForm = z.object({
-  token: z
-    .string()
-    .trim()
-    .regex(/^[0-9a-f]{40}$/i, '请粘贴 Qiita 设置页生成的 40 位访问令牌')
-    .describe('アクセストークン'),
+export const qiitaKeyFormFor = byLang((lang) => {
+  const k = msg(lang).key;
+  return z.object({
+    token: z
+      .string()
+      .trim()
+      .regex(/^[0-9a-f]{40}$/i, k.tokenHint)
+      .describe(k.token),
+  });
 });
+
+export const qiitaKeyForm = qiitaKeyFormFor('zh-CN');
 
 export const qiitaBinding: BindingSpec = {
   kind: 'token',
@@ -115,14 +124,12 @@ export const qiitaBinding: BindingSpec = {
   provider: 'qiita',
   fields: ['token'],
   form: qiitaKeyForm,
+  formFor: qiitaKeyFormFor,
   scopes: ['read_qiita', 'write_qiita'],
   createUrl: 'https://qiita.com/settings/applications',
   helpUrl: 'https://qiita.com/api/v2/docs',
-  instructions: [
-    '打开 Qiita 的 設定 → アプリケーション，在「個人用アクセストークン」点「新しくトークンを発行する」',
-    '说明填「StarNote」，勾选 read_qiita 和 write_qiita，生成后复制令牌',
-    '粘贴到这里并点「测试连接」；不用时在同一页删除令牌，绑定立即失效',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 export interface QiitaTagBody {
@@ -154,9 +161,12 @@ export function renderQiita(
   form: QiitaForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  /** `lang` (SPEC-r14 B5): language of the report. Default `zh-CN`. */
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): QiitaRendered {
   const article = articleOf(doc, content);
+  const lang = opts.lang;
+  const m = msg(lang);
   const degraded = degradeArticle(
     article.doc,
     {
@@ -169,33 +179,35 @@ export function renderQiita(
       stripHighlight: true,
       ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
     },
-    'Qiita'
+    'Qiita',
+    lang
   );
   const title = fitTitle(
     common.title || article.doc.title || 'Untitled',
     QIITA_LIMITS.titleMax,
-    'Qiita'
+    'Qiita',
+    lang
   );
-  const tags = fitTags(common.tags, { max: QIITA_LIMITS.tags, normalize: qiitaTag }, 'Qiita');
-  const report: ReportItem[] = [...mediaReport('qiita', 'Qiita', content, common)];
+  const tags = fitTags(common.tags, { max: QIITA_LIMITS.tags, normalize: qiitaTag }, 'Qiita', lang);
+  const report: ReportItem[] = [...mediaReport('qiita', 'Qiita', content, common, lang)];
   let markdown = degraded.body;
-  const canonical = canonicalOf({ canonical_url: form.canonical_url }, article, 'Qiita');
+  const canonical = canonicalOf({ canonical_url: form.canonical_url }, article, 'Qiita', lang);
   if (form.origin_note && canonical.url) {
     markdown += originNoteMarkdown(originLinkOf(form, article, canonical.url), article.lang);
     report.push({
       kind: 'origin.note',
-      text: '文末注明首发于辰记并附原文链接（Qiita 没有 canonical 字段）',
+      text: m.originNote,
     });
   }
   if (!tags.tags.length)
     report.push({
       kind: 'tags.required',
       level: 'error',
-      text: 'Qiita 至少要 1 个标签，请在标签里填写技术名（如 Python、TypeScript）',
+      text: m.tagsRequired,
     });
   report.push(
     ...degraded.report,
-    ...linkedImagesReport(degraded.doc.images.length, 'Qiita'),
+    ...linkedImagesReport(degraded.doc.images.length, 'Qiita', lang),
     ...title.report,
     ...tags.report
   );
@@ -203,7 +215,7 @@ export function renderQiita(
     report.push({
       kind: 'draft.only',
       level: 'notice',
-      text: '以「限定共有」发出：只有拿到链接的人能看，可以在 Qiita 上改为公开',
+      text: m.private,
     });
 
   return {
@@ -302,7 +314,10 @@ export interface QiitaAdapterOptions {
 /** Renders in the browser / desktop and publishes through 辰记's API (`POST /notes/{id}/publish/qiita`). */
 export function createQiitaAdapter(opts: QiitaAdapterOptions = {}): Adapter<typeof qiitaSchema> {
   const ref = qiitaRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'qiita',
     label: 'Qiita',
@@ -311,12 +326,13 @@ export function createQiitaAdapter(opts: QiitaAdapterOptions = {}): Adapter<type
     binding: qiitaBinding,
     capabilities: { supportsUpdate: true, needsLogin: true, titleMax: QIITA_LIMITS.titleMax },
     schema: qiitaSchema,
+    schemaFor: qiitaSchemaFor,
     statsRequires: 'token',
     fetchStats(externalId, ctx) {
       return fetchQiitaStats(externalId, ctx);
     },
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderQiita(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderQiita(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'markdown',
         title: r.title,
@@ -325,17 +341,17 @@ export function createQiitaAdapter(opts: QiitaAdapterOptions = {}): Adapter<type
         report: r.report,
       };
     },
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderQiita(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderQiita(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(qiitaRelayBody(r), previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderQiita(doc, form, common, content, renderOpts);
+        const r = renderQiita(doc, form, common, content, renderOpts(ctx.lang));
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '由服务器代发到 Qiita' });
+        ctx.emit({ type: 'progress', percent: 40, text: msg(ctx.lang).relaying });
         const res = await relayPublish(ctx, ref, qiitaRelayBody(r), form.external_id);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: msg(ctx.lang).done });
         return {
           url: res.url,
           externalId: res.externalId,

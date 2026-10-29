@@ -8,6 +8,8 @@
  * colours that styled cards follow. Blocks with an explicit look keep it.
  */
 
+import { coreMessages } from './i18n/messages';
+
 export const ARTICLE_THEME_IDS = ['business', 'tech', 'warm', 'magazine', 'fresh'] as const;
 
 export type ArticleThemeId = (typeof ARTICLE_THEME_IDS)[number];
@@ -168,6 +170,22 @@ export const ARTICLE_THEMES: Record<ArticleThemeId, ArticleTheme> = {
 
 export function isArticleThemeId(value: unknown): value is ArticleThemeId {
   return typeof value === 'string' && (ARTICLE_THEME_IDS as readonly string[]).includes(value);
+}
+
+/**
+ * SPEC-r14 B5: a theme's name and one-line description in `lang` (the `name` / `description` fields are `zh-CN`).
+ * A custom theme (not one of `ARTICLE_THEME_IDS`) keeps its own texts.
+ */
+export function themeText(
+  theme: ArticleThemeId | Pick<ArticleTheme, 'id' | 'name' | 'description'>,
+  lang?: string | null
+): { name: string; description: string } {
+  const id = typeof theme === 'string' ? theme : theme.id;
+  if (isArticleThemeId(id) && (typeof theme === 'string' || ARTICLE_THEMES[id].name === theme.name))
+    return coreMessages(lang).themes[id];
+  return typeof theme === 'string'
+    ? { name: theme, description: '' }
+    : { name: theme.name, description: theme.description };
 }
 
 /** The theme for an id, or `null` (no theme / unknown id). */

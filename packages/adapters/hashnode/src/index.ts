@@ -12,6 +12,7 @@ import { createHashnodeAdapter } from './hashnode';
 import type { PlatformMeta } from '@starnote/publish-core';
 
 export * from './hashnode';
+export { msg as hashnodeMessages } from './i18n';
 
 export const hashnodeAdapter = createHashnodeAdapter();
 

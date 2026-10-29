@@ -11,7 +11,7 @@
  *
  * Limits ✅: 250 posts / day per user (reblogs included), 250 image uploads / day.
  */
-import { defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
+import { byLang, defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
 import {
   absoluteUrl,
   articleOf,
@@ -22,12 +22,14 @@ import {
   fitTags,
   fitTitle,
   guard,
+  refIn,
   relayPublish,
   relayRequestOf,
   originLinkOf,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
+import { msg } from './i18n';
 import { toNpf } from './npf';
 
 import type {
@@ -39,6 +41,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type {
   CredentialSource,
@@ -62,38 +65,39 @@ export const TUMBLR_LIMITS = {
   postsPerDay: 250,
 } as const;
 
-export const tumblrSchema = z.object({
-  /** Blog name (from the binding's list); absent: the one picked when binding (else the primary blog). */
-  blog: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9-]{1,64}$/, '博客名只能是字母、数字和 -')
-    .optional()
-    .describe('博客'),
-  state: z
-    .enum(['published', 'draft', 'private', 'queue'])
-    .default('published')
-    .describe('发布方式'),
-  set_canonical: z.boolean().default(true).describe('附原文链接'),
-  canonical_url: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('原文链接'),
-  slug: z
-    .string()
-    .trim()
-    .regex(/^[a-z0-9][a-z0-9-]*$/, '只能用小写字母、数字和 -')
-    .optional()
-    .describe('网址'),
-  external_id: z
-    .string()
-    .trim()
-    .regex(/^\d+$/, '帖子 ID 是数字')
-    .optional()
-    .describe('已发布帖子 ID'),
+/** The form in a language (SPEC-r14 B5): labels and messages from `msg(lang)`. */
+export const tumblrSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** Blog name (from the binding's list); absent: the one picked when binding (else the primary blog). */
+    blog: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9-]{1,64}$/, t.blogHint)
+      .optional()
+      .describe(t.blog),
+    state: z
+      .enum(['published', 'draft', 'private', 'queue'])
+      .default('published')
+      .describe(t.state),
+    set_canonical: z.boolean().default(true).describe(t.setCanonical),
+    canonical_url: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.canonicalUrl),
+    slug: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9][a-z0-9-]*$/, t.slugHint)
+      .optional()
+      .describe(t.slug),
+    external_id: z.string().trim().regex(/^\d+$/, t.idDigits).optional().describe(t.externalId),
+  });
 });
+
+export const tumblrSchema = tumblrSchemaFor('zh-CN');
 
 export type TumblrForm = z.infer<typeof tumblrSchema>;
 export type TumblrFormInput = z.input<typeof tumblrSchema>;
@@ -104,13 +108,10 @@ export const tumblrBinding: BindingSpec = {
   provider: 'tumblr',
   scopes: ['basic', 'write', 'offline_access'],
   helpUrl: 'https://www.tumblr.com/',
-  instructions: [
-    '点「用 Tumblr 授权」，在 Tumblr 页面允许辰记代你发帖',
-    '回到辰记后选择要发布到的博客',
-    '桌面端：令牌加密存在本机；网页：令牌只在当前页面，关闭即失效；打开「云端代发」才会存到辰记服务器',
-    '不用时到 Tumblr「设置 → 应用」撤销辰记',
-  ],
-  selects: [{ id: 'blog', title: '发布到哪个博客' }],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
+  selects: [{ id: 'blog', title: msg('zh-CN').selectBlog }],
+  selectsFor: (lang) => [{ id: 'blog', title: msg(lang).selectBlog }],
 };
 
 export interface TumblrPostBody {
@@ -218,8 +219,10 @@ export function renderTumblr(
   form: TumblrForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): TumblrRendered {
+  const ui = opts.lang;
+  const t = msg(ui);
   const report: ReportItem[] = [];
   const blocks: NpfBlock[] = [];
   let titleText: string;
@@ -247,8 +250,13 @@ export function renderTumblr(
       video: 'link',
       ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
     });
-    report.push(...degradeReport(counts, { target: 'html' }, 'Tumblr'));
-    const title = fitTitle(common.title || article.doc.title || 'Untitled', undefined, 'Tumblr');
+    report.push(...degradeReport(counts, { target: 'html' }, 'Tumblr', ui));
+    const title = fitTitle(
+      common.title || article.doc.title || 'Untitled',
+      undefined,
+      'Tumblr',
+      ui
+    );
     titleText = title.title;
     report.push(...title.report);
     blocks.push({ type: 'text', text: titleText, subtype: 'heading1' });
@@ -259,28 +267,28 @@ export function renderTumblr(
     if (npf.counts.divider)
       report.push({
         kind: 'block.dropped.divider',
-        text: `Tumblr 没有分割线，去掉 ${npf.counts.divider} 处`,
+        text: t.noDivider(npf.counts.divider),
       });
     if (npf.counts.table)
       report.push({
         kind: 'table.flattened',
         level: 'notice',
-        text: `Tumblr 没有表格，${npf.counts.table} 个表格按行转成文字（单元格用 | 分隔）`,
+        text: t.noTable(npf.counts.table),
         count: npf.counts.table,
       });
     if (npf.counts.code)
       report.push({
         kind: 'code.monospace',
-        text: `${npf.counts.code} 个代码块转成等宽文字（没有高亮）`,
+        text: t.code(npf.counts.code),
       });
     if (npf.counts.imageSkipped)
       report.push({
         kind: 'image.failed',
         level: 'warn',
-        text: `${npf.counts.imageSkipped} 张图片没有可访问的地址，已去掉`,
+        text: t.imageSkipped(npf.counts.imageSkipped),
         count: npf.counts.imageSkipped,
       });
-    const canonical = canonicalOf(form, article, 'Tumblr');
+    const canonical = canonicalOf(form, article, 'Tumblr', ui);
     canonicalUrl = canonical.url;
     cardUrl = canonical.url && originLinkOf(form, article, canonical.url);
     report.push(...canonical.report.filter((i) => i.kind !== 'canonical.set'));
@@ -290,7 +298,7 @@ export function renderTumblr(
     blocks.push({ type: 'link', url: cardUrl ?? canonicalUrl, title: titleText || canonicalUrl });
     report.push({
       kind: 'canonical.source',
-      text: 'Tumblr 没有 canonical：帖子的来源（source_url）设为辰记原文，文末附原文链接卡片',
+      text: t.source,
       detail: { url: canonicalUrl },
     });
   }
@@ -302,7 +310,7 @@ export function renderTumblr(
     report.push({
       kind: 'image.trimmed',
       level: 'notice',
-      text: `Tumblr 单帖最多 ${TUMBLR_LIMITS.images} 张图片，去掉 ${images - TUMBLR_LIMITS.images} 张`,
+      text: t.imagesTrimmed(TUMBLR_LIMITS.images, images - TUMBLR_LIMITS.images),
     });
   if (capped.length > TUMBLR_LIMITS.blocks) {
     const tail = capped.at(-1)!;
@@ -310,29 +318,29 @@ export function renderTumblr(
     report.push({
       kind: 'body.truncated',
       level: 'warn',
-      text: `正文超过 ${TUMBLR_LIMITS.blocks} 个段落，已截短`,
+      text: t.bodyTruncated(TUMBLR_LIMITS.blocks),
     });
   }
   const imageCount = capped.filter((b) => b.type === 'image').length;
   if (imageCount)
     report.push({
       kind: 'image.rehosted',
-      text: `${imageCount} 张图片将上传到 Tumblr`,
+      text: t.imagesUpload(imageCount),
       count: imageCount,
     });
 
-  const tags = fitTags(common.tags, { max: TUMBLR_LIMITS.tags, normalize: tumblrTag }, 'Tumblr');
+  const tags = fitTags(
+    common.tags,
+    { max: TUMBLR_LIMITS.tags, normalize: tumblrTag },
+    'Tumblr',
+    ui
+  );
   report.push(...tags.report);
   if (form.state !== 'published')
     report.push({
       kind: 'draft.only',
       level: 'notice',
-      text:
-        form.state === 'queue'
-          ? '加入 Tumblr 发布队列，按队列设置的时间发出'
-          : form.state === 'private'
-            ? '以私密帖子发布，只有你自己能看到'
-            : '保存为 Tumblr 草稿',
+      text: form.state === 'queue' ? t.queue : form.state === 'private' ? t.private : t.draft,
     });
 
   return {
@@ -381,8 +389,11 @@ export interface TumblrAdapterOptions {
 }
 
 export function createTumblrAdapter(opts: TumblrAdapterOptions = {}): Adapter<typeof tumblrSchema> {
-  const ref = tumblrRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const baseRef = tumblrRef(opts.links);
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'tumblr',
     label: 'Tumblr',
@@ -391,8 +402,9 @@ export function createTumblrAdapter(opts: TumblrAdapterOptions = {}): Adapter<ty
     binding: tumblrBinding,
     capabilities: { supportsUpdate: true, needsLogin: true },
     schema: tumblrSchema,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderTumblr(doc, form, common, content, renderOpts);
+    schemaFor: tumblrSchemaFor,
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderTumblr(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'html',
         title: r.title,
@@ -402,18 +414,20 @@ export function createTumblrAdapter(opts: TumblrAdapterOptions = {}): Adapter<ty
       };
     },
     // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderTumblr(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderTumblr(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(r.body, previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
+      const ref = refIn(baseRef, ctx.lang);
+      const t = msg(ctx.lang);
       return guard(ctx, ref, async () => {
-        const r = renderTumblr(doc, form, common, content, renderOpts);
+        const r = renderTumblr(doc, form, common, content, renderOpts(ctx.lang));
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '发布到 Tumblr' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.publishing });
         const credential = await credentialOf(opts.credential, 'tumblr', ctx);
         const res = await relayPublish(ctx, ref, r.body, form.external_id, { credential });
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

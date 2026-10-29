@@ -8,6 +8,7 @@ import type { ReportItem } from './report';
 import type { ConvertMask, MaskSummary } from './mask';
 import type { MobileOptions } from './mobile';
 import type { HandoffVia, HostEnv, PlanOptions, RuntimeGuide, RuntimeSupport } from './runtime';
+import type { SdkLang } from './i18n/lang';
 
 /** A Tiptap / ProseMirror JSON node. */
 export interface TiptapJSON {
@@ -80,6 +81,8 @@ export interface ConvertOptions {
    * cards. `true` = default options. Off by default; `mobileOptionsFor(platform)` gives the registry's choice.
    */
   mobile?: boolean | MobileOptions;
+  /** SPEC-r14 B5: language of `Doc.report` (the article itself is not translated). Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 /**
@@ -218,6 +221,11 @@ export interface PublishContext {
   fetch: typeof fetch;
   signal: AbortSignal;
   runtime: Runtime;
+  /**
+   * SPEC-r14 B5: the language of every text the adapter shows the user (progress, report, errors and their actions).
+   * Absent = `zh-CN`. Set by `PublishJob.lang` / `CreatePublisherOptions.lang`.
+   */
+  lang?: SdkLang;
   /** The note being published. */
   noteId: string;
   /** API root without trailing slash, e.g. `/api/v1`. */
@@ -314,6 +322,8 @@ export interface AdapterPreview {
 export interface PreviewOptions {
   /** The tracking short link (§5.3), as `PublishTarget.trackingUrl`. */
   trackingUrl?: string;
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 /**
@@ -407,6 +417,8 @@ export interface AdapterRenderArgs<F = unknown> {
   previous?: PostRef;
   /** SPEC-r12 §5.3: the tracking short link (also on the content, see `PublishContext.trackingUrl`). */
   trackingUrl?: string;
+  /** SPEC-r14 B5: language of the report and of thrown messages. Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 export interface Adapter<S extends z.ZodType = z.ZodType> {
@@ -426,8 +438,13 @@ export interface Adapter<S extends z.ZodType = z.ZodType> {
   /** bind / status / unbind, where this runtime can do it. */
   binder?: BindingDriver;
   capabilities: AdapterCapabilities;
-  /** Platform-specific fields. */
+  /** Platform-specific fields (labels and messages in `zh-CN`). */
   schema: S;
+  /**
+   * SPEC-r14 B5: the same schema with its `describe()` labels and validation messages in `lang`. Hosts read it
+   * through `adapterSchema(adapter, lang)`; the publisher validates with it.
+   */
+  schemaFor?(lang: SdkLang): S;
   prefill?(doc: Doc, ctx: PrefillContext): Partial<z.infer<S>>;
   /** What will be submitted, without side effects (for the preview tab). */
   preview?(
@@ -551,6 +568,8 @@ export interface PublishJob {
   accounts?: Record<string, AccountRef>;
   /** The earlier post per platform, handed to the adapter as `ctx.previous` (update instead of create). */
   previous?: Record<string, PostRef>;
+  /** SPEC-r14 B5: the user's language for this job (wins over `CreatePublisherOptions.lang`). */
+  lang?: SdkLang;
 }
 
 export interface PlatformResult {
@@ -624,6 +643,8 @@ export interface PrepareInput {
   canonicalUrl?: string;
   /** Platforms switched off remotely (`HostEnv.disabled`). */
   disabled?: readonly string[];
+  /** SPEC-r14 B5: language of labels, problems and reports. Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 export type PrepareProblemCode =
@@ -685,6 +706,11 @@ export interface CreatePublisherOptions {
   pollProcessing?: boolean;
   /** Time source for the polling loop (tests). */
   clock?: { now(): number; sleep(ms: number, signal: AbortSignal): Promise<void> };
+  /**
+   * SPEC-r14 B5: the language of everything the publisher and the adapters say (events, results, guides, previews,
+   * prepared tasks). Default `zh-CN`; a job's own `lang` wins.
+   */
+  lang?: SdkLang;
 }
 
 export interface PublishOptions {
@@ -711,6 +737,8 @@ export interface Publisher {
       common?: CommonFormShape;
       content?: PublishContent;
       trackingUrl?: string;
+      /** SPEC-r14 B5: language of the report and the validation message. */
+      lang?: SdkLang;
     }
   ): Promise<AdapterPreview | undefined>;
   /**

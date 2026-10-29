@@ -1,0 +1,85 @@
+/** SPEC-r14 B5: the Slack adapter's user-visible texts (form labels, binding help, report, progress). */
+import { defineMessages } from '@starnote/publish-core';
+
+const zhCN = {
+  form: {
+    text: '附言',
+    httpUrl: '请填写以 http(s):// 开头的地址',
+    link: '链接',
+    includeSummary: '带上摘要',
+    withCover: '带封面图',
+    webhookHint: '请粘贴 https://hooks.slack.com/services/… 形式的 Webhook 地址',
+    webhook: 'Webhook 地址',
+    labelHint: '给这个频道起个名字',
+    label: '名称',
+  },
+  binding: [
+    '在 Slack 里创建一个 App（或用工作区已有的），打开 Incoming Webhooks，选择要发到的频道',
+    '复制生成的 Webhook URL 粘贴到这里，并起个名字（如「#公告 · 团队」）',
+    '地址相当于发帖凭据：加密存在辰记服务器；不用时在 Slack App 设置里删除这个 Webhook',
+  ],
+  summaryTruncated: (max: number) => `摘要按 ${max} 字截短`,
+  sectionTruncated: (max: number) => `Slack 段落最多 ${max} 字，已截短`,
+  card: '标题链接到辰记原文',
+  noMessageLink: 'Slack Webhook 不返回消息链接：发出后在频道里查看',
+  handoff: '还没有绑定 Slack Webhook：文案已备好，请到频道里粘贴发出',
+  empty: '消息是空的',
+  sending: '经 Webhook 发到 Slack',
+  done: '完成',
+};
+
+export const msg = defineMessages<typeof zhCN>({
+  'zh-CN': zhCN,
+  'zh-TW': {
+    form: {
+      text: '附言',
+      httpUrl: '請填寫以 http(s):// 開頭的網址',
+      link: '連結',
+      includeSummary: '附上摘要',
+      withCover: '附上封面圖',
+      webhookHint: '請貼上 https://hooks.slack.com/services/… 格式的 Webhook 網址',
+      webhook: 'Webhook 網址',
+      labelHint: '幫這個頻道取個名字',
+      label: '名稱',
+    },
+    binding: [
+      '在 Slack 裡建立一個 App（或用工作區既有的），開啟 Incoming Webhooks，選擇要發到的頻道',
+      '複製產生的 Webhook URL 貼到這裡，並取個名字（例如「#公告 · 團隊」）',
+      '網址等同於發文憑證：加密存在辰記伺服器；不用時在 Slack App 設定裡刪除這個 Webhook',
+    ],
+    summaryTruncated: (max) => `摘要依 ${max} 字截短`,
+    sectionTruncated: (max) => `Slack 段落最多 ${max} 字，已截短`,
+    card: '標題連結到辰記原文',
+    noMessageLink: 'Slack Webhook 不會回傳訊息連結：發出後請在頻道裡查看',
+    handoff: '還沒有綁定 Slack Webhook：文案已備好，請到頻道裡貼上發出',
+    empty: '訊息是空的',
+    sending: '經 Webhook 發到 Slack',
+    done: '完成',
+  },
+  en: {
+    form: {
+      text: 'Note above the card',
+      httpUrl: 'Enter a URL starting with http(s)://',
+      link: 'Link',
+      includeSummary: 'Include the summary',
+      withCover: 'Include the cover image',
+      webhookHint: 'Paste a webhook URL like https://hooks.slack.com/services/…',
+      webhook: 'Webhook URL',
+      labelHint: 'Give this channel a name',
+      label: 'Name',
+    },
+    binding: [
+      'In Slack, create an app (or use one your workspace has), turn on Incoming Webhooks and pick the channel to post to',
+      'Copy the generated webhook URL, paste it here and give it a name (e.g. “#announcements · Team”)',
+      'The URL works like a posting credential: it’s stored encrypted on the StarNote server; delete the webhook in the Slack app settings when you no longer need it',
+    ],
+    summaryTruncated: (max) => `Summary shortened to ${max} characters`,
+    sectionTruncated: (max) => `A Slack section can be at most ${max} characters; shortened`,
+    card: 'The title links to the StarNote original',
+    noMessageLink: 'Slack webhooks don’t return a message link: check the channel after sending',
+    handoff: 'No Slack webhook connected yet: the text is ready, paste it into the channel to post',
+    empty: 'The message is empty',
+    sending: 'Sending to Slack through the webhook',
+    done: 'Done',
+  },
+});

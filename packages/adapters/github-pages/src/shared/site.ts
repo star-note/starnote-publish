@@ -10,7 +10,9 @@
  * `set_pages_domain`, `enforce_https`); keep both in step.
  */
 import { github, repoPath } from './github';
+import { msg } from './i18n';
 
+import type { SdkLang } from '@starnote/publish-core';
 import type { GitHubClientOptions } from './github';
 
 /**
@@ -75,7 +77,8 @@ const LABEL = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/;
  * `https://Blog.Example.com/` → `blog.example.com`; throws on anything that is not a hostname with a dot,
  * and on `*.github.io` (that is the default address, not a custom domain).
  */
-export function normalizeDomain(input: string): string {
+export function normalizeDomain(input: string, lang?: SdkLang): string {
+  const m = msg(lang).site;
   const host = input
     .trim()
     .toLowerCase()
@@ -89,10 +92,10 @@ export function normalizeDomain(input: string): string {
     !labels.every((l) => LABEL.test(l)) ||
     /^\d+$/.test(labels.at(-1)!)
   ) {
-    throw new Error('请填写域名，例如 blog.example.com 或 example.com');
+    throw new Error(m.domainFormat);
   }
   if (host === 'github.io' || host.endsWith('.github.io')) {
-    throw new Error('github.io 是默认地址，这里填你自己的域名');
+    throw new Error(m.notGithubIo);
   }
   return host;
 }
@@ -131,17 +134,18 @@ export function dnsRecords(domain: string, owner: string): DnsRecord[] {
 }
 
 /** Checks the monetize input; throws a user-facing message on the first problem. */
-export function normalizeMonetize(input: GithubMonetize): GithubMonetize {
-  const domain = normalizeDomain(input.domain);
+export function normalizeMonetize(input: GithubMonetize, lang?: SdkLang): GithubMonetize {
+  const m = msg(lang).site;
+  const domain = normalizeDomain(input.domain, lang);
   const client = input.adsense.client.trim();
   if (!ADSENSE_CLIENT_RE.test(client)) {
-    throw new Error('AdSense 发布商 ID 格式是 ca-pub- 加 16 位数字');
+    throw new Error(m.adsenseClient);
   }
   const slots: Partial<Record<AdSlotKey, string>> = {};
   for (const key of AD_SLOT_KEYS) {
     const v = (input.adsense.slots?.[key] ?? '').trim();
     if (!v) continue;
-    if (!ADSENSE_SLOT_RE.test(v)) throw new Error('广告位 ID 只能是数字');
+    if (!ADSENSE_SLOT_RE.test(v)) throw new Error(m.adsenseSlot);
     slots[key] = v;
   }
   return { domain, adsense: { client, slots } };
@@ -254,7 +258,8 @@ export async function enforceHttps(
     if (info.data.https_enforced) return { state: 'enforced' };
     const cert = info.data.https_certificate?.state;
     if (cert !== 'approved' && cert !== 'issued') {
-      return { state: 'pending', detail: cert ? `证书状态：${cert}` : '证书还没有签发' };
+      const m = msg(opts.lang).site;
+      return { state: 'pending', detail: cert ? m.certState(cert) : m.certPending };
     }
     await github(opts, 'PUT', path, { https_enforced: true });
     return { state: 'enforced' };

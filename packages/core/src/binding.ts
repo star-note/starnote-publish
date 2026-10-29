@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 
 import type { DesktopSessionSpec } from './desktop-session';
+import type { SdkLang } from './i18n/lang';
 import type { NeedInputRequest, PublishEventInput, Runtime } from './types';
 
 /** How an account is linked (SPEC-r8 §12.3). */
@@ -58,17 +59,25 @@ export interface BindingSpec {
   fields?: string[];
   /** Validation of those fields (rendered with the zod → antd helpers). */
   form?: z.ZodObject<any>;
+  /** SPEC-r14 B5: `form` with labels and messages in `lang` (read with `bindingForm(spec, lang)`). */
+  formFor?(lang: SdkLang): z.ZodObject<any>;
   /** `oauth`: scopes requested. */
   scopes?: string[];
   /** `token`: the permissions to grant when creating it, as shown to the user. */
   permissions?: string[];
+  /** SPEC-r14 B5: `permissions` in `lang` (`bindingPermissions(spec, lang)`). */
+  permissionsFor?(lang: SdkLang): string[];
   /** Where the credential is created (token page, developer settings…). */
   createUrl?: string;
-  /** Step-by-step help shown next to the form. */
+  /** Step-by-step help shown next to the form (`zh-CN`). */
   instructions?: string[];
+  /** SPEC-r14 B5: `instructions` in `lang` (`bindingInstructions(spec, lang)`). */
+  instructionsFor?(lang: SdkLang): string[];
   helpUrl?: string;
   /** Things to pick after binding: 知识库、专栏、仓库、Page… */
   selects?: Array<{ id: string; title: string }>;
+  /** SPEC-r14 B5: `selects` with titles in `lang` (`bindingSelects(spec, lang)`). */
+  selectsFor?(lang: SdkLang): Array<{ id: string; title: string }>;
   /** Health check period in seconds; the host calls `status()` this often. */
   checkEvery?: number;
   /**

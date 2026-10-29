@@ -1,13 +1,16 @@
 import { articleContent, withTrackingUrl } from './content';
+import { coreMessages } from './i18n/messages';
+import { localizedLabel } from './i18n/labels';
 import { platformMeta } from './platforms';
 import { shortcodeOf } from './post-url';
 import { prepareTasks } from './prepare';
 import { mergeReports } from './report';
 import { normalizeRuntime, planRuntime, resolveRuntimes, runtimeList } from './runtime';
-import { formatZodError } from './schema';
+import { adapterSchema, formatZodError } from './schema';
 import { errorKindOf, targetKey } from './targets';
 
 import type { PublishContent } from './content';
+import type { SdkLang } from './i18n/lang';
 import type { ReportItem } from './report';
 import type { HostEnv, PlanOptions, PlanTarget } from './runtime';
 import type {
@@ -32,19 +35,24 @@ import type {
   PublishTarget,
 } from './types';
 
+/** The `zh-CN` text of an unknown platform's failure (`coreMessages(lang).publisher.unknownPlatform`). */
 export const UNKNOWN_PLATFORM = '该平台适配器尚未接入';
-
-const RETRY_ACTION = { id: 'retry', label: '重试', kind: 'retry' as const };
-
-const RUNTIME_NAME = { web: '浏览器', electron: '桌面端', server: '服务器' } as const;
 
 /** SPEC-r11 §2 defaults. */
 export const DEFAULT_POLL_INTERVAL_SEC = 5;
 export const DEFAULT_POLL_TIMEOUT_SEC = 600;
 
 /** `unknown`: the write may have gone through — the user checks the platform before sending again. */
-const CHECK_ACTION: PublishEventAction = { id: 'check', label: '去平台确认', kind: 'help' };
-const RESEND_ACTION: PublishEventAction = { id: 'retry', label: '仍要重发', kind: 'retry' };
+const checkAction = (lang?: string): PublishEventAction => ({
+  id: 'check',
+  label: coreMessages(lang).common.checkOnPlatform,
+  kind: 'help',
+});
+const resendAction = (lang?: string): PublishEventAction => ({
+  id: 'retry',
+  label: coreMessages(lang).common.resendAnyway,
+  kind: 'retry',
+});
 
 const realClock = {
   now: () => Date.now(),
@@ -147,7 +155,11 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
 
   function plan(platform: string, opts: PlanOptions & { env?: Partial<HostEnv> } = {}) {
     const { env, ...planOpts } = opts;
-    return planRuntime(planTarget(platform), hostEnv(env), planOpts).guides;
+    const lang = planOpts.lang ?? options.lang;
+    return planRuntime(planTarget(platform), hostEnv(env), {
+      ...planOpts,
+      ...(lang ? { lang } : {}),
+    }).guides;
   }
 
   async function preview(
@@ -158,12 +170,14 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       common?: CommonFormShape;
       content?: PublishContent;
       trackingUrl?: string;
+      lang?: SdkLang;
     }
   ): Promise<AdapterPreview | undefined> {
     const adapter = byKey.get(platform);
     if (!adapter?.preview) return undefined;
-    const parsed = adapter.schema.safeParse(args.form ?? {});
-    if (!parsed.success) throw new Error(formatZodError(parsed.error));
+    const lang = args.lang ?? options.lang;
+    const parsed = adapterSchema(adapter, lang).safeParse(args.form ?? {});
+    if (!parsed.success) throw new Error(formatZodError(parsed.error, { lang }));
     // SPEC-r12 §5.3: the short link goes on the content, where the renderers read the visible link
     const content = args.trackingUrl
       ? withTrackingUrl(args.content ?? articleContent(args.doc), args.trackingUrl)
@@ -173,7 +187,12 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       parsed.data,
       args.common ?? {},
       content,
-      args.trackingUrl ? { trackingUrl: args.trackingUrl } : undefined
+      args.trackingUrl || lang
+        ? {
+            ...(args.trackingUrl ? { trackingUrl: args.trackingUrl } : {}),
+            ...(lang ? { lang } : {}),
+          }
+        : undefined
     );
   }
 
@@ -188,6 +207,8 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
   ): Promise<{ result: FollowUpResult; report: ReportItem[] } | undefined> {
     const req = out.followUp;
     if (!req) return undefined;
+    const m = coreMessages(ctx.lang);
+    const name = localizedLabel(adapter.key, adapter.label, ctx.lang);
     const base = { kind: req.kind, text: req.text };
     // a draft / hand-off / review post has nothing to comment on yet; nor has a pasted-back `code:` id (no API id)
     if (
@@ -203,14 +224,14 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
           {
             kind: 'followup.failed',
             level: 'warn',
-            text: `${adapter.label} 还不能自动发评论，原文链接没有发出：可以手动补一条评论`,
+            text: m.publisher.followUpUnsupported(name),
             detail: { text: req.text },
           },
         ],
       };
     // the user cancelled: nothing more is sent
     if (ctx.signal.aborted) return { result: { ...base, state: 'skipped' }, report: [] };
-    ctx.emit({ type: 'progress', percent: 97, text: '发链接评论' });
+    ctx.emit({ type: 'progress', percent: 97, text: m.publisher.followUpProgress });
     try {
       const r = await adapter.followUp(
         {
@@ -228,7 +249,7 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
           ...(r.externalId ? { externalId: r.externalId } : {}),
           ...(r.url ? { url: r.url } : {}),
         },
-        report: [{ kind: 'followup.posted', text: '原文链接已作为第一条评论发出' }],
+        report: [{ kind: 'followup.posted', text: m.publisher.followUpPosted }],
       };
     } catch (cause) {
       const code = ctx.signal.aborted
@@ -236,7 +257,7 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
         : typeof (cause as any)?.code === 'string' && (cause as any).code
           ? String((cause as any).code)
           : 'failed';
-      const message = ctx.signal.aborted ? '已取消' : errorMessage(cause);
+      const message = ctx.signal.aborted ? m.common.cancelled : errorMessage(cause);
       // a write that failed without saying why may still have gone through
       const kind: ErrorKind = errorKindOf(cause) ?? 'unknown';
       return {
@@ -245,7 +266,7 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
           {
             kind: 'followup.failed',
             level: 'warn',
-            text: '链接评论没发出去，可以手动补发',
+            text: m.publisher.followUpFailed,
             detail: { text: req.text, error: message, code },
           },
         ],
@@ -259,12 +280,10 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
     first: PublishOutput,
     ctx: PublishContext
   ): Promise<PublishOutput> {
+    const m = coreMessages(ctx.lang).publisher;
+    const name = localizedLabel(adapter.key, adapter.label, ctx.lang);
     if (!adapter.checkStatus)
-      throw new PollError(
-        `${adapter.label} 返回了「处理中」，但适配器没有查询状态的方法`,
-        'processing_unsupported',
-        'unknown'
-      );
+      throw new PollError(m.noCheckStatus(name), 'processing_unsupported', 'unknown');
     const clock = options.clock ?? realClock;
     const interval = Math.max(0, adapter.pollIntervalSec ?? DEFAULT_POLL_INTERVAL_SEC) * 1000;
     const timeout = Math.max(0, adapter.pollTimeoutSec ?? DEFAULT_POLL_TIMEOUT_SEC) * 1000;
@@ -274,17 +293,13 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
     let polls = 0;
     for (;;) {
       if (clock.now() - started >= timeout)
-        throw new PollError(
-          `${adapter.label} 处理超时（${Math.round(timeout / 1000)} 秒），结果未知：请到平台确认是否已发出`,
-          'timeout',
-          'unknown'
-        );
+        throw new PollError(m.pollTimeout(name, Math.round(timeout / 1000)), 'timeout', 'unknown');
       await clock.sleep(interval, ctx.signal);
       polls += 1;
       ctx.emit({
         type: 'progress',
         percent: Math.min(95, 60 + polls * 5),
-        text: finalized ? '等待平台发布' : '平台处理中',
+        text: finalized ? m.waitingPublish : m.processing,
       });
       let check: Awaited<ReturnType<NonNullable<Adapter['checkStatus']>>>;
       try {
@@ -301,14 +316,9 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       pending = check.pending;
       if (check.status === 'pending') continue;
       // ready
-      if (finalized)
-        throw new PollError(
-          `${adapter.label} 收尾后仍显示「待发布」，为避免重复发帖不再重试：请到平台确认`,
-          'finalize_replayed',
-          'unknown'
-        );
+      if (finalized) throw new PollError(m.finalizeReplayed(name), 'finalize_replayed', 'unknown');
       if (!adapter.finalize) continue;
-      ctx.emit({ type: 'progress', percent: 90, text: '发布中' });
+      ctx.emit({ type: 'progress', percent: 90, text: m.publishing });
       finalized = true;
       // a write: never retried here
       const done = await adapter.finalize(pending, ctx);
@@ -325,6 +335,8 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
   ): Promise<PlatformResult> {
     const platform = target.platform;
     const rkey = targetKey(target);
+    const lang = job.lang ?? options.lang;
+    const m = coreMessages(lang);
     let finished = false;
     let report: ReportItem[] = [];
     const emit = (input: PublishEventInput) => {
@@ -343,18 +355,19 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
     // A platform still queued when the job was cancelled never starts (adapters that ignore `signal`
     // would otherwise publish after the user cancelled).
     if (signal.aborted) {
-      emit({ type: 'failed', reason: '已取消', code: 'aborted' });
-      return { ok: false, error: '已取消', code: 'aborted', ...who };
+      emit({ type: 'failed', reason: m.common.cancelled, code: 'aborted' });
+      return { ok: false, error: m.common.cancelled, code: 'aborted', ...who };
     }
     const adapter = byKey.get(platform);
     if (!adapter) {
-      emit({ type: 'failed', reason: UNKNOWN_PLATFORM, code: 'unsupported' });
-      return { ok: false, error: UNKNOWN_PLATFORM, ...who };
+      emit({ type: 'failed', reason: m.publisher.unknownPlatform, code: 'unsupported' });
+      return { ok: false, error: m.publisher.unknownPlatform, ...who };
     }
+    const name = localizedLabel(adapter.key, adapter.label, lang);
     if (!runtimeList(adapter).includes(runtime)) {
-      const reason = `${adapter.label} 不能在${RUNTIME_NAME[runtime]}发布`;
+      const reason = m.publisher.wrongRuntime(name, m.runtime.names[runtime]);
       emit({ type: 'failed', reason, code: 'runtime' });
-      return { ok: false, error: reason, guides: plan(platform), ...who };
+      return { ok: false, error: reason, guides: plan(platform, lang ? { lang } : {}), ...who };
     }
 
     // SPEC-r12 §5.3: the tracking short link rides on the content (`visibleLinkOf`) and on `ctx.trackingUrl`
@@ -367,16 +380,16 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
     );
     const kinds = adapter.contentTypes ?? ['article'];
     if (!kinds.includes(content.kind)) {
-      const reason = `${adapter.label} 不支持发布这种内容（${content.kind}）`;
+      const reason = m.publisher.kindUnsupported(name, content.kind);
       emit({ type: 'failed', reason, code: 'kind_unsupported', kind: 'bad_body' });
       return { ok: false, error: reason, kind: 'bad_body', ...who };
     }
 
-    const parsed = adapter.schema.safeParse(
+    const parsed = adapterSchema(adapter, lang).safeParse(
       target.form ?? job.perPlatform[rkey] ?? job.perPlatform[platform] ?? {}
     );
     if (!parsed.success) {
-      const reason = formatZodError(parsed.error);
+      const reason = formatZodError(parsed.error, { lang });
       emit({ type: 'failed', reason, code: 'invalid_form', kind: 'bad_body' });
       return { ok: false, error: reason, kind: 'bad_body', ...who };
     }
@@ -397,6 +410,7 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       fetch: doFetch,
       signal,
       runtime,
+      ...(lang ? { lang } : {}),
       noteId: job.noteId,
       apiBase,
       page: options.page,
@@ -417,13 +431,13 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
           emit({ type: 'needInput', ...req });
           if (signal.aborted) {
             pending.delete(k);
-            reject(signal.reason ?? new Error('已取消'));
+            reject(signal.reason ?? new Error(m.common.cancelled));
             return;
           }
           signal.addEventListener(
             'abort',
             () => {
-              if (pending.delete(k)) reject(signal.reason ?? new Error('已取消'));
+              if (pending.delete(k)) reject(signal.reason ?? new Error(m.common.cancelled));
             },
             { once: true }
           );
@@ -488,7 +502,7 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
         ...followUp,
       });
     } catch (cause) {
-      const reason = signal.aborted ? '已取消' : errorMessage(cause);
+      const reason = signal.aborted ? m.common.cancelled : errorMessage(cause);
       const code: string | undefined = signal.aborted ? 'aborted' : (cause as any)?.code;
       const wait = Number((cause as any)?.retryAfterSec);
       const retryAfterSec = !signal.aborted && wait > 0 ? Math.ceil(wait) : undefined;
@@ -502,10 +516,14 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
       const actions: PublishEventAction[] =
         given ??
         (kind === 'unknown'
-          ? [CHECK_ACTION, RESEND_ACTION]
-          : retryAfterSec
-            ? [{ ...RETRY_ACTION, label: `${retryAfterSec} 秒后重试` }]
-            : [RETRY_ACTION]);
+          ? [checkAction(lang), resendAction(lang)]
+          : [
+              {
+                id: 'retry',
+                label: retryAfterSec ? m.publisher.retryAfterSec(retryAfterSec) : m.common.retry,
+                kind: 'retry' as const,
+              },
+            ]);
       emit({
         type: 'failed',
         reason,
@@ -527,7 +545,7 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
         const entry = pending.get(k);
         if (entry) {
           pending.delete(k);
-          entry.reject(new Error('发布已结束'));
+          entry.reject(new Error(m.common.publishEnded));
         }
       }
     }
@@ -596,7 +614,11 @@ export function createPublisher(options: CreatePublisherOptions): Publisher {
   }
 
   function prepare(input: Parameters<Publisher['prepare']>[0]) {
-    return prepareTasks(input, { adapterOf: (p) => byKey.get(p), planTarget });
+    const lang = input.lang ?? options.lang;
+    return prepareTasks(lang ? { ...input, lang } : input, {
+      adapterOf: (p) => byKey.get(p),
+      planTarget,
+    });
   }
 
   return { publish, capabilities, answer, adapters, plan, preview, prepare };

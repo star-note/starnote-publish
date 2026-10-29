@@ -10,6 +10,7 @@
  * Not bound: the existing pin/create button hand-off (`@starnote/publish-share`).
  */
 import {
+  byLang,
   defineAdapter,
   isUrlExternalId,
   mediaReport,
@@ -26,6 +27,7 @@ import {
   helpError,
   missingLinkReport,
   newPostReport,
+  refIn,
   num,
   readJson,
   relayPublish,
@@ -35,6 +37,8 @@ import {
 } from '@starnote/publish-kit';
 import { buildShare, shareInputOf } from '@starnote/publish-share';
 import { z } from 'zod';
+
+import { msg } from './i18n';
 
 import type {
   AccountRef,
@@ -48,6 +52,7 @@ import type {
   PublishHandoff,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
   StatsContext,
 } from '@starnote/publish-core';
 import type {
@@ -73,26 +78,27 @@ export const PINTEREST_LIMITS = {
 
 const URL_RE = /^https?:\/\/\S+$/;
 
-export const pinterestSchema = z.object({
-  /** Default: the board picked when binding (`account.meta.board_id`). */
-  board_id: z
-    .string()
-    .trim()
-    .regex(/^\d{1,30}$/, '画板 ID 是数字')
-    .optional()
-    .describe('画板'),
-  /** Your own description instead of the summary. */
-  text: z.string().trim().max(2000).optional().describe('描述'),
-  link: z
-    .string()
-    .trim()
-    .regex(URL_RE, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('链接'),
-  include_summary: z.boolean().default(true).describe('带上摘要'),
-  include_tags: z.boolean().default(true).describe('带上话题'),
-  alt_text: z.string().trim().max(PINTEREST_LIMITS.altMax).optional().describe('图片描述'),
+/** The form in a language (SPEC-r14 B5). */
+export const pinterestSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** Default: the board picked when binding (`account.meta.board_id`). */
+    board_id: z
+      .string()
+      .trim()
+      .regex(/^\d{1,30}$/, t.boardDigits)
+      .optional()
+      .describe(t.board),
+    /** Your own description instead of the summary. */
+    text: z.string().trim().max(2000).optional().describe(t.text),
+    link: z.string().trim().regex(URL_RE, t.httpUrl).optional().describe(t.link),
+    include_summary: z.boolean().default(true).describe(t.includeSummary),
+    include_tags: z.boolean().default(true).describe(t.includeTags),
+    alt_text: z.string().trim().max(PINTEREST_LIMITS.altMax).optional().describe(t.altText),
+  });
 });
+
+export const pinterestSchema = pinterestSchemaFor('zh-CN');
 
 export type PinterestForm = z.infer<typeof pinterestSchema>;
 export type PinterestFormInput = z.input<typeof pinterestSchema>;
@@ -102,14 +108,11 @@ export const pinterestBinding: BindingSpec = {
   store: 'desktop',
   provider: 'pinterest',
   scopes: ['boards:read', 'pins:read', 'pins:write', 'user_accounts:read'],
-  selects: [{ id: 'board', title: '选择要发到的画板' }],
+  selects: [{ id: 'board', title: msg('zh-CN').selectBoard }],
+  selectsFor: (lang) => [{ id: 'board', title: msg(lang).selectBoard }],
   helpUrl: 'https://www.pinterest.com/',
-  instructions: [
-    '点「用 Pinterest 授权」，在 Pinterest 页面允许辰记创建 Pin、读取画板',
-    '回到辰记选择默认画板（发布时也可以换）',
-    '桌面端：令牌加密存在本机；网页：令牌只在当前页面；打开「云端代发」才会存到辰记服务器',
-    '不用时到 Pinterest「设置 → 安全与登录 → 已连接的应用」移除辰记',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 /** `POST /v5/pins` body (without the token). */
@@ -139,8 +142,10 @@ export function renderPinterest(
   form: PinterestForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string; account?: AccountRef } = {}
+  opts: { assetBase?: string; account?: AccountRef; lang?: SdkLang } = {}
 ): PinterestRendered {
+  const lang = opts.lang;
+  const t = msg(lang);
   const card = cardOf(doc, common, content, {
     assetBase: opts.assetBase,
     text: form.text,
@@ -148,18 +153,17 @@ export function renderPinterest(
   });
   const report: ReportItem[] = [];
   // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
-  report.push(...mediaReport('pinterest', 'Pinterest', content, common));
+  report.push(...mediaReport('pinterest', 'Pinterest', content, common, lang));
   const image = card.images.find((u) => /^https:\/\//i.test(u));
-  if (!image) throw new Error('Pinterest 的 Pin 需要一张 https 图片：给笔记加封面后再试');
+  if (!image) throw new Error(t.needsImage);
   const board = boardOf(form, opts.account);
-  if (!board)
-    throw new Error('还没有选择画板：在绑定 Pinterest 时选择默认画板，或在表单里填写画板');
+  if (!board) throw new Error(t.needsBoard);
   const rawTitle = card.title || card.text || '';
   const title = truncate(rawTitle, PINTEREST_LIMITS.titleMax);
   if (title !== rawTitle)
     report.push({
       kind: 'title.truncated',
-      text: `Pin 标题最多 ${PINTEREST_LIMITS.titleMax} 字，已截短`,
+      text: t.titleTruncated(PINTEREST_LIMITS.titleMax),
     });
   const allTags = form.include_tags ? card.tags : [];
   const fit = fitPost({
@@ -170,17 +174,16 @@ export function renderPinterest(
   if (fit.truncated)
     report.push({
       kind: 'summary.truncated',
-      text: `Pin 描述最多 ${PINTEREST_LIMITS.descriptionMax} 字，已截短`,
+      text: t.descriptionTruncated(PINTEREST_LIMITS.descriptionMax),
     });
   if (image !== card.cover)
     report.push({
       kind: 'cover.fallback',
       level: 'notice',
-      text: '没有封面图，用正文第一张图做 Pin 图片',
+      text: t.coverFallback,
     });
-  if (card.link)
-    report.push({ kind: 'link.card', text: '点开 Pin 会跳到辰记原文', detail: { url: card.link } });
-  else report.push(missingLinkReport('Pinterest'));
+  if (card.link) report.push({ kind: 'link.card', text: t.linkCard, detail: { url: card.link } });
+  else report.push(missingLinkReport('Pinterest', lang));
   const alt = form.alt_text || common.coverAlt;
   return {
     body: {
@@ -273,11 +276,13 @@ export function pinterestHandoff(
   form: PinterestForm,
   common: CommonFormShape,
   content: PublishContent | undefined,
-  opts: { assetBase?: string } = {}
+  opts: { assetBase?: string } = {},
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
 ): { handoff: PublishHandoff; report: ReportItem[] } {
-  const input = shareInputOf('pinterest', doc, form, common, content, opts);
+  const input = shareInputOf('pinterest', doc, form, common, content, opts, lang);
   if ('error' in input) throw new Error(input.error);
-  const r = buildShare('pinterest', input);
+  const r = buildShare('pinterest', input, lang);
   return { handoff: { via: r.via, openUrl: r.openUrl, copyText: r.copyText }, report: r.report };
 }
 
@@ -303,9 +308,10 @@ export function createPinterestAdapter(
     binding: pinterestBinding,
     capabilities: { supportsUpdate: false, needsLogin: true, titleMax: PINTEREST_LIMITS.titleMax },
     schema: pinterestSchema,
+    schemaFor: pinterestSchemaFor,
     maxConcurrent: 2,
     statsRequires: 'token',
-    preview(doc, form, common, content): AdapterPreview {
+    preview(doc, form, common, content, popts): AdapterPreview {
       try {
         // the board is only known with the account: preview with a stand-in
         const r = renderPinterest(
@@ -313,7 +319,7 @@ export function createPinterestAdapter(
           { ...form, board_id: form.board_id ?? '0' },
           common,
           content,
-          renderOpts
+          { ...renderOpts, ...(popts?.lang ? { lang: popts.lang } : {}) }
         );
         return {
           format: 'text',
@@ -331,37 +337,41 @@ export function createPinterestAdapter(
         };
       }
     },
-    renderRequest({ doc, form, common, content, account }) {
+    renderRequest({ doc, form, common, content, account, lang }) {
       const r = renderPinterest(doc, form, common, content, {
         ...renderOpts,
         ...(account ? { account } : {}),
+        ...(lang ? { lang } : {}),
       });
       return relayRequestOf(r.body, undefined, undefined, r.report);
     },
-    renderHandoff({ doc, form, common, content }) {
-      return pinterestHandoff(doc, form, common, content, renderOpts);
+    renderHandoff({ doc, form, common, content, lang }) {
+      return pinterestHandoff(doc, form, common, content, renderOpts, lang);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
         let r: PinterestRendered;
+        const t = msg(ctx.lang);
+        const lref = refIn(ref, ctx.lang);
         try {
           r = renderPinterest(doc, form, common, content, {
             ...renderOpts,
             ...(ctx.account ? { account: ctx.account } : {}),
+            ...(ctx.lang ? { lang: ctx.lang } : {}),
           });
         } catch (e) {
-          throw helpError(ref, (e as Error).message, { code: 'invalid' });
+          throw helpError(lref, (e as Error).message, { code: 'invalid' });
         }
         if (codePoints(r.body.title) === 0 && !r.body.description)
-          throw helpError(ref, 'Pin 没有标题和描述', { code: 'invalid' });
-        r.report.push(...newPostReport(ctx.previous));
+          throw helpError(lref, t.empty, { code: 'invalid' });
+        r.report.push(...newPostReport(ctx.previous, ctx.lang));
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '在 Pinterest 建 Pin' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.creating });
         const credential = await credentialOf(opts.credential, 'pinterest', ctx);
         const res = await relayPublish({ ...ctx, previous: undefined }, ref, r.body, undefined, {
           credential,
         });
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

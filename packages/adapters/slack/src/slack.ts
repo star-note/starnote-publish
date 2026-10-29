@@ -8,7 +8,13 @@
  *
  * Not bound: copy the text and paste it in Slack (`via: 'copy'`).
  */
-import { defineAdapter, mediaReport, mergeReports, platformMeta } from '@starnote/publish-core';
+import {
+  byLang,
+  defineAdapter,
+  mediaReport,
+  mergeReports,
+  platformMeta,
+} from '@starnote/publish-core';
 import {
   appendLink,
   cardOf,
@@ -18,11 +24,14 @@ import {
   linkCost,
   missingLinkReport,
   newPostReport,
+  refIn,
   relayPublish,
   relayRequestOf,
   truncate,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
+
+import { msg } from './i18n';
 
 import type {
   Adapter,
@@ -34,6 +43,7 @@ import type {
   PublishHandoff,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
 
@@ -56,31 +66,33 @@ export const SLACK_APP_URL = 'https://app.slack.com/client';
 
 const URL_RE = /^https?:\/\/\S+$/;
 
-export const slackSchema = z.object({
-  /** A line above the card. */
-  text: z.string().trim().max(SLACK_LIMITS.sectionMax).optional().describe('附言'),
-  link: z
-    .string()
-    .trim()
-    .regex(URL_RE, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('链接'),
-  include_summary: z.boolean().default(true).describe('带上摘要'),
-  with_cover: z.boolean().default(true).describe('带封面图'),
+/** The form in a language (SPEC-r14 B5): labels and messages from `msg(lang)`. */
+export const slackSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** A line above the card. */
+    text: z.string().trim().max(SLACK_LIMITS.sectionMax).optional().describe(t.text),
+    link: z.string().trim().regex(URL_RE, t.httpUrl).optional().describe(t.link),
+    include_summary: z.boolean().default(true).describe(t.includeSummary),
+    with_cover: z.boolean().default(true).describe(t.withCover),
+  });
 });
+
+export const slackSchema = slackSchemaFor('zh-CN');
 
 export type SlackForm = z.infer<typeof slackSchema>;
 export type SlackFormInput = z.input<typeof slackSchema>;
 
-export const slackWebhookForm = z.object({
-  webhook_url: z
-    .string()
-    .trim()
-    .regex(SLACK_WEBHOOK_RE, '请粘贴 https://hooks.slack.com/services/… 形式的 Webhook 地址')
-    .describe('Webhook 地址'),
-  /** A webhook does not say where it posts: the user names it (「#announcements @ Acme」). */
-  label: z.string().trim().min(1, '给这个频道起个名字').max(100).describe('名称'),
+export const slackWebhookFormFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    webhook_url: z.string().trim().regex(SLACK_WEBHOOK_RE, t.webhookHint).describe(t.webhook),
+    /** A webhook does not say where it posts: the user names it (「#announcements @ Acme」). */
+    label: z.string().trim().min(1, t.labelHint).max(100).describe(t.label),
+  });
 });
+
+export const slackWebhookForm = slackWebhookFormFor('zh-CN');
 
 export const slackBinding: BindingSpec = {
   kind: 'token',
@@ -88,12 +100,10 @@ export const slackBinding: BindingSpec = {
   provider: 'slack',
   fields: ['webhook_url', 'label'],
   form: slackWebhookForm,
+  formFor: slackWebhookFormFor,
   createUrl: 'https://api.slack.com/messaging/webhooks',
-  instructions: [
-    '在 Slack 里创建一个 App（或用工作区已有的），打开 Incoming Webhooks，选择要发到的频道',
-    '复制生成的 Webhook URL 粘贴到这里，并起个名字（如「#公告 · 团队」）',
-    '地址相当于发帖凭据：加密存在辰记服务器；不用时在 Slack App 设置里删除这个 Webhook',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 /** Slack mrkdwn escaping (✅ only `&`, `<`, `>` are control characters). */
@@ -130,8 +140,10 @@ export function renderSlack(
   form: SlackForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): SlackRendered {
+  const ui = opts.lang;
+  const t = msg(ui);
   const card = cardOf(doc, common, content, {
     assetBase: opts.assetBase,
     text: form.text,
@@ -139,14 +151,14 @@ export function renderSlack(
   });
   const report: ReportItem[] = [];
   // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
-  report.push(...mediaReport('slack', 'Slack', content, common));
+  report.push(...mediaReport('slack', 'Slack', content, common, ui));
   const title = card.title || card.text || 'Untitled';
   let summary = form.include_summary ? card.summary : '';
   if (codePoints(summary) > SLACK_LIMITS.cardSummaryMax) {
     summary = truncate(summary, SLACK_LIMITS.cardSummaryMax);
     report.push({
       kind: 'summary.truncated',
-      text: `摘要按 ${SLACK_LIMITS.cardSummaryMax} 字截短`,
+      text: t.summaryTruncated(SLACK_LIMITS.cardSummaryMax),
     });
   }
   const line = card.text && card.text !== title ? card.text : '';
@@ -167,7 +179,7 @@ export function renderSlack(
     report.push({
       kind: 'share.truncated',
       level: 'notice',
-      text: `Slack 段落最多 ${SLACK_LIMITS.sectionMax} 字，已截短`,
+      text: t.sectionTruncated(SLACK_LIMITS.sectionMax),
     });
   }
   const image = form.with_cover ? card.cover : undefined;
@@ -197,13 +209,12 @@ export function renderSlack(
         : {}),
     },
   ];
-  if (card.link)
-    report.push({ kind: 'link.card', text: '标题链接到辰记原文', detail: { url: card.link } });
-  else report.push(missingLinkReport('Slack'));
+  if (card.link) report.push({ kind: 'link.card', text: t.card, detail: { url: card.link } });
+  else report.push(missingLinkReport('Slack', ui));
   report.push({
     kind: 'link.unavailable',
     level: 'notice',
-    text: 'Slack Webhook 不返回消息链接：发出后在频道里查看',
+    text: t.noMessageLink,
   });
   const text = [line, title, summary, card.link ?? ''].filter(Boolean).join('\n\n');
   return {
@@ -232,14 +243,18 @@ export const SLACK_REQUESTS = {
 } as const satisfies Record<string, RequestDescription>;
 
 /** Not bound: copy the text, open Slack. */
-export function slackHandoff(r: SlackRendered): { handoff: PublishHandoff; report: ReportItem[] } {
+export function slackHandoff(
+  r: SlackRendered,
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
+): { handoff: PublishHandoff; report: ReportItem[] } {
   return {
     handoff: { via: 'copy', openUrl: SLACK_APP_URL, copyText: r.text },
     report: [
       {
         kind: 'handoff.pending',
         level: 'notice',
-        text: '还没有绑定 Slack Webhook：文案已备好，请到频道里粘贴发出',
+        text: msg(lang).handoff,
         detail: { via: 'copy', openUrl: SLACK_APP_URL, copyText: r.text },
       },
     ],
@@ -253,8 +268,11 @@ export interface SlackAdapterOptions {
 }
 
 export function createSlackAdapter(opts: SlackAdapterOptions = {}): Adapter<typeof slackSchema> {
-  const ref = slackRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const baseRef = slackRef(opts.links);
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'slack',
     label: 'Slack',
@@ -263,27 +281,30 @@ export function createSlackAdapter(opts: SlackAdapterOptions = {}): Adapter<type
     binding: slackBinding,
     capabilities: { supportsUpdate: false, needsLogin: true },
     schema: slackSchema,
+    schemaFor: slackSchemaFor,
     maxConcurrent: 3,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderSlack(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderSlack(doc, form, common, content, renderOpts(popts?.lang));
       return { format: 'text', title: common?.title || doc.title, body: r.text, report: r.report };
     },
-    renderRequest({ doc, form, common, content }) {
-      const r = renderSlack(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, lang }) {
+      const r = renderSlack(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(r.body, undefined, undefined, r.report);
     },
-    renderHandoff({ doc, form, common, content }) {
-      return slackHandoff(renderSlack(doc, form, common, content, renderOpts));
+    renderHandoff({ doc, form, common, content, lang }) {
+      return slackHandoff(renderSlack(doc, form, common, content, renderOpts(lang)), lang);
     },
     publish({ doc, form, common, ctx, content }) {
+      const ref = refIn(baseRef, ctx.lang);
+      const t = msg(ctx.lang);
       return guard(ctx, ref, async () => {
-        const r = renderSlack(doc, form, common, content, renderOpts);
-        if (!r.text.trim()) throw helpError(ref, '消息是空的', { code: 'invalid' });
-        r.report.push(...newPostReport(ctx.previous));
+        const r = renderSlack(doc, form, common, content, renderOpts(ctx.lang));
+        if (!r.text.trim()) throw helpError(ref, t.empty, { code: 'invalid' });
+        r.report.push(...newPostReport(ctx.previous, ctx.lang));
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '经 Webhook 发到 Slack' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.sending });
         const res = await relayPublish({ ...ctx, previous: undefined }, ref, r.body);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

@@ -34,7 +34,8 @@ export {
   withImages,
   type JuejinRendered,
 } from './render';
-export { juejinSchema, type JuejinForm, type JuejinFormInput } from './schema';
+export { juejinSchema, juejinSchemaFor, type JuejinForm, type JuejinFormInput } from './schema';
+export { msg as juejinMessages } from './i18n';
 
 export const juejinMeta = platformMeta('juejin') as PlatformMeta;
 

@@ -1,7 +1,9 @@
 /** Length limits: titles, summaries, tags and share copy. Pure, browser-safe. */
 import { CANONICAL_PLACEHOLDER, CANONICAL_PLACEHOLDER_RESERVE } from '@starnote/publish-core';
 
-import type { ReportItem } from '@starnote/publish-core';
+import { kitMessages } from './i18n';
+
+import type { ReportItem, SdkLang } from '@starnote/publish-core';
 
 /** Code points, so an emoji or a CJK character counts once. */
 export function codePoints(s: string): number {
@@ -29,7 +31,9 @@ export function truncate(
 export function fitTitle(
   title: string,
   max: number | undefined,
-  platform: string
+  platform: string,
+  /** SPEC-r14 B5: language of the report (pass `platform` in it too). Default `zh-CN`. */
+  lang?: SdkLang
 ): { title: string; report: ReportItem[] } {
   const t = title.trim();
   if (!max || codePoints(t) <= max) return { title: t, report: [] };
@@ -40,7 +44,7 @@ export function fitTitle(
       {
         kind: 'title.truncated',
         level: 'notice',
-        text: `标题超过 ${platform} 上限 ${max} 字，已截短`,
+        text: kitMessages(lang).text.titleTruncated(platform, max),
         samples: [t],
       },
     ],
@@ -51,7 +55,8 @@ export function fitTitle(
 export function fitSummary(
   summary: string | undefined,
   max: number | undefined,
-  platform: string
+  platform: string,
+  lang?: SdkLang
 ): { summary: string | undefined; report: ReportItem[] } {
   const s = summary?.trim();
   if (!s) return { summary: undefined, report: [] };
@@ -61,7 +66,7 @@ export function fitSummary(
     report: [
       {
         kind: 'summary.truncated',
-        text: `摘要超过 ${platform} 上限 ${max} 字，已截短`,
+        text: kitMessages(lang).text.summaryTruncated(platform, max),
       },
     ],
   };
@@ -80,8 +85,10 @@ export interface FitTagsOptions {
 export function fitTags(
   tags: readonly string[] | undefined,
   opts: FitTagsOptions,
-  platform: string
+  platform: string,
+  lang?: SdkLang
 ): { tags: string[]; report: ReportItem[] } {
+  const m = kitMessages(lang).text;
   const out: string[] = [];
   const mapped: string[] = [];
   const unusable: string[] = [];
@@ -102,20 +109,20 @@ export function fitTags(
   if (mapped.length)
     report.push({
       kind: 'tags.mapped',
-      text: `标签按 ${platform} 规则改写 ${mapped.length} 个`,
+      text: m.tagsMapped(platform, mapped.length),
       count: mapped.length,
       samples: mapped.slice(0, 3),
     });
   const dropped = [...unusable, ...over];
   if (dropped.length) {
     const parts = [
-      over.length ? `${platform} 最多 ${opts.max} 个标签，已截断为 ${opts.max} 个` : '',
-      unusable.length ? `${unusable.length} 个标签不符合平台规则被去掉` : '',
+      over.length ? m.tagsOver(platform, opts.max) : '',
+      unusable.length ? m.tagsUnusable(unusable.length) : '',
     ].filter(Boolean);
     report.push({
       kind: 'tags.trimmed',
       level: 'notice',
-      text: parts.join('；'),
+      text: parts.join(m.separator),
       count: dropped.length,
       samples: dropped.slice(0, 3),
     });

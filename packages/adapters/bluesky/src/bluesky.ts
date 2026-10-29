@@ -17,6 +17,7 @@
  * not detect links in text by itself ✅).
  */
 import {
+  byLang,
   CANONICAL_PLACEHOLDER,
   defineAdapter,
   isUrlExternalId,
@@ -31,6 +32,7 @@ import {
   guard,
   helpError,
   kindError,
+  refIn,
   linkPlacementField,
   num,
   placeLink,
@@ -55,9 +57,11 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
   StatsContext,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
+import { msg } from './i18n';
 import { BLUESKY_LIMITS } from './limits';
 import {
   BLUESKY_APPVIEW,
@@ -80,41 +84,47 @@ export function graphemes(s: string): string[] {
 
 const utf8 = (s: string) => new TextEncoder().encode(s).length;
 
-export const blueskySchema = z.object({
-  /** Your own text instead of title + summary (fitted to 300 graphemes). */
-  text: z.string().trim().max(3000).optional().describe('帖子文字'),
-  link: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('链接'),
-  include_summary: z.boolean().default(true).describe('带上摘要'),
-  include_tags: z.boolean().default(true).describe('带上话题'),
-  link_card: z.boolean().default(true).describe('链接卡片'),
-  /** SPEC-r12 §2: the link as a card / in the text, or as the author's first reply. */
-  linkPlacement: linkPlacementField('bluesky'),
+/** The form in a language (SPEC-r14 B5): labels and messages from `msg(lang)`. */
+export const blueskySchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** Your own text instead of title + summary (fitted to 300 graphemes). */
+    text: z.string().trim().max(3000).optional().describe(t.text),
+    link: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.link),
+    include_summary: z.boolean().default(true).describe(t.includeSummary),
+    include_tags: z.boolean().default(true).describe(t.includeTags),
+    link_card: z.boolean().default(true).describe(t.linkCard),
+    /** SPEC-r12 §2: the link as a card / in the text, or as the author's first reply. */
+    linkPlacement: linkPlacementField('bluesky', lang),
+  });
 });
+
+export const blueskySchema = blueskySchemaFor('zh-CN');
 
 export type BlueskyForm = z.infer<typeof blueskySchema>;
 export type BlueskyFormInput = z.input<typeof blueskySchema>;
 
-export const blueskyHandleForm = z.object({
-  handle: z
-    .string()
-    .trim()
-    .transform((v) => v.replace(/^@/, '').toLowerCase())
-    .pipe(
-      z
-        .string()
-        .regex(
-          /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/,
-          '请填写 handle，如 me.bsky.social'
-        )
-    )
-    .optional()
-    .describe('Handle（可不填）'),
+export const blueskyHandleFormFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    handle: z
+      .string()
+      .trim()
+      .transform((v) => v.replace(/^@/, '').toLowerCase())
+      .pipe(
+        z.string().regex(/^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/, t.handleHint)
+      )
+      .optional()
+      .describe(t.handle),
+  });
 });
+
+export const blueskyHandleForm = blueskyHandleFormFor('zh-CN');
 
 export const blueskyBinding: BindingSpec = {
   kind: 'oauth',
@@ -122,14 +132,11 @@ export const blueskyBinding: BindingSpec = {
   provider: 'atproto',
   fields: ['handle'],
   form: blueskyHandleForm,
+  formFor: blueskyHandleFormFor,
   scopes: ['atproto', 'transition:generic'],
   helpUrl: 'https://bsky.app/',
-  instructions: [
-    '填写你的 Bluesky handle（如 me.bsky.social，也可以不填直接用 bsky.social 登录），点「授权」',
-    '在 Bluesky 授权页登录并允许辰记',
-    '令牌绑定在这台设备生成的密钥上：桌面端加密存本机；网页只在当前页面，关闭即失效；Bluesky 不支持云端代发',
-    '授权最长约 2 周有效（公开客户端的限制），到期后重新授权即可',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 export interface BlueskyFacet {
@@ -208,12 +215,19 @@ export function renderBluesky(
   form: BlueskyForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string; now?: () => Date } = {}
+  opts: { assetBase?: string; now?: () => Date; lang?: SdkLang } = {}
 ): BlueskyRendered {
+  const ui = opts.lang;
+  const t = msg(ui);
   const short = content?.kind === 'short-text' ? content : undefined;
   const article = content?.kind === 'article' ? content : undefined;
   const d = article?.doc ?? doc;
-  const placed = placeLink(form.linkPlacement, form.link || visibleLinkOf(content), article?.lang);
+  const placed = placeLink(
+    form.linkPlacement,
+    form.link || visibleLinkOf(content),
+    article?.lang,
+    ui
+  );
   const link = placed.bodyLink;
   const title = (common.title || d.title || '').trim();
   const head = (form.text || short?.thread?.[0] || short?.text || title).trim();
@@ -290,12 +304,12 @@ export function renderBluesky(
     report.push({
       kind: 'share.truncated',
       level: 'notice',
-      text: `帖子按 Bluesky 上限 ${BLUESKY_LIMITS.graphemes} 字截短`,
+      text: t.truncated(BLUESKY_LIMITS.graphemes),
     });
   if (allTags.length > tags.length)
     report.push({
       kind: 'tags.trimmed',
-      text: `话题保留 ${tags.length} 个，去掉 ${allTags.length - tags.length} 个`,
+      text: t.tagsTrimmed(tags.length, allTags.length - tags.length),
       count: allTags.length - tags.length,
     });
 
@@ -312,7 +326,7 @@ export function renderBluesky(
     report.push({
       kind: 'link.card.forced',
       level: 'notice',
-      text: '排期时辰记原文链接还不确定，改为以链接卡片附上（不写进正文）',
+      text: t.cardForced,
     });
   if (link && useCard) {
     const description = truncate(
@@ -330,7 +344,7 @@ export function renderBluesky(
     thumb = absoluteUrl(common.cover, opts.assetBase);
     report.push({
       kind: 'link.card',
-      text: thumb ? '附上辰记原文链接卡片（含封面缩略图）' : '附上辰记原文链接卡片',
+      text: thumb ? t.cardWithThumb : t.card,
       detail: { url: link },
     });
   } else if (placed.followUp) {
@@ -339,11 +353,11 @@ export function renderBluesky(
     report.push({
       kind: 'canonical.missing',
       level: 'notice',
-      text: '还没有辰记原文链接，这条帖子不带链接（先发布到辰记再同步可以带上原文卡片）',
+      text: t.noLink,
     });
   }
 
-  report.push(...mediaReport('bluesky', 'Bluesky', content, common));
+  report.push(...mediaReport('bluesky', 'Bluesky', content, common, ui));
   return {
     text,
     body: { record, ...(thumb ? { thumb_url: thumb } : {}) },
@@ -503,12 +517,10 @@ export function blueskyWriteError(cause: unknown, p: PlatformRef = blueskyRef())
   if (status !== undefined && status >= 400 && status < 500)
     return kindError(p, 'bad_body', cause.message, { code: cause.code, ...init });
   // network, 5xx, no status: the write may have gone through
-  return kindError(
-    p,
-    'unknown',
-    `${cause.message}（结果未知：可能已经发出，请先到 Bluesky 确认，没有再重发）`,
-    { code: cause.code === 'network' ? 'network' : status ? `http_${status}` : 'unknown', ...init }
-  );
+  return kindError(p, 'unknown', msg(p.lang).writeUnknown(cause.message), {
+    code: cause.code === 'network' ? 'network' : status ? `http_${status}` : 'unknown',
+    ...init,
+  });
 }
 
 async function directWrite<T>(p: PlatformRef, fn: () => Promise<T>): Promise<T> {
@@ -524,7 +536,8 @@ async function resolveStrongRef(
   post: FollowUpParent,
   fallbackUri: string,
   ctx: Pick<StatsContext, 'fetch' | 'signal'>,
-  appView: string = BLUESKY_APPVIEW
+  appView: string = BLUESKY_APPVIEW,
+  lang?: SdkLang
 ): Promise<BlueskyStrongRef> {
   const uri = post.externalId.startsWith('at://') ? post.externalId : fallbackUri;
   const data = await readJson<{ posts?: Array<{ uri?: string; cid?: string }> }>(
@@ -534,7 +547,7 @@ async function resolveStrongRef(
   );
   const found = data?.posts?.[0];
   if (!found?.cid)
-    throw helpError(blueskyRef(), '找不到要回复的 Bluesky 帖子（可能已删除）', {
+    throw helpError(refIn(blueskyRef(), lang), msg(lang).replyNotFound, {
       code: 'not_found',
     });
   return { uri: found.uri ?? uri, cid: found.cid };
@@ -551,8 +564,11 @@ export interface BlueskyAdapterOptions {
 export function createBlueskyAdapter(
   opts: BlueskyAdapterOptions = {}
 ): Adapter<typeof blueskySchema> {
-  const ref = blueskyRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const baseRef = blueskyRef(opts.links);
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'bluesky',
     label: 'Bluesky',
@@ -561,8 +577,9 @@ export function createBlueskyAdapter(
     binding: blueskyBinding,
     capabilities: { supportsUpdate: false, needsLogin: true },
     schema: blueskySchema,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderBluesky(doc, form, common, content, renderOpts);
+    schemaFor: blueskySchemaFor,
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderBluesky(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'text',
         title: common?.title || doc.title,
@@ -572,30 +589,31 @@ export function createBlueskyAdapter(
       };
     },
     // SPEC-r11 §12: the record a desktop task posts (Bluesky has no 云端代发: scheduled posts wait for the desktop).
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderBluesky(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderBluesky(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(r.body, previous, undefined, r.report, r.followUp);
     },
     // SPEC-r12 §2.2: web straight to the PDS (a reply record with link facets); desktop through its local relay.
     followUp(post, input, ctx) {
+      const ref = refIn(baseRef, ctx.lang);
       return guard(ctx, ref, async () => {
         if (ctx.runtime !== 'web') return relayFollowUp(ctx, ref, post, input);
         const session = opts.session?.();
-        if (!session)
-          throw helpError(ref, '这个页面还没有 Bluesky 授权（授权只保存在当前页面），请先授权', {
-            code: 'bind',
-          });
+        if (!session) throw helpError(ref, msg(ctx.lang).notAuthorized, { code: 'bind' });
         const parent =
           strongRefOf(post.meta) ??
           (await resolveStrongRef(
             post,
             `at://${session.did}/app.bsky.feed.post/${post.externalId}`,
-            ctx
+            ctx,
+            BLUESKY_APPVIEW,
+            ctx.lang
           ));
         const out = await directWrite(ref, () =>
           createPostDirect(session, blueskyReplyRecord(input.text, parent), {
             fetch: ctx.fetch,
             signal: ctx.signal,
+            ...(ctx.lang ? { lang: ctx.lang } : {}),
           })
         );
         return { externalId: out.rkey, ...(out.url ? { url: out.url } : {}) };
@@ -606,29 +624,32 @@ export function createBlueskyAdapter(
       return fetchBlueskyStats(externalId, ctx);
     },
     publish({ doc, form, common, ctx, content }) {
+      const ref = refIn(baseRef, ctx.lang);
+      const t = msg(ctx.lang);
       return guard(ctx, ref, async () => {
-        const r = renderBluesky(doc, form, common, content, renderOpts);
+        const r = renderBluesky(doc, form, common, content, renderOpts(ctx.lang));
         if (!r.text.trim() && !r.body.record.embed)
-          throw helpError(ref, '帖子是空的', { code: 'invalid' });
+          throw helpError(ref, t.empty, { code: 'invalid' });
         const report = [...r.report];
         if (ctx.previous?.externalId)
           report.push({
             kind: 'update.unsupported',
             level: 'notice',
-            text: 'Bluesky 帖子不能编辑，这次发布的是一条新帖子',
+            text: t.newPost,
           });
         ctx.emit({ type: 'report', items: report });
-        ctx.emit({ type: 'progress', percent: 40, text: '发布到 Bluesky' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.publishing });
         if (ctx.runtime === 'web') {
           const session = opts.session?.();
-          if (!session)
-            throw helpError(ref, '这个页面还没有 Bluesky 授权（授权只保存在当前页面），请先授权', {
-              code: 'bind',
-            });
+          if (!session) throw helpError(ref, t.notAuthorized, { code: 'bind' });
           const res = await directWrite(ref, () =>
-            publishBlueskyDirect(session, r.body, { fetch: ctx.fetch, signal: ctx.signal })
+            publishBlueskyDirect(session, r.body, {
+              fetch: ctx.fetch,
+              signal: ctx.signal,
+              ...(ctx.lang ? { lang: ctx.lang } : {}),
+            })
           );
-          ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+          ctx.emit({ type: 'progress', percent: 100, text: t.done });
           return {
             url: res.url,
             externalId: res.rkey,
@@ -641,7 +662,7 @@ export function createBlueskyAdapter(
         }
         // Desktop: the main process holds the token and the DPoP key (the host routes this call to it).
         const res = await relayPublish(ctx, ref, r.body);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

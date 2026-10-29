@@ -13,7 +13,9 @@
  *
  * The desktop app runs the same flow in its main process (`d.` states, deep link back) and keeps the token there.
  */
-import type { PublishContext } from '@starnote/publish-core';
+import { kitMessages } from './i18n';
+
+import type { PublishContext, SdkLang } from '@starnote/publish-core';
 
 export type OAuthPlatform =
   | 'blogger'
@@ -87,7 +89,7 @@ export interface TokenResult {
 
 function cryptoApi(): Crypto {
   const c = (globalThis as { crypto?: Crypto }).crypto;
-  if (!c?.getRandomValues || !c.subtle) throw new Error('当前环境没有 WebCrypto，无法发起授权');
+  if (!c?.getRandomValues || !c.subtle) throw new Error(kitMessages().oauth.noCrypto);
   return c;
 }
 
@@ -124,6 +126,8 @@ export interface OAuthApi {
   apiBase: string;
   /** Fetch carrying the 辰记 login. */
   fetch: typeof fetch;
+  /** SPEC-r14 B5: language of the SDK's own error messages. Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 export class OAuthApiError extends Error {
@@ -152,7 +156,7 @@ async function call<T>(api: OAuthApi, path: string, body: unknown): Promise<T> {
   }
   if (res.ok && env?.code === 0) return env.data as T;
   throw new OAuthApiError(
-    env?.message || `授权请求失败（HTTP ${res.status}）`,
+    env?.message || kitMessages(api.lang).oauth.httpFailed(res.status),
     env?.data?.error_code || `http_${res.status}`,
     res.status
   );
@@ -234,7 +238,7 @@ export async function completeWebAuthorization(
   if (callback.error)
     throw new OAuthApiError(callback.errorDescription || callback.error, 'denied', 400);
   if (!callback.code || callback.state !== pending.state)
-    throw new OAuthApiError('授权回跳与本次请求不匹配，请重新授权', 'state_mismatch', 400);
+    throw new OAuthApiError(kitMessages(api.lang).oauth.stateMismatch, 'state_mismatch', 400);
   return call<TokenResult>(api, `/me/platform-oauth/${pending.platform}/token`, {
     code: callback.code,
     code_verifier: pending.verifier,

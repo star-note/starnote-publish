@@ -22,13 +22,15 @@ import {
   guard,
   helpError,
   newPostReport,
+  refIn,
   relayCheck,
   relayFinalize,
   relayPublish,
   relayRequestOf,
 } from '@starnote/publish-kit';
 
-import { instagramRef, instagramSchema, renderInstagram } from './instagram';
+import { msg } from './i18n';
+import { instagramRef, instagramSchema, instagramSchemaFor, renderInstagram } from './instagram';
 
 import type {
   Adapter,
@@ -39,6 +41,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type { CredentialSource, ErrorLinks, RequestDescription } from '@starnote/publish-kit';
 import type { InstagramForm } from './instagram';
@@ -56,12 +59,8 @@ export const instagramApiBinding: BindingSpec = {
   provider: 'instagram',
   scopes: ['instagram_business_basic', 'instagram_business_content_publish'],
   helpUrl: 'https://help.instagram.com/502981923235522',
-  instructions: [
-    '只支持专业账号（商家 / 创作者）：先在 Instagram App「设置 → 账户类型和工具」切换',
-    '点「用 Instagram 授权」，允许辰记代你发帖',
-    '桌面端：令牌加密存在本机；网页：令牌只在当前页面；打开「云端代发」才会存到辰记服务器',
-    '授权 60 天有效，辰记会自动续期；不用时到 Instagram「设置 → 网站权限 → 应用和网站」移除辰记',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 /** Hosts Meta cannot reach: loopback, private ranges, development names. */
@@ -112,17 +111,20 @@ export function renderInstagramApi(
   form: InstagramForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): InstagramApiRendered {
+  const t = msg(opts.lang);
   const r = renderInstagram(doc, form, common, content, opts);
-  if (!r.files.length) throw new Error('Instagram 帖子至少要 1 张图片：给笔记加封面或插图后再试');
+  if (!r.files.length) throw new Error(t.needsImage);
   const local = r.files.filter((f) => !isPublicHttpsUrl(f.url));
   if (local.length)
     throw new Error(
-      `Instagram 要从公网拉取图片，这些地址拉不到（须是公网 HTTPS）：${local
-        .slice(0, 2)
-        .map((f) => f.url)
-        .join('、')}`
+      t.unreachable(
+        local
+          .slice(0, 2)
+          .map((f) => f.url)
+          .join(t.listSeparator)
+      )
     );
   const images = r.files
     .slice(0, INSTAGRAM_API_LIMITS.carouselMax)
@@ -130,10 +132,7 @@ export function renderInstagramApi(
   const report = r.report.filter((i) => i.kind !== 'handoff.pending');
   report.push({
     kind: 'processing',
-    text:
-      images.length > 1
-        ? `${images.length} 张图片发成轮播：Instagram 处理完后自动发布`
-        : '单图帖：Instagram 处理完后自动发布',
+    text: images.length > 1 ? t.carousel(images.length) : t.single,
   });
   return {
     caption: r.caption,
@@ -192,7 +191,8 @@ export function createInstagramApiAdapter(
   opts: InstagramApiAdapterOptions = {}
 ): Adapter<typeof instagramSchema> {
   const ref = instagramRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const base = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({ ...base, ...(lang ? { lang } : {}) });
   return defineAdapter({
     key: 'instagram',
     label: 'Instagram',
@@ -201,14 +201,16 @@ export function createInstagramApiAdapter(
     binding: instagramApiBinding,
     capabilities: { supportsUpdate: false, needsLogin: true },
     schema: instagramSchema,
+    schemaFor: instagramSchemaFor,
     maxConcurrent: 2,
     pollIntervalSec: opts.poll?.intervalSec ?? INSTAGRAM_POLL.intervalSec,
     pollTimeoutSec: opts.poll?.timeoutSec ?? INSTAGRAM_POLL.timeoutSec,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderInstagram(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const ro = renderOpts(popts?.lang);
+      const r = renderInstagram(doc, form, common, content, ro);
       let report = r.report.filter((i) => i.kind !== 'handoff.pending');
       try {
-        report = renderInstagramApi(doc, form, common, content, renderOpts).report;
+        report = renderInstagramApi(doc, form, common, content, ro).report;
       } catch (e) {
         report = [
           ...report,
@@ -223,25 +225,29 @@ export function createInstagramApiAdapter(
         report,
       };
     },
-    renderRequest({ doc, form, common, content }) {
-      const r = renderInstagramApi(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, lang }) {
+      const r = renderInstagramApi(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(r.body, undefined, undefined, r.report);
     },
-    renderHandoff({ doc, form, common, content }) {
-      const r = renderInstagram(doc, form, common, content, renderOpts);
+    renderHandoff({ doc, form, common, content, lang }) {
+      const r = renderInstagram(doc, form, common, content, renderOpts(lang));
       return { handoff: r.handoff, report: r.report };
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
         let r: InstagramApiRendered;
+        const t = msg(ctx.lang);
         try {
-          r = renderInstagramApi(doc, form, common, content, renderOpts);
+          r = renderInstagramApi(doc, form, common, content, renderOpts(ctx.lang));
         } catch (e) {
-          throw helpError(ref, (e as Error).message, { code: 'invalid', kind: 'bad_body' });
+          throw helpError(refIn(ref, ctx.lang), (e as Error).message, {
+            code: 'invalid',
+            kind: 'bad_body',
+          });
         }
-        r.report.push(...newPostReport(ctx.previous));
+        r.report.push(...newPostReport(ctx.previous, ctx.lang));
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 30, text: '在 Instagram 建帖子容器' });
+        ctx.emit({ type: 'progress', percent: 30, text: t.creating });
         const credential = await credentialOf(opts.credential, 'instagram', ctx);
         const res = await relayPublish({ ...ctx, previous: undefined }, ref, r.body, undefined, {
           credential,
@@ -249,7 +255,7 @@ export function createInstagramApiAdapter(
         const report = mergeReports(r.report, res.report);
         if (res.state === 'processing')
           return { url: res.url, state: 'processing' as const, pending: res.pending, report };
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

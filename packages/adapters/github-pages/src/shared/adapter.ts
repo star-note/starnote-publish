@@ -1,9 +1,10 @@
 import { defineAdapter } from '@starnote/publish-core';
 
 import { commitFiles, sha256Hex } from './git';
+import { msg } from './i18n';
 import { resolveLayout } from './layout';
 import { defaultPostId, renderPost } from './render';
-import { githubPagesSchema } from './schema';
+import { githubPagesSchema, githubPagesSchemaFor } from './schema';
 import {
   applySiteSettings,
   dnsRecords,
@@ -24,6 +25,7 @@ import type {
   PublishContext,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type { GitFile } from './git';
 import type { GithubPagesLayout } from './layout';
@@ -97,11 +99,14 @@ function articleExtras(article: ArticleContent) {
 function predictedReport(
   doc: Doc,
   translations: Record<string, Doc> | undefined,
-  rehost: boolean
+  rehost: boolean,
+  lang?: SdkLang
 ): ReportItem[] {
   const images = new Set([doc, ...Object.values(translations ?? {})].flatMap((d) => d.images));
   const n = [...images].filter((s) => !s.startsWith('data:')).length;
-  return rehost && n ? [{ kind: 'image.rehosted', text: `${n} 张图片将转存到仓库`, count: n }] : [];
+  return rehost && n
+    ? [{ kind: 'image.rehosted', text: msg(lang).publish.imagesWillRehost(n), count: n }]
+    : [];
 }
 
 /**
@@ -122,14 +127,17 @@ export function createGithubPagesAdapter(
     binding: githubPagesBinding,
     capabilities: { supportsUpdate: true, needsLogin: true },
     schema: githubPagesSchema,
+    schemaFor: githubPagesSchemaFor,
 
     preview(
       doc: Doc,
       form: GithubPagesForm,
       common: CommonFormShape = {},
-      content?: PublishContent
+      content?: PublishContent,
+      popts?: { lang?: SdkLang }
     ): AdapterPreview {
       const article = articleOf(doc, content);
+      const lang = popts?.lang;
       const post = renderPost({
         doc: article.doc,
         form,
@@ -139,6 +147,7 @@ export function createGithubPagesAdapter(
         ...articleExtras(article),
         layout,
         ...(opts.now ? { now: opts.now() } : {}),
+        ...(lang ? { lang } : {}),
       });
       const main = post.files[0]!;
       return {
@@ -148,13 +157,18 @@ export function createGithubPagesAdapter(
         previewHtml: article.doc.html,
         files: post.files.map(({ path, content: c }) => ({ path, content: c })),
         url: post.url,
-        report: [...predictedReport(article.doc, article.translations, rehost), ...post.report],
+        report: [
+          ...predictedReport(article.doc, article.translations, rehost, lang),
+          ...post.report,
+        ],
       };
     },
 
     async publish({ doc, form, common, ctx, content }) {
       const article = articleOf(doc, content);
-      ctx.emit({ type: 'progress', percent: 5, text: '获取 GitHub 授权' });
+      const lang = ctx.lang;
+      const t = msg(lang).publish;
+      ctx.emit({ type: 'progress', percent: 5, text: t.authorize });
       const token = await opts.token(ctx, form);
       const postId = form.post_id ?? defaultPostId(ctx.noteId);
       const dir = `${form.dir}/${postId}`;
@@ -180,7 +194,7 @@ export function createGithubPagesAdapter(
           ctx.emit({
             type: 'progress',
             percent: 10 + Math.round((30 * i) / sources.length),
-            text: '下载图片',
+            text: t.downloadImages,
           });
           try {
             const res = await fetchAsset(url, { signal: ctx.signal });
@@ -211,6 +225,7 @@ export function createGithubPagesAdapter(
         assets,
         layout,
         ...(opts.now ? { now: opts.now() } : {}),
+        ...(lang ? { lang } : {}),
       });
 
       // 3. Site settings → content/site.json (same commit).
@@ -218,6 +233,7 @@ export function createGithubPagesAdapter(
         fetch: opts.githubFetch ?? ctx.fetch,
         token,
         ...(opts.apiUrl ? { apiUrl: opts.apiUrl } : {}),
+        ...(lang ? { lang } : {}),
       };
       const siteFiles: GitFile[] = [];
       if (site) {
@@ -235,7 +251,7 @@ export function createGithubPagesAdapter(
           ctx.emit({
             type: 'log',
             level: 'warn',
-            text: `${layout.siteConfigFile} 不是合法 JSON，这次没有改它`,
+            text: t.badSiteJson(layout.siteConfigFile),
           });
         }
         const after = parsed ? siteConfigText(applySiteSettings(parsed, site)) : before;
@@ -244,13 +260,14 @@ export function createGithubPagesAdapter(
       }
 
       // 4. One commit.
-      ctx.emit({ type: 'progress', percent: 45, text: '提交到 GitHub' });
+      ctx.emit({ type: 'progress', percent: 45, text: t.commit });
       const title = common.title || article.doc.title || postId;
       const result = await commitFiles({
         fetch: opts.githubFetch ?? ctx.fetch,
         token,
         signal: ctx.signal,
         ...(opts.apiUrl ? { apiUrl: opts.apiUrl } : {}),
+        ...(lang ? { lang } : {}),
         repo: form.repo,
         branch: form.branch,
         files: [
@@ -271,7 +288,7 @@ export function createGithubPagesAdapter(
           domainReport.push({
             kind: 'domain.set',
             level: 'notice',
-            text: `自定义域名 ${domain} 已设置`,
+            text: t.domainSet(domain),
             detail: {
               domain,
               dns: dnsRecords(domain, form.repo.split('/')[0]!),
@@ -279,7 +296,7 @@ export function createGithubPagesAdapter(
             },
           });
         } else {
-          domainReport.push({ kind: 'domain.cleared', text: '已取消自定义域名和广告配置' });
+          domainReport.push({ kind: 'domain.cleared', text: t.domainCleared });
         }
       }
 
@@ -291,37 +308,37 @@ export function createGithubPagesAdapter(
       if (rehosted)
         report.push({
           kind: 'image.rehosted',
-          text: `${rehosted} 张图片已转存到仓库`,
+          text: t.rehosted(rehosted),
           count: rehosted,
         });
       if (reused)
         report.push({
           kind: 'image.reused',
-          text: `${reused} 张图片仓库里已有，直接复用`,
+          text: t.reused(reused),
           count: reused,
         });
       if (failed.length) {
         report.push({
           kind: 'image.failed',
           level: 'warn',
-          text: `${failed.length} 张图片下载失败，保留了原链接`,
+          text: t.failed(failed.length),
           count: failed.length,
           samples: failed.slice(0, 3),
         });
       }
       report.push(...post.report, ...domainReport);
       if (result.commitSha === null) {
-        report.push({ kind: 'unchanged', text: '内容没有变化，没有产生新提交' });
+        report.push({ kind: 'unchanged', text: t.unchanged });
       } else {
         report.push({
           kind: 'build.pending',
           level: 'notice',
-          text: 'GitHub Actions 构建约 1 分钟后上线',
+          text: t.building,
           detail: { commit: result.commitSha },
         });
       }
       ctx.emit({ type: 'report', items: report });
-      ctx.emit({ type: 'progress', percent: 100, text: '已提交' });
+      ctx.emit({ type: 'progress', percent: 100, text: t.committed });
       return { url: post.url, externalId: `${form.repo}#${postId}`, state: 'published', report };
     },
   });

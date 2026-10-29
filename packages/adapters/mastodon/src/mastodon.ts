@@ -12,6 +12,7 @@
  * ✅, kept on the account as `meta.max_characters`); a URL always counts as `characters_reserved_per_url` (23 ✅).
  */
 import {
+  byLang,
   defineAdapter,
   isUrlExternalId,
   mediaReport,
@@ -26,6 +27,7 @@ import {
   guard,
   helpError,
   linkPlacementField,
+  refIn,
   num,
   placeLink,
   readJson,
@@ -36,6 +38,8 @@ import {
   truncate,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
+
+import { msg } from './i18n';
 
 import type {
   Adapter,
@@ -48,6 +52,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
   StatsContext,
 } from '@starnote/publish-core';
 import type {
@@ -76,38 +81,43 @@ export function normalizeInstance(raw: string): string | null {
   return s;
 }
 
-export const mastodonInstanceForm = z.object({
-  instance: z
-    .string()
-    .trim()
-    .refine((v) => normalizeInstance(v) !== null, '请填写实例域名，如 mastodon.social')
-    .transform((v) => normalizeInstance(v)!)
-    .describe('实例'),
+export const mastodonInstanceFormFor = byLang((lang) =>
+  z.object({
+    instance: z
+      .string()
+      .trim()
+      .refine((v) => normalizeInstance(v) !== null, msg(lang).form.instanceHint)
+      .transform((v) => normalizeInstance(v)!)
+      .describe(msg(lang).form.instance),
+  })
+);
+
+export const mastodonInstanceForm = mastodonInstanceFormFor('zh-CN');
+
+/** The form in a language (SPEC-r14 B5): labels and messages from `msg(lang)`. */
+export const mastodonSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** Your own text instead of title + summary (still fitted to the limit). */
+    text: z.string().trim().max(5000).optional().describe(t.text),
+    link: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.link),
+    visibility: z.enum(['public', 'unlisted', 'private']).default('public').describe(t.visibility),
+    spoiler_text: z.string().trim().max(200).optional().describe(t.spoiler),
+    sensitive: z.boolean().default(false).describe(t.sensitive),
+    include_summary: z.boolean().default(true).describe(t.includeSummary),
+    include_tags: z.boolean().default(true).describe(t.includeTags),
+    external_id: z.string().trim().regex(/^\d+$/, t.idDigits).optional().describe(t.externalId),
+    /** SPEC-r12 §2: the link in the status, or as the author's first reply. */
+    linkPlacement: linkPlacementField('mastodon', lang),
+  });
 });
 
-export const mastodonSchema = z.object({
-  /** Your own text instead of title + summary (still fitted to the limit). */
-  text: z.string().trim().max(5000).optional().describe('嘟文'),
-  link: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('链接'),
-  visibility: z.enum(['public', 'unlisted', 'private']).default('public').describe('可见范围'),
-  spoiler_text: z.string().trim().max(200).optional().describe('内容警告'),
-  sensitive: z.boolean().default(false).describe('敏感内容'),
-  include_summary: z.boolean().default(true).describe('带上摘要'),
-  include_tags: z.boolean().default(true).describe('带上话题'),
-  external_id: z
-    .string()
-    .trim()
-    .regex(/^\d+$/, '嘟文 ID 是数字')
-    .optional()
-    .describe('已发布嘟文 ID'),
-  /** SPEC-r12 §2: the link in the status, or as the author's first reply. */
-  linkPlacement: linkPlacementField('mastodon'),
-});
+export const mastodonSchema = mastodonSchemaFor('zh-CN');
 
 export type MastodonForm = z.infer<typeof mastodonSchema>;
 export type MastodonFormInput = z.input<typeof mastodonSchema>;
@@ -118,14 +128,11 @@ export const mastodonBinding: BindingSpec = {
   provider: 'mastodon',
   fields: ['instance'],
   form: mastodonInstanceForm,
+  formFor: mastodonInstanceFormFor,
   scopes: ['read:accounts', 'write:statuses'],
   helpUrl: 'https://joinmastodon.org/',
-  instructions: [
-    '填写你的实例域名（如 mastodon.social），点「授权」',
-    '在实例页面登录并允许辰记发嘟文（辰记会自动在该实例登记应用，不需要你自己创建）',
-    '桌面端：令牌加密存在本机；网页：令牌只在当前页面，关闭即失效；打开「云端代发」才会存到辰记服务器',
-    '不用时到实例「设置 → 账户 → 授权的应用」撤销辰记',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 export interface MastodonStatusBody {
@@ -171,15 +178,22 @@ export function renderMastodon(
   form: MastodonForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { maxCharacters?: number } = {}
+  opts: { maxCharacters?: number; lang?: SdkLang } = {}
 ): MastodonRendered {
+  const ui = opts.lang;
+  const t = msg(ui);
   const limit =
     opts.maxCharacters && opts.maxCharacters > 0
       ? opts.maxCharacters
       : MASTODON_DEFAULTS.maxCharacters;
   const short = content?.kind === 'short-text' ? content : undefined;
   const article = content?.kind === 'article' ? content : undefined;
-  const placed = placeLink(form.linkPlacement, form.link || visibleLinkOf(content), article?.lang);
+  const placed = placeLink(
+    form.linkPlacement,
+    form.link || visibleLinkOf(content),
+    article?.lang,
+    ui
+  );
   const link = placed.bodyLink;
   const d = article?.doc ?? doc;
   const head = (
@@ -237,18 +251,18 @@ export function renderMastodon(
     report.push({
       kind: 'share.truncated',
       level: 'notice',
-      text: `嘟文按实例上限 ${limit} 字截短（链接按 ${MASTODON_DEFAULTS.urlChars} 字计）`,
+      text: t.truncated(limit, MASTODON_DEFAULTS.urlChars),
     });
   if (allTags.length > tags.length)
     report.push({
       kind: 'tags.trimmed',
-      text: `话题保留 ${tags.length} 个，去掉 ${allTags.length - tags.length} 个`,
+      text: t.tagsTrimmed(tags.length, allTags.length - tags.length),
       count: allTags.length - tags.length,
     });
   if (link)
     report.push({
       kind: 'link.card',
-      text: '实例会按正文里的链接生成预览卡片',
+      text: t.linkCard,
       detail: { url: link },
     });
   else if (placed.followUp) report.push(...placed.report);
@@ -256,7 +270,7 @@ export function renderMastodon(
     report.push({
       kind: 'canonical.missing',
       level: 'notice',
-      text: '还没有辰记原文链接，嘟文里没有链接（先发布到辰记再同步可以带上原文卡片）',
+      text: t.noLink,
     });
 
   const language = iso639(article?.lang);
@@ -270,7 +284,7 @@ export function renderMastodon(
       ...(form.spoiler_text ? { spoiler_text: form.spoiler_text } : {}),
       ...(form.sensitive ? { sensitive: true } : {}),
     },
-    report: [...report, ...mediaReport('mastodon', 'Mastodon', content, common)],
+    report: [...report, ...mediaReport('mastodon', 'Mastodon', content, common, ui)],
     ...(placed.followUp ? { followUp: placed.followUp } : {}),
   };
 }
@@ -371,7 +385,7 @@ function maxOf(meta: Record<string, unknown> | undefined): number | undefined {
 export function createMastodonAdapter(
   opts: MastodonAdapterOptions = {}
 ): Adapter<typeof mastodonSchema> {
-  const ref = mastodonRef(opts.links);
+  const baseRef = mastodonRef(opts.links);
   return defineAdapter({
     key: 'mastodon',
     label: 'Mastodon',
@@ -380,12 +394,13 @@ export function createMastodonAdapter(
     binding: mastodonBinding,
     capabilities: { supportsUpdate: true, needsLogin: true },
     schema: mastodonSchema,
+    schemaFor: mastodonSchemaFor,
     statsRequires: 'none',
     fetchStats(externalId, ctx) {
       return fetchMastodonStats(externalId, ctx);
     },
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderMastodon(doc, form, common, content);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderMastodon(doc, form, common, content, popts?.lang ? { lang: popts.lang } : {});
       return {
         format: 'text',
         title: common?.title || doc.title,
@@ -395,28 +410,37 @@ export function createMastodonAdapter(
       };
     },
     // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
-    renderRequest({ doc, form, common, content, previous, account }) {
+    renderRequest({ doc, form, common, content, previous, account, lang }) {
       const max = maxOf(account?.meta);
-      const r = renderMastodon(doc, form, common, content, max ? { maxCharacters: max } : {});
+      const r = renderMastodon(doc, form, common, content, {
+        ...(max ? { maxCharacters: max } : {}),
+        ...(lang ? { lang } : {}),
+      });
       return relayRequestOf(r.body, previous, form.external_id, r.report, r.followUp);
     },
     // SPEC-r12 §2.2: the link as a reply of the author, through the relay (`in_reply_to_id`, same visibility)
     followUp(post, input, ctx) {
+      const ref = refIn(baseRef, ctx.lang);
       return guard(ctx, ref, async () => {
         const credential = await credentialOf(opts.credential, 'mastodon', ctx);
         return relayFollowUp(ctx, ref, post, input, { credential });
       });
     },
     publish({ doc, form, common, ctx, content }) {
+      const ref = refIn(baseRef, ctx.lang);
+      const t = msg(ctx.lang);
       return guard(ctx, ref, async () => {
         const max = maxOf(ctx.account?.meta);
-        const r = renderMastodon(doc, form, common, content, max ? { maxCharacters: max } : {});
-        if (!r.text.trim()) throw helpError(ref, '嘟文是空的', { code: 'invalid' });
+        const r = renderMastodon(doc, form, common, content, {
+          ...(max ? { maxCharacters: max } : {}),
+          ...(ctx.lang ? { lang: ctx.lang } : {}),
+        });
+        if (!r.text.trim()) throw helpError(ref, t.empty, { code: 'invalid' });
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '发布到 Mastodon' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.publishing });
         const credential = await credentialOf(opts.credential, 'mastodon', ctx);
         const res = await relayPublish(ctx, ref, r.body, form.external_id, { credential });
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

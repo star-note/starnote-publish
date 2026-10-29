@@ -4,8 +4,10 @@
  * `canonical_url` back to the 辰记 original. Browser-safe: render + relay body only; 辰记's Python API holds the key and calls DEV (服务器代发).
  */
 import {
+  byLang,
   defineAdapter,
   isUrlExternalId,
+  localizedLabel,
   mediaReport,
   mergeReports,
   normalizePostUrl,
@@ -29,6 +31,8 @@ import {
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
+import { msg } from './i18n';
+
 import type {
   Adapter,
   AdapterPreview,
@@ -39,6 +43,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
   StatsContext,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
@@ -62,29 +67,30 @@ export function devtoTag(tag: string): string | null {
   return t ? t.slice(0, 30) : null;
 }
 
-export const devtoSchema = z.object({
-  /** false: saved as an unpublished draft on DEV (✅ `published` defaults to false there). */
-  published: z.boolean().default(true).describe('直接公开'),
-  series: z.string().trim().max(100, '系列名最多 100 字').optional().describe('系列'),
-  set_canonical: z.boolean().default(true).describe('设置原文链接'),
-  /** Defaults to the 辰记 original. */
-  canonical_url: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('原文链接'),
-  /** Appends 「Originally published at …」 to the body. */
-  origin_note: z.boolean().default(false).describe('文末注明原文'),
-  organization_id: z.number().int().positive().optional().describe('组织 ID'),
-  /** The DEV article id from an earlier publish: set it to update instead of creating. */
-  external_id: z
-    .string()
-    .trim()
-    .regex(/^\d+$/, '文章 ID 是数字')
-    .optional()
-    .describe('已发布文章 ID'),
+/** The form in a language (SPEC-r14 B5): labels and messages from `msg(lang)`. */
+export const devtoSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** false: saved as an unpublished draft on DEV (✅ `published` defaults to false there). */
+    published: z.boolean().default(true).describe(t.published),
+    series: z.string().trim().max(100, t.seriesMax).optional().describe(t.series),
+    set_canonical: z.boolean().default(true).describe(t.setCanonical),
+    /** Defaults to the 辰记 original. */
+    canonical_url: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.canonicalUrl),
+    /** Appends 「Originally published at …」 to the body. */
+    origin_note: z.boolean().default(false).describe(t.originNote),
+    organization_id: z.number().int().positive().optional().describe(t.organizationId),
+    /** The DEV article id from an earlier publish: set it to update instead of creating. */
+    external_id: z.string().trim().regex(/^\d+$/, t.idDigits).optional().describe(t.externalId),
+  });
 });
+
+export const devtoSchema = devtoSchemaFor('zh-CN');
 
 export type DevtoForm = z.infer<typeof devtoSchema>;
 export type DevtoFormInput = z.input<typeof devtoSchema>;
@@ -93,9 +99,13 @@ export interface DevtoCredentials {
   apiKey: string;
 }
 
-export const devtoKeyForm = z.object({
-  api_key: z.string().trim().min(16, '请粘贴 DEV 设置页生成的 API key').describe('API key'),
-});
+export const devtoKeyFormFor = byLang((lang) =>
+  z.object({
+    api_key: z.string().trim().min(16, msg(lang).key.apiKeyHint).describe(msg(lang).key.apiKey),
+  })
+);
+
+export const devtoKeyForm = devtoKeyFormFor('zh-CN');
 
 export const devtoBinding: BindingSpec = {
   kind: 'token',
@@ -103,12 +113,10 @@ export const devtoBinding: BindingSpec = {
   provider: 'devto',
   fields: ['api_key'],
   form: devtoKeyForm,
+  formFor: devtoKeyFormFor,
   createUrl: 'https://dev.to/settings/extensions',
-  instructions: [
-    '打开 DEV 的 Settings → Extensions，在 DEV Community API Keys 填一个名字（如 StarNote）生成 key',
-    '复制 key，粘贴到这里并点「测试连接」',
-    '不用时在同一页删除这个 key，绑定立即失效',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 export interface DevtoArticleBody {
@@ -136,6 +144,8 @@ export interface DevtoRendered {
 export interface DevtoRenderOptions {
   /** Resolves relative image / cover URLs. */
   assetBase?: string;
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 function absolute(url: string | undefined, base?: string): string | undefined {
@@ -158,6 +168,9 @@ export function renderDevto(
   opts: DevtoRenderOptions = {}
 ): DevtoRendered {
   const article = articleOf(doc, content);
+  const lang = opts.lang;
+  const t = msg(lang);
+  const name = localizedLabel('devto', 'DEV', lang);
   const rawTitle = common.title || article.doc.title || 'Untitled';
   const degraded = degradeArticle(
     article.doc,
@@ -170,26 +183,27 @@ export function renderDevto(
       stripHighlight: true,
       ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
     },
-    'DEV'
+    name,
+    lang
   );
-  const title = fitTitle(rawTitle, DEVTO_LIMITS.titleMax, 'DEV');
-  const summary = fitSummary(common.summary, DEVTO_LIMITS.descriptionMax, 'DEV');
-  const tags = fitTags(common.tags, { max: DEVTO_LIMITS.tags, normalize: devtoTag }, 'DEV');
-  const canonical = canonicalOf(form, article, 'DEV');
+  const title = fitTitle(rawTitle, DEVTO_LIMITS.titleMax, name, lang);
+  const summary = fitSummary(common.summary, DEVTO_LIMITS.descriptionMax, name, lang);
+  const tags = fitTags(common.tags, { max: DEVTO_LIMITS.tags, normalize: devtoTag }, name, lang);
+  const canonical = canonicalOf(form, article, 'DEV', lang);
   const cover = absolute(common.cover, opts.assetBase);
 
   let markdown = degraded.body;
   const report: ReportItem[] = [];
   // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
-  report.push(...mediaReport('devto', 'DEV', content, common));
+  report.push(...mediaReport('devto', 'DEV', content, common, lang));
   if (form.origin_note && canonical.url) {
     const origin = originLinkOf(form, article, canonical.url);
     markdown += `\n\n---\n\n*Originally published at [${origin}](${origin}).*`;
-    report.push({ kind: 'origin.note', text: '文末加上「Originally published at」原文链接' });
+    report.push({ kind: 'origin.note', text: t.originNote });
   }
   report.push(
     ...degraded.report,
-    ...linkedImagesReport(degraded.doc.images.length, 'DEV'),
+    ...linkedImagesReport(degraded.doc.images.length, name, lang),
     ...title.report,
     ...summary.report,
     ...tags.report,
@@ -199,7 +213,7 @@ export function renderDevto(
     report.push({
       kind: 'draft.only',
       level: 'notice',
-      text: '以未公开状态保存到 DEV，检查后在 DEV 上点 Publish',
+      text: t.draftOnly,
     });
 
   return {
@@ -304,7 +318,10 @@ export interface DevtoAdapterOptions {
  */
 export function createDevtoAdapter(opts: DevtoAdapterOptions = {}): Adapter<typeof devtoSchema> {
   const ref = devtoRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang): DevtoRenderOptions => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'devto',
     label: 'DEV',
@@ -313,12 +330,13 @@ export function createDevtoAdapter(opts: DevtoAdapterOptions = {}): Adapter<type
     binding: devtoBinding,
     capabilities: { supportsUpdate: true, needsLogin: true, titleMax: DEVTO_LIMITS.titleMax },
     schema: devtoSchema,
+    schemaFor: devtoSchemaFor,
     statsRequires: 'token',
     fetchStats(externalId, ctx) {
       return fetchDevtoStats(externalId, ctx);
     },
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderDevto(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderDevto(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'markdown',
         title: r.title,
@@ -328,17 +346,18 @@ export function createDevtoAdapter(opts: DevtoAdapterOptions = {}): Adapter<type
       };
     },
     // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderDevto(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderDevto(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(devtoRelayBody(r), previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderDevto(doc, form, common, content, renderOpts);
+        const r = renderDevto(doc, form, common, content, renderOpts(ctx.lang));
+        const t = msg(ctx.lang);
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '由服务器代发到 DEV' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.relaying });
         const res = await relayPublish(ctx, ref, devtoRelayBody(r), form.external_id);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,
