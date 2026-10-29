@@ -168,6 +168,47 @@
 - 页面脚本能读到 `_xsrf`、`d_c0`、`SESSIONID`、`JOID`、`osd`、`BEC`、`_zap`。
 - `z_c0` 是 httpOnly，脚本读不到。属于正常情况，桌面端从 Electron session 里读取。
 
+### 2026-10-29：数据与变现（创作中心，账号 Lv1、创作分 146）
+
+**发布后的数据**
+
+入口：创作中心 → 数据中心。
+
+| 页面 | 地址 | 接口 | 内容 |
+|---|---|---|---|
+| 账号概览 | `/creator/analytics` | `api/v4/creators/analysis/realtime/member/aggr`、`member/daily`（参数 `tab`、`start`、`end`），`member/visitor_portrait` | 按体裁看：作品数据、互动数据、流量数据；可选近 7 / 14 / 30 日或累计；能导出 Excel |
+| 内容分析（单篇） | `/creator/analytics/content-analysis/article?tab=single` | `api/v4/creators/analysis/realtime/content/list?type=article&offset=&limit=` | 每篇的阅读、赞同、评论、收藏等（字段等有文章后核对） |
+| 关注者分析 | `/creator/followers` | 待实测 | |
+
+**公开兜底**：`GET https://www.zhihu.com/api/v4/articles/{id}` 不用登录，能读到 `voteup_count`、`comment_count` ⚠️（公开资料，待实测）。
+
+**辰记的做法**：给知乎适配器实现 `fetchStats`。
+- 桌面端用登录态分页读 `content/list`，来源标 `source: 'console'`。
+- 读不到时退回公开文章接口，来源标 `'public'`。
+
+**变现**
+
+入口：创作中心 → 收益变现。
+
+| 入口 | 地址 | 开通条件（当前账号的状态） |
+|---|---|---|
+| 收益分析 | `/creator/income-analysis` | 收益分类：付费咨询、内容收益、好物推荐、知+自选、品牌任务、其他。显示今日 / 本周 / 累计收益和创作余额，可以提现 |
+| 致知计划（内容收益） | `/creator/knowledge-income` | 创作等级 ≥ Lv4，被关注数 ≥ 100，内容优质分 ≥ 3000，近 30 天至少发 1 篇，账号状态正常（当前只满足最后一条） |
+| 好物推荐（带货佣金） | `/creator/mcn` | 创作等级 ≥ Lv3；近 30 天没有违反社区规范；只限个人账号 |
+| 盐选合作 | `/creator-salt/welfare` | Lv1 权益，已开通 |
+| 赞赏 / 送礼物 | `/creator/account/rights` | Lv1 能领「送礼物功能」 |
+| AI 训练师、芝士平台 | 侧栏入口 | 待看 |
+
+**创作等级怎么涨**
+- 创作分分五个维度：创作活跃度、内容优质分、创作影响力、关注者亲密度、社区成就分，规则见 `/creator/account/growth-level`。
+- Lv1 → Lv2 要 250 分。
+- 当前加分主要来自「创作影响力」，也就是别人的赞同、喜欢、收藏。
+
+**辰记能做的**
+- 在发布结果和知乎绑定页，显示当前等级，以及离下一个变现门槛还差多少，比如「致知计划还差：Lv4、关注者 100、优质分 3000」。
+  - 等级、创作分等数据从 `creators/homepage`、`/creator/account/rights` 页面用到的接口读，接口待确认。
+- 发布表单里，赞赏开关和好物推荐卡片只对已开通的账号显示。
+
 **辰记要改的**
 - 表单加三项：创作声明（用上表的 `type`，默认建议 `ai_creation` 是否勾选让用户决定）、定时发布、内容来源。
 - 话题：知乎会自动推荐。辰记填好正文后先读一次已推荐的话题，再加上用户的关键词；不要把推荐的话题覆盖掉。
