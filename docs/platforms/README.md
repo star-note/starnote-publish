@@ -24,6 +24,7 @@
 | [语雀](yuque.md) | **有**（yuque-mcp-server） | **有**（OpenAPI v2；个人 Token 可能需要超级会员 ⚠️） | 无 | Lake；接口也接受 Markdown 和 HTML | 无 | Wechatsync（知识库写死），辰记要让用户选知识库 |
 | [博客园](cnblogs.md) | 无 | **有**（个人访问令牌：Open API、MetaWeblog） | 无 | 网页后台；MetaWeblog 可以用 Markdown | 无适配器（注册表登记的是 token） | 无，官方接口最稳 |
 | [简书](jianshu.md) | 无 | 无 | 无 | 富文本或 Markdown（看用户默认编辑器设置）；文章必须放在文集里 | 无（只有 logo） | 无可参考的插件，COSE 只填标题和正文 |
+| [抖音（文章 / 图文）](douyin.md) | 无 | 开放平台只能发视频和图集，要申请开发者应用；个人作者没有文章接口 | 无 | 文章用 tiptap，**可以导入 docx、txt、md**；接口带 a_bogus 和 msToken | 已登记，没有适配器 | 无 |
 
 ## 统一做法
 
