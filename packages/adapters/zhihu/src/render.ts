@@ -6,10 +6,13 @@ import {
   truncateText,
 } from '@starnote/publish-core';
 
+import { msg } from './i18n';
+
 import type {
   CommonFormShape,
   Doc,
   ReportItem,
+  SdkLang,
   SiteScript,
   TiptapJSON,
 } from '@starnote/publish-core';
@@ -55,7 +58,9 @@ export function toZhihuHtml(json: TiptapJSON, script: Pick<SiteScript, 'urls'>):
 export function renderZhihu(
   doc: Doc,
   common: CommonFormShape,
-  script: Pick<SiteScript, 'urls' | 'limits'>
+  script: Pick<SiteScript, 'urls' | 'limits'>,
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
 ): ZhihuRendered {
   const report: ReportItem[] = [];
   const rawTitle = (common.title || doc.title || '').trim();
@@ -64,7 +69,7 @@ export function renderZhihu(
   if (cut.truncated)
     report.push({
       kind: 'title.truncated',
-      text: `标题超过 ${titleMax} 字，已截短`,
+      text: msg(lang).titleTruncated(titleMax),
       level: 'notice',
       samples: [rawTitle],
     });
@@ -77,6 +82,7 @@ export function renderZhihu(
     taskList: 'symbols',
     flattenDetails: true,
     videoLabel: '视频',
+    ...(lang ? { lang } : {}),
   });
   report.push(...degraded.report);
   const images = convert(degraded.json).images.filter((src) => !isZhihuImage(src));

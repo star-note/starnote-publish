@@ -1,4 +1,11 @@
-import { MASK_MARK, maskPreviewHtml, maskReport, maskTree, resolveMask, stripMaskMarks } from './mask';
+import {
+  MASK_MARK,
+  maskPreviewHtml,
+  maskReport,
+  maskTree,
+  resolveMask,
+  stripMaskMarks,
+} from './mask';
 import { mobileHtml, mobileOptionsFor } from './mobile';
 
 import type { MaskSummary } from './mask';
@@ -483,8 +490,7 @@ function newCtx(opts: ConvertOptions): Ctx {
 }
 
 export function convert(json: TiptapJSON, opts: ConvertOptions = {}): Doc {
-  const source: TiptapJSON =
-    json && typeof json === 'object' ? json : { type: 'doc', content: [] };
+  const source: TiptapJSON = json && typeof json === 'object' ? json : { type: 'doc', content: [] };
   // 敏感词打码: every output below is built from the masked tree, so HTML, Markdown and text agree.
   const maskOpts = resolveMask(opts.mask);
   const masked = maskOpts ? maskTree(source, maskOpts) : null;
@@ -502,9 +508,12 @@ export function convert(json: TiptapJSON, opts: ConvertOptions = {}): Doc {
   const maskSummary: MaskSummary | undefined = masked
     ? { count: masked.hits.length, hits: masked.hits }
     : undefined;
-  report.push(...maskReport(maskSummary));
+  report.push(...maskReport(maskSummary, opts.lang));
   if (opts.mobile) {
-    const mo = opts.mobile === true ? {} : opts.mobile;
+    const mo = {
+      ...(opts.mobile === true ? {} : opts.mobile),
+      ...(opts.lang ? { lang: opts.lang } : {}),
+    };
     const same = html === portableHtml;
     const a = mobileHtml(html, mo);
     html = a.html;

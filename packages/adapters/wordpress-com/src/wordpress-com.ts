@@ -11,7 +11,7 @@
  * Browser-safe: render + relay body; the desktop main process (token on the machine) or 辰记's API (page-memory
  * `credential`, or the 「云端代发」 copy) sends it.
  */
-import { defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
+import { byLang, defineAdapter, mergeReports, platformMeta } from '@starnote/publish-core';
 import {
   absoluteUrl,
   articleOf,
@@ -30,6 +30,8 @@ import {
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
+import { msg } from './i18n';
+
 import type {
   Adapter,
   AdapterPreview,
@@ -39,6 +41,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type {
   CredentialSource,
@@ -61,36 +64,41 @@ function termName(t: string): string | null {
   return n || null;
 }
 
-export const wordpressComSchema = z.object({
-  /** The site (from the binding); absent: the one the token was issued for. */
-  site_id: z.string().trim().regex(/^\d+$/, '站点 ID 是数字').optional().describe('站点'),
-  status: z
-    .enum(['publish', 'draft', 'pending', 'private'])
-    .default('publish')
-    .describe('发布方式'),
-  /** Category names; missing ones are created. */
-  categories: z.array(z.string().trim().min(1).max(100)).max(10).default([]).describe('分类'),
-  slug: z
-    .string()
-    .trim()
-    .regex(/^[a-z0-9][a-z0-9-]*$/, '只能用小写字母、数字和 -')
-    .optional()
-    .describe('网址'),
-  origin_note: z.boolean().default(true).describe('文末注明首发于辰记'),
-  set_canonical: z.boolean().default(true).describe('附原文链接'),
-  canonical_url: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('原文链接'),
-  external_id: z
-    .string()
-    .trim()
-    .regex(/^\d+$/, '文章 ID 是数字')
-    .optional()
-    .describe('已发布文章 ID'),
+/** The form in a language (SPEC-r14 B5): labels and messages from `msg(lang)`. */
+export const wordpressComSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** The site (from the binding); absent: the one the token was issued for. */
+    site_id: z.string().trim().regex(/^\d+$/, t.siteIdDigits).optional().describe(t.site),
+    status: z
+      .enum(['publish', 'draft', 'pending', 'private'])
+      .default('publish')
+      .describe(t.status),
+    /** Category names; missing ones are created. */
+    categories: z
+      .array(z.string().trim().min(1).max(100))
+      .max(10)
+      .default([])
+      .describe(t.categories),
+    slug: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9][a-z0-9-]*$/, t.slugFormat)
+      .optional()
+      .describe(t.slug),
+    origin_note: z.boolean().default(true).describe(t.originNote),
+    set_canonical: z.boolean().default(true).describe(t.setCanonical),
+    canonical_url: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.canonicalUrl),
+    external_id: z.string().trim().regex(/^\d+$/, t.idDigits).optional().describe(t.externalId),
+  });
 });
+
+export const wordpressComSchema = wordpressComSchemaFor('zh-CN');
 
 export type WordpressComForm = z.infer<typeof wordpressComSchema>;
 export type WordpressComFormInput = z.input<typeof wordpressComSchema>;
@@ -100,12 +108,11 @@ export const wordpressComBinding: BindingSpec = {
   store: 'desktop',
   provider: 'wordpress.com',
   helpUrl: 'https://wordpress.com/',
-  instructions: [
-    '点「用 WordPress.com 授权」，登录后选择要授权的站点并允许',
-    '桌面端：令牌加密存在本机；网页：令牌只在当前页面，关闭即失效；打开「云端代发」才会存到辰记服务器',
-    '不用时到 WordPress.com「账户设置 → 已连接的应用」断开辰记',
-  ],
-  selects: [{ id: 'site_id', title: '发布到哪个站点' }],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
+  // the title in other languages: `msg(lang).selectSite` (exported as `wordpressComMessages`)
+  selects: [{ id: 'site_id', title: msg('zh-CN').selectSite }],
+  selectsFor: (lang) => [{ id: 'site_id', title: msg(lang).selectSite }],
 };
 
 export interface WordpressComPostBody {
@@ -136,9 +143,12 @@ export function renderWordpressCom(
   form: WordpressComForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  /** `lang` (SPEC-r14 B5): language of the report (not of the closing line). Default `zh-CN`. */
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): WordpressComRendered {
   const article = articleOf(doc, content);
+  const lang = opts.lang;
+  const t = msg(lang);
   const degraded = degradeArticle(
     article.doc,
     {
@@ -149,20 +159,23 @@ export function renderWordpressCom(
       video: 'link',
       ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
     },
-    'WordPress.com'
+    'WordPress.com',
+    lang
   );
   const title = fitTitle(
     common.title || article.doc.title || 'Untitled',
     undefined,
-    'WordPress.com'
+    'WordPress.com',
+    lang
   );
   const tags = fitTags(
     common.tags,
     { max: WPCOM_LIMITS.tags, normalize: termName },
-    'WordPress.com'
+    'WordPress.com',
+    lang
   );
-  const summary = fitSummary(common.summary, WPCOM_LIMITS.excerptMax, 'WordPress.com');
-  const canonical = canonicalOf(form, article, 'WordPress.com');
+  const summary = fitSummary(common.summary, WPCOM_LIMITS.excerptMax, 'WordPress.com', lang);
+  const canonical = canonicalOf(form, article, 'WordPress.com', lang);
   const categories = form.categories.map(termName).filter((c): c is string => !!c);
 
   let html = degraded.body;
@@ -172,21 +185,21 @@ export function renderWordpressCom(
     html = `<p><img src="${cover.replace(/"/g, '&quot;')}" alt=""></p>\n${html}`;
     report.push({
       kind: 'cover.inline',
-      text: 'WordPress.com 的特色图片只能选媒体库里已有的图片，封面图放在正文开头',
+      text: t.coverInline,
     });
   }
   if (canonical.url && form.origin_note) {
     html += originNoteHtml(originLinkOf(form, article, canonical.url), article.lang);
     report.push({
       kind: 'canonical.note',
-      text: 'WordPress.com 没有 canonical 字段，已在文末注明首发于辰记并附原文链接',
+      text: t.originNoted,
       detail: { url: canonical.url },
     });
   } else {
     report.push(...canonical.report.filter((i) => i.kind !== 'canonical.set'));
   }
   report.push(
-    ...linkedImagesReport(degraded.doc.images.length + (cover ? 1 : 0), 'WordPress.com'),
+    ...linkedImagesReport(degraded.doc.images.length + (cover ? 1 : 0), 'WordPress.com', lang),
     ...title.report,
     ...summary.report,
     ...tags.report
@@ -195,12 +208,7 @@ export function renderWordpressCom(
     report.push({
       kind: 'draft.only',
       level: 'notice',
-      text:
-        form.status === 'pending'
-          ? '提交为「待审」，由站点编辑审核后发布'
-          : form.status === 'private'
-            ? '以私密文章发布，只有站点管理员和编辑能看到'
-            : '保存为 WordPress.com 草稿',
+      text: form.status === 'pending' ? t.pending : form.status === 'private' ? t.private : t.draft,
     });
 
   return {
@@ -256,7 +264,10 @@ export function createWordpressComAdapter(
   opts: WordpressComAdapterOptions = {}
 ): Adapter<typeof wordpressComSchema> {
   const ref = wordpressComRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'wordpress-com',
     label: 'WordPress.com',
@@ -265,8 +276,9 @@ export function createWordpressComAdapter(
     binding: wordpressComBinding,
     capabilities: { supportsUpdate: true, needsLogin: true },
     schema: wordpressComSchema,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderWordpressCom(doc, form, common, content, renderOpts);
+    schemaFor: wordpressComSchemaFor,
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderWordpressCom(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'html',
         title: r.title,
@@ -276,18 +288,19 @@ export function createWordpressComAdapter(
       };
     },
     // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderWordpressCom(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderWordpressCom(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(r.body, previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderWordpressCom(doc, form, common, content, renderOpts);
+        const r = renderWordpressCom(doc, form, common, content, renderOpts(ctx.lang));
+        const t = msg(ctx.lang);
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '发布到 WordPress.com' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.publishing });
         const credential = await credentialOf(opts.credential, 'wordpress-com', ctx);
         const res = await relayPublish(ctx, ref, r.body, form.external_id, { credential });
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

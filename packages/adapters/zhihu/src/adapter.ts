@@ -9,14 +9,17 @@ import {
   fillTemplate,
   HANDOFF_FILLED_TEXT,
   handOffEditor,
+  handoffFilledText,
   handoffReport,
+  localizedLabel,
   openSessionRun,
   PlatformSessionError,
   rehostImages,
 } from '@starnote/publish-core';
 
+import { msg } from './i18n';
 import { renderZhihu, withImages } from './render';
-import { zhihuSchema } from './schema';
+import { zhihuSchema, zhihuSchemaFor } from './schema';
 import bundledSigned from './site-script.signed.json';
 
 import type {
@@ -40,11 +43,8 @@ export const zhihuBinding: BindingSpec = {
   kind: 'cookie',
   store: 'desktop',
   helpUrl: 'https://www.zhihu.com/creator',
-  instructions: [
-    '在辰记桌面端点「在桌面端登录知乎」',
-    '在弹出的知乎登录页里用任意方式登录（扫码、短信、密码均可，验证码由你本人完成）',
-    '登录成功后窗口自动关闭，登录状态只保存在这台电脑上',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
   checkEvery: 6 * 3600,
   desktopSession: bundledScript(ZHIHU_SITE_SCRIPT).session!,
 };
@@ -67,14 +67,17 @@ function previewOf(script: SiteScript) {
   return (
     doc: Parameters<NonNullable<Adapter['preview']>>[0],
     _form: ZhihuForm,
-    common: Parameters<NonNullable<Adapter['preview']>>[2] = {}
+    common: Parameters<NonNullable<Adapter['preview']>>[2] = {},
+    _content?: Parameters<NonNullable<Adapter['preview']>>[3],
+    popts?: Parameters<NonNullable<Adapter['preview']>>[4]
   ): AdapterPreview => {
-    const r = renderZhihu(doc, common, script);
+    const lang = popts?.lang;
+    const r = renderZhihu(doc, common, script, lang);
     const report = [...r.report];
     if (r.images.length)
       report.push({
         kind: 'image.rehosted',
-        text: `${r.images.length} 张图片会上传到知乎`,
+        text: msg(lang).imagesWillUpload(r.images.length),
         count: r.images.length,
         level: 'info',
       });
@@ -92,23 +95,28 @@ export function createZhihuAdapter(opts: ZhihuAdapterOptions = {}): Adapter<type
         runtime: 'electron',
         mode: 'automation',
         needs: ['session'],
-        note: '第 1 层：平台网页自己的接口',
+        note: msg('zh-CN').runtimeNote,
+        notes: { 'zh-TW': msg('zh-TW').runtimeNote, en: msg('en').runtimeNote },
       },
     ],
     contentTypes: ['article'],
     binding: zhihuBinding,
     capabilities: { supportsUpdate: false, titleMax: 100, needsLogin: true },
     schema: zhihuSchema,
+    schemaFor: zhihuSchemaFor,
     prefill(doc, ctx) {
       const topics = [...(ctx.tags ?? []), ...(ctx.keywords ?? [])].filter(Boolean).slice(0, 3);
       return topics.length ? { topics } : {};
     },
     preview: previewOf(bundledScript(ZHIHU_SITE_SCRIPT)),
     async publish({ doc, form, common, ctx }): Promise<PublishOutput> {
-      ctx.emit({ type: 'progress', percent: 5, text: '读取知乎站点脚本' });
+      const lang = ctx.lang;
+      const t = msg(lang);
+      const name = localizedLabel('zhihu', LABEL, lang);
+      ctx.emit({ type: 'progress', percent: 5, text: t.readScript });
       const run = await openSessionRun(ctx, 'zhihu', LABEL, ZHIHU_SITE_SCRIPT, opts);
       const { script, client } = run;
-      const r = renderZhihu(doc, common, script);
+      const r = renderZhihu(doc, common, script, lang);
       const report: ReportItem[] = [...r.report];
       ctx.emit({ type: 'report', items: report });
 
@@ -117,82 +125,86 @@ export function createZhihuAdapter(opts: ZhihuAdapterOptions = {}): Adapter<type
         const upload = async (url: string) =>
           String((await client.call('uploadImageByUrl', { data: { url } })).result.url ?? '') ||
           undefined;
-        ctx.emit({ type: 'progress', percent: 20, text: '上传图片到知乎' });
+        ctx.emit({ type: 'progress', percent: 20, text: t.uploadingImages });
         const images = await rehostImages(r.images, upload, {
-          label: LABEL,
+          label: name,
+          ...(lang ? { lang } : {}),
           ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
           onProgress: (done, total) =>
             ctx.emit({
               type: 'progress',
               percent: 20 + Math.round((done / total) * 50),
-              text: `上传图片 ${done}/${total}`,
+              text: t.uploadProgress(done, total),
             }),
         });
         report.push(...images.report);
         if (common.cover)
-          report.push({ kind: 'cover.manual', text: '封面请在知乎编辑器里设置', level: 'notice' });
+          report.push({ kind: 'cover.manual', text: t.coverManual, level: 'notice' });
         if (form.topics.length)
           report.push({
             kind: 'tags.manual',
-            text: `发布时请选择话题：${form.topics.join('、')}`,
+            text: t.pickTopics(form.topics),
             level: 'notice',
           });
-        ctx.emit({ type: 'progress', percent: 80, text: '打开知乎编辑器并填好内容' });
+        ctx.emit({ type: 'progress', percent: 80, text: t.openingEditor });
         const editorUrl = script.urls.write!;
         const res = await handOffEditor(ctx, run, LABEL, {
           editorUrl,
           prefill: { title: r.title, html: withImages(r, images.map, script), text: doc.text },
         });
-        report.push(...handoffReport(res, LABEL), {
+        report.push(...handoffReport(res, name, lang), {
           kind: 'handoff.pending',
-          text: HANDOFF_FILLED_TEXT,
+          text: lang ? handoffFilledText(lang) : HANDOFF_FILLED_TEXT,
           level: 'notice',
         });
-        ctx.emit({ type: 'progress', percent: 100, text: '等你在窗口中发布' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.waitingPublish });
         return { url: editorUrl, state: 'handoff', report };
       }
 
-      ctx.emit({ type: 'progress', percent: 15, text: '在知乎创建文章' });
+      ctx.emit({ type: 'progress', percent: 15, text: t.creating });
       const created = await client.call('createDraft', { data: { title: r.title, html: '' } });
       const id = String(created.result.id ?? '');
       if (!id)
-        throw new PlatformSessionError('help', '知乎没有返回文章 id', {
+        throw new PlatformSessionError('help', t.noArticleId, {
           helpUrl: script.urls.help,
+          ...(lang ? { lang } : {}),
         });
       const editUrl = fillTemplate(script.urls.edit!, { id });
 
       const upload = async (url: string) =>
         String((await client.call('uploadImageByUrl', { data: { url } })).result.url ?? '') ||
         undefined;
-      ctx.emit({ type: 'progress', percent: 25, text: '上传图片到知乎' });
+      ctx.emit({ type: 'progress', percent: 25, text: t.uploadingImages });
       const images = await rehostImages(r.images, upload, {
-        label: LABEL,
+        label: name,
+        ...(lang ? { lang } : {}),
         ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
         onProgress: (done, total) =>
           ctx.emit({
             type: 'progress',
             percent: 25 + Math.round((done / total) * 35),
-            text: `上传图片 ${done}/${total}`,
+            text: t.uploadProgress(done, total),
           }),
       });
       report.push(...images.report);
       let cover: string | undefined;
       if (common.cover) {
         const c = await rehostImages([common.cover], upload, {
-          label: `${LABEL}（封面）`,
+          label: t.cover(name),
+          ...(lang ? { lang } : {}),
           ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
         });
         cover = c.map.get(common.cover);
         if (!cover)
           report.push({
             kind: 'cover.failed',
-            text: '封面上传失败，文章没有设置封面',
+            text: t.coverFailed,
             level: 'warn',
           });
       }
       ctx.emit({ type: 'report', items: report });
 
-      ctx.emit({ type: 'progress', percent: 65, text: '写入正文' });
+      ctx.emit({ type: 'progress', percent: 65, text: t.writingBody });
       await client.call('updateDraft', {
         vars: { id },
         data: {
@@ -213,7 +225,7 @@ export function createZhihuAdapter(opts: ZhihuAdapterOptions = {}): Adapter<type
       if (form.topics.length && topics.length < form.topics.length)
         report.push({
           kind: 'tags.mapped',
-          text: `话题按知乎话题库匹配：${topics.join('、') || '没有匹配到'}`,
+          text: t.topicsMatched(topics),
           level: 'notice',
           samples: form.topics,
         });
@@ -228,26 +240,20 @@ export function createZhihuAdapter(opts: ZhihuAdapterOptions = {}): Adapter<type
         return { url: editUrl, externalId: id, state: 'handoff', report };
       };
 
-      if (form.mode === 'review')
-        return handoff('文章已写入知乎编辑器，请检查后在编辑器里点「发布」');
-      if (!topics.length)
-        return handoff(
-          '知乎发布前需要选择至少一个话题：文章已写入知乎编辑器，请选好话题后点「发布」'
-        );
+      if (form.mode === 'review') return handoff(t.reviewInEditor);
+      if (!topics.length) return handoff(t.needTopic);
 
-      ctx.emit({ type: 'progress', percent: 85, text: '发布到知乎' });
+      ctx.emit({ type: 'progress', percent: 85, text: t.publishing });
       try {
         await client.call('publish', {
           data: { draftId: id, traceId: opts.traceId?.() ?? `${Date.now()},${randomUuid()}` },
         });
       } catch (e) {
         if (e instanceof PlatformSessionError && e.kind === 'help')
-          return handoff(
-            `知乎没有接受自动发布（${e.message}）：文章已写入编辑器，请在编辑器里点「发布」`
-          );
+          return handoff(t.notAccepted(e.message));
         throw e;
       }
-      ctx.emit({ type: 'progress', percent: 100, text: '已发布' });
+      ctx.emit({ type: 'progress', percent: 100, text: t.published });
       return {
         url: fillTemplate(script.urls.article!, { id }),
         externalId: id,

@@ -10,9 +10,16 @@
  * Adapters just throw a `PlatformError`: the publisher (core) reads its `code`, `actions`, `retryAfterSec` and
  * `errorKind` into the `failed` event.
  */
-import { DEFAULT_GUIDE_LINKS } from '@starnote/publish-core';
+import { coreMessages, DEFAULT_GUIDE_LINKS } from '@starnote/publish-core';
 
-import type { ErrorKind, PublishContext, PublishEventAction } from '@starnote/publish-core';
+import { kitMessages, refIn, waitText } from './i18n';
+
+import type {
+  ErrorKind,
+  PublishContext,
+  PublishEventAction,
+  SdkLang,
+} from '@starnote/publish-core';
 
 /** Where the actions point; the host knows the guide URLs (they are notes with ids). */
 export interface ErrorLinks {
@@ -25,9 +32,11 @@ export interface ErrorLinks {
 export interface PlatformRef {
   /** Registry key, e.g. `devto`. */
   key: string;
-  /** Display name, e.g. `DEV`. */
+  /** Display name, e.g. `DEV` (in `lang`: see `refIn`). */
   label: string;
   links?: ErrorLinks;
+  /** SPEC-r14 B5: language of the messages and action labels built from this ref. Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 /**
@@ -102,35 +111,46 @@ export function isPlatformError(e: unknown): e is PlatformError {
 
 export function reloginAction(p: PlatformRef): PublishEventAction {
   const bind = p.links?.bind ?? DEFAULT_GUIDE_LINKS.bind;
-  return { id: 'relogin', label: `重新绑定${p.label}`, kind: 'relogin', href: bind(p.key) };
+  return {
+    id: 'relogin',
+    label: kitMessages(p.lang).errors.rebind(p.label),
+    kind: 'relogin',
+    href: bind(p.key),
+  };
 }
 
-export function retryAction(afterSec?: number): PublishEventAction {
+export function retryAction(afterSec?: number, lang?: SdkLang): PublishEventAction {
+  const m = coreMessages(lang).common;
   return {
     id: 'retry',
-    label: afterSec ? `${formatWait(afterSec)}后重试` : '重试',
+    label: afterSec ? m.retryAfter(formatWait(afterSec, lang)) : m.retry,
     kind: 'retry',
   };
 }
 
 export function helpAction(p: PlatformRef): PublishEventAction {
   const href = p.links?.help?.(p.key);
-  return { id: `help:${p.key}`, label: '查看发布指南', kind: 'help', ...(href ? { href } : {}) };
+  return {
+    id: `help:${p.key}`,
+    label: kitMessages(p.lang).errors.viewGuide,
+    kind: 'help',
+    ...(href ? { href } : {}),
+  };
 }
 
 /** `unknown`: check on the platform before sending again (`href`: the post, when known). */
 export function checkAction(p: PlatformRef, href?: string): PublishEventAction {
   return {
     id: `check:${p.key}`,
-    label: '去平台确认',
+    label: coreMessages(p.lang).common.checkOnPlatform,
     kind: 'help',
     ...(href ? { href } : {}),
   };
 }
 
 /** `unknown`: the user may still send it again — a new attempt (new `Idempotency-Key`). */
-export function resendAction(): PublishEventAction {
-  return { id: 'retry', label: '仍要重发', kind: 'retry' };
+export function resendAction(lang?: SdkLang): PublishEventAction {
+  return { id: 'retry', label: coreMessages(lang).common.resendAnyway, kind: 'retry' };
 }
 
 /** The actions of a kind (SPEC-r11 §1.2). */
@@ -144,9 +164,9 @@ export function actionsFor(
       return [reloginAction(p), helpAction(p)];
     case 'retry':
     case 'refresh':
-      return [retryAction(opts.retryAfterSec)];
+      return [retryAction(opts.retryAfterSec, p.lang)];
     case 'unknown':
-      return [checkAction(p, opts.checkHref), resendAction()];
+      return [checkAction(p, opts.checkHref), resendAction(p.lang)];
     default:
       return [helpAction(p)];
   }
@@ -180,26 +200,21 @@ export function kindError(
   });
 }
 
-/** 「30 秒」「2 分钟」「1 小时」 */
-export function formatWait(sec: number): string {
-  if (sec < 60) return `${Math.max(1, Math.round(sec))} 秒`;
-  if (sec < 3600) return `${Math.round(sec / 60)} 分钟`;
-  return `${Math.round(sec / 3600)} 小时`;
+/** 「30 秒」「2 分钟」「1 小时」 (SPEC-r14 B5: in `lang`, default `zh-CN`). */
+export function formatWait(sec: number, lang?: SdkLang): string {
+  return waitText(sec, lang);
 }
 
 /* ---------------- constructors ---------------- */
 
 export function reloginError(p: PlatformRef, message?: string, status?: number): PlatformError {
-  return new PlatformError(
-    message ?? `${p.label} 拒绝了授权：凭据无效、已过期或已撤销，请重新绑定`,
-    {
-      platform: p.key,
-      code: 'relogin',
-      ...(status !== undefined ? { status } : {}),
-      actions: [reloginAction(p), helpAction(p)],
-      kind: 'disconnect',
-    }
-  );
+  return new PlatformError(message ?? kitMessages(p.lang).errors.revoked(p.label), {
+    platform: p.key,
+    code: 'relogin',
+    ...(status !== undefined ? { status } : {}),
+    actions: [reloginAction(p), helpAction(p)],
+    kind: 'disconnect',
+  });
 }
 
 export function rateLimitError(
@@ -207,13 +222,14 @@ export function rateLimitError(
   retryAfterSec: number | undefined,
   detail?: string
 ): PlatformError {
-  const wait = retryAfterSec ? `，请约 ${formatWait(retryAfterSec)}后重试` : '，请稍后重试';
-  return new PlatformError(`${p.label} 请求太频繁（429）${wait}${detail ? `：${detail}` : ''}`, {
+  const m = kitMessages(p.lang).errors;
+  const wait = retryAfterSec ? m.waitThenRetry(formatWait(retryAfterSec, p.lang)) : m.retryLater;
+  return new PlatformError(m.rateLimited(p.label, wait, detail ?? ''), {
     platform: p.key,
     code: 'rate_limited',
     status: 429,
     ...(retryAfterSec !== undefined ? { retryAfterSec } : {}),
-    actions: [retryAction(retryAfterSec)],
+    actions: [retryAction(retryAfterSec, p.lang)],
     kind: 'retry',
   });
 }
@@ -235,7 +251,7 @@ export function helpError(
     platform: p.key,
     code,
     ...(init.status !== undefined ? { status: init.status } : {}),
-    actions: init.retryable ? [helpAction(p), retryAction()] : [helpAction(p)],
+    actions: init.retryable ? [helpAction(p), retryAction(undefined, p.lang)] : [helpAction(p)],
     ...(init.detail !== undefined ? { detail: init.detail } : {}),
     kind: init.kind ?? (init.retryable ? 'retry' : kindOfCode(code, init.status)),
   });
@@ -272,17 +288,18 @@ export function errorFromStatus(
 ): PlatformError {
   if (status === 401) return reloginError(p, undefined, status);
   if (status === 429) return rateLimitError(p, parseRetryAfter(headers), message);
+  const m = kitMessages(p.lang).errors;
   const hint =
     status === 403
-      ? '没有权限'
+      ? m.forbidden
       : status === 404
-        ? '找不到资源'
+        ? m.notFound
         : status === 413
-          ? '内容太大'
+          ? m.tooLarge
           : status >= 500
-            ? '平台服务出错'
-            : '请求被拒绝';
-  return helpError(p, `${p.label} ${hint}（HTTP ${status}）${message ? `：${message}` : ''}`, {
+            ? m.serverError
+            : m.rejected;
+  return helpError(p, m.http(p.label, hint, status, message ?? ''), {
     status,
     code:
       status === 403
@@ -315,15 +332,18 @@ export function networkError(
   opts: { write?: boolean } = {}
 ): PlatformError {
   const why = cause instanceof Error ? cause.message : String(cause);
+  const m = kitMessages(p.lang).errors;
   if (opts.write && !isOffline())
-    return new PlatformError(
-      `连接 ${p.label} 中断，不确定是否已发出：请先到平台确认，没有再重发（${why}）`,
-      { platform: p.key, code: 'network', actions: actionsFor(p, 'unknown'), kind: 'unknown' }
-    );
-  return new PlatformError(`连不上 ${p.label}：${why}`, {
+    return new PlatformError(m.writeInterrupted(p.label, why), {
+      platform: p.key,
+      code: 'network',
+      actions: actionsFor(p, 'unknown'),
+      kind: 'unknown',
+    });
+  return new PlatformError(m.unreachable(p.label, why), {
     platform: p.key,
     code: 'network',
-    actions: [retryAction(), helpAction(p)],
+    actions: [retryAction(undefined, p.lang), helpAction(p)],
     kind: 'retry',
   });
 }
@@ -333,10 +353,11 @@ export function networkError(
  * `help`), so the publisher's `failed` event carries the right actions. Cancellation passes through.
  */
 export async function guard<T>(
-  ctx: Pick<PublishContext, 'signal'>,
+  ctx: Pick<PublishContext, 'signal'> & { lang?: SdkLang },
   p: PlatformRef,
   fn: () => Promise<T>
 ): Promise<T> {
+  p = refIn(p, ctx.lang);
   try {
     return await fn();
   } catch (cause) {

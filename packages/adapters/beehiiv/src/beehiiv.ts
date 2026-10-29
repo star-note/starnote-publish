@@ -14,7 +14,7 @@
  *
  * Browser-safe: render + relay body only; 辰记's Python API holds the key and calls beehiiv (服务器代发).
  */
-import { defineAdapter, mediaReport, mergeReports } from '@starnote/publish-core';
+import { byLang, defineAdapter, mediaReport, mergeReports } from '@starnote/publish-core';
 import {
   absoluteUrl,
   articleOf,
@@ -36,6 +36,8 @@ import {
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
+import { msg } from './i18n';
+
 import type {
   Adapter,
   AdapterPreview,
@@ -46,6 +48,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
   StatsContext,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
@@ -64,48 +67,49 @@ export const BEEHIIV_PUBLICATION = /^pub_[0-9a-f-]{36}$/;
 const POST_ID = /^post_[0-9a-f-]{36}$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
-export const beehiivSchema = z.object({
-  /**
-   * `draft`: saved in beehiiv; `confirmed`: published to the web and sent to the subscribers right away;
-   * `schedule`: confirmed with `scheduled_at`.
-   */
-  status: z.enum(['draft', 'confirmed', 'schedule']).default('draft').describe('发布方式'),
-  scheduled_at: z
-    .string()
-    .trim()
-    .regex(ISO, '请填写带时区的时间，如 2026-11-01T09:00:00+08:00')
-    .optional()
-    .describe('定时发布时间'),
-  origin_note: z.boolean().default(true).describe('文末注明原文'),
-  canonical_url: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('原文链接'),
-  external_id: z
-    .string()
-    .trim()
-    .regex(POST_ID, '文章 ID 形如 post_…')
-    .optional()
-    .describe('已发布文章 ID'),
+/** The form in a language (SPEC-r14 B5): labels and messages from `msg(lang)`. */
+export const beehiivSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /**
+     * `draft`: saved in beehiiv; `confirmed`: published to the web and sent to the subscribers right away;
+     * `schedule`: confirmed with `scheduled_at`.
+     */
+    status: z.enum(['draft', 'confirmed', 'schedule']).default('draft').describe(t.status),
+    scheduled_at: z.string().trim().regex(ISO, t.isoTime).optional().describe(t.scheduledAt),
+    origin_note: z.boolean().default(true).describe(t.originNote),
+    canonical_url: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.canonicalUrl),
+    external_id: z.string().trim().regex(POST_ID, t.postId).optional().describe(t.externalId),
+  });
 });
+
+export const beehiivSchema = beehiivSchemaFor('zh-CN');
 
 export type BeehiivForm = z.infer<typeof beehiivSchema>;
 export type BeehiivFormInput = z.input<typeof beehiivSchema>;
 
-export const beehiivKeyForm = z.object({
-  api_key: z
-    .string()
-    .trim()
-    .regex(/^\S{20,200}$/, '请粘贴 beehiiv 生成的 API key')
-    .describe('API key'),
-  publication_id: z
-    .string()
-    .trim()
-    .regex(BEEHIIV_PUBLICATION, 'Publication ID 形如 pub_xxxxxxxx-xxxx-…')
-    .describe('Publication ID'),
+export const beehiivKeyFormFor = byLang((lang) => {
+  const k = msg(lang).key;
+  return z.object({
+    api_key: z
+      .string()
+      .trim()
+      .regex(/^\S{20,200}$/, k.apiKeyHint)
+      .describe(k.apiKey),
+    publication_id: z
+      .string()
+      .trim()
+      .regex(BEEHIIV_PUBLICATION, k.publicationHint)
+      .describe(k.publication),
+  });
 });
+
+export const beehiivKeyForm = beehiivKeyFormFor('zh-CN');
 
 export const beehiivBinding: BindingSpec = {
   kind: 'token',
@@ -113,15 +117,12 @@ export const beehiivBinding: BindingSpec = {
   provider: 'beehiiv',
   fields: ['api_key', 'publication_id'],
   form: beehiivKeyForm,
+  formFor: beehiivKeyFormFor,
   // ⚠️ Settings → Integrations → API（第三方集成文档的说法）
   createUrl: 'https://app.beehiiv.com/settings/integrations',
   helpUrl: 'https://developers.beehiiv.com/api-reference/posts/create',
-  instructions: [
-    '注意：beehiiv 的发文接口只对 Pro 和 Enterprise 档位开放，免费档绑定后发文会被拒绝',
-    '打开 beehiiv 的 Settings → Integrations → API，点「New API Key」起名「StarNote」，立刻复制（只显示一次）',
-    '同一页复制 Publication ID（pub_ 开头），一起粘贴到这里并点「测试连接」',
-    '辰记默认存为 beehiiv 草稿；选「发布」会立刻发给订阅者',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 export interface BeehiivPostBody {
@@ -149,9 +150,12 @@ export function renderBeehiiv(
   form: BeehiivForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  /** `lang` (SPEC-r14 B5): language of the report. Default `zh-CN`. */
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): BeehiivRendered {
   const article = articleOf(doc, content);
+  const lang = opts.lang;
+  const m = msg(lang);
   const degraded = degradeArticle(
     article.doc,
     {
@@ -162,43 +166,45 @@ export function renderBeehiiv(
       video: 'link',
       ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
     },
-    'beehiiv'
+    'beehiiv',
+    lang
   );
   const title = fitTitle(
     common.title || article.doc.title || 'Untitled',
     BEEHIIV_LIMITS.titleMax,
-    'beehiiv'
+    'beehiiv',
+    lang
   );
-  const subtitle = fitSummary(common.summary, BEEHIIV_LIMITS.subtitleMax, 'beehiiv');
-  const tags = fitTags(common.tags, { max: BEEHIIV_LIMITS.tags }, 'beehiiv');
+  const subtitle = fitSummary(common.summary, BEEHIIV_LIMITS.subtitleMax, 'beehiiv', lang);
+  const tags = fitTags(common.tags, { max: BEEHIIV_LIMITS.tags }, 'beehiiv', lang);
   const cover = absoluteUrl(common.cover, opts.assetBase);
-  const report: ReportItem[] = [...mediaReport('beehiiv', 'beehiiv', content, common)];
+  const report: ReportItem[] = [...mediaReport('beehiiv', 'beehiiv', content, common, lang)];
   let html = degraded.body;
-  const canonical = canonicalOf({ canonical_url: form.canonical_url }, article, 'beehiiv');
+  const canonical = canonicalOf({ canonical_url: form.canonical_url }, article, 'beehiiv', lang);
   if (form.origin_note && canonical.url) {
     html += originNoteHtml(originLinkOf(form, article, canonical.url), article.lang);
-    report.push({ kind: 'origin.note', text: '文末注明首发于辰记并附原文链接' });
+    report.push({ kind: 'origin.note', text: m.originNote });
   }
   report.push(
     ...degraded.report,
-    ...linkedImagesReport(degraded.doc.images.length, 'beehiiv'),
+    ...linkedImagesReport(degraded.doc.images.length, 'beehiiv', lang),
     ...title.report,
     ...subtitle.report,
     ...tags.report
   );
   const scheduledAt = form.status === 'schedule' ? form.scheduled_at : undefined;
   if (form.status === 'schedule' && !scheduledAt)
-    report.push({ kind: 'schedule.missing', level: 'error', text: '定时发布需要填写时间' });
+    report.push({ kind: 'schedule.missing', level: 'error', text: m.scheduleMissing });
   report.push(
     form.status === 'draft'
-      ? { kind: 'draft.only', level: 'notice', text: '存为 beehiiv 草稿，在 beehiiv 里检查后发布' }
+      ? { kind: 'draft.only', level: 'notice', text: m.draftOnly }
       : scheduledAt
         ? {
             kind: 'scheduled',
             level: 'notice',
-            text: `beehiiv 将在 ${scheduledAt} 发布并发给订阅者`,
+            text: m.scheduled(scheduledAt),
           }
-        : { kind: 'sent.now', level: 'warn', text: '发布后 beehiiv 会立刻把这期发给订阅者' }
+        : { kind: 'sent.now', level: 'warn', text: m.sentNow }
   );
 
   return {
@@ -300,7 +306,10 @@ export function createBeehiivAdapter(
   opts: BeehiivAdapterOptions = {}
 ): Adapter<typeof beehiivSchema> {
   const ref = beehiivRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'beehiiv',
     label: 'beehiiv',
@@ -309,12 +318,13 @@ export function createBeehiivAdapter(
     binding: beehiivBinding,
     capabilities: { supportsUpdate: true, needsLogin: true, titleMax: BEEHIIV_LIMITS.titleMax },
     schema: beehiivSchema,
+    schemaFor: beehiivSchemaFor,
     statsRequires: 'token',
     fetchStats(externalId, ctx) {
       return fetchBeehiivStats(externalId, ctx);
     },
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderBeehiiv(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderBeehiiv(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'html',
         title: r.title,
@@ -323,17 +333,17 @@ export function createBeehiivAdapter(
         report: r.report,
       };
     },
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderBeehiiv(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderBeehiiv(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(beehiivRelayBody(r), previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderBeehiiv(doc, form, common, content, renderOpts);
+        const r = renderBeehiiv(doc, form, common, content, renderOpts(ctx.lang));
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '由服务器代发到 beehiiv' });
+        ctx.emit({ type: 'progress', percent: 40, text: msg(ctx.lang).relaying });
         const res = await relayPublish(ctx, ref, beehiivRelayBody(r), form.external_id);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: msg(ctx.lang).done });
         return {
           url: res.url,
           externalId: res.externalId,

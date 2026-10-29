@@ -5,6 +5,7 @@ import { resolveArticleTheme } from './themes';
 
 import type { ConvertMask, MaskSummary } from './mask';
 import type { MobileOptions } from './mobile';
+import type { SdkLang } from './i18n/lang';
 import type { ReportItem } from './report';
 import type { ArticleTheme, ArticleThemeId } from './themes';
 
@@ -35,6 +36,8 @@ import type { TiptapJSON, TiptapMark } from './types';
  * See `README.md` (“微信公众号 HTML”) for the assumptions behind these rules.
  */
 export interface WechatOptions {
+  /** SPEC-r14 B5: language of the report (the article itself is not translated). Default `zh-CN`. */
+  lang?: SdkLang;
   /** Accent colour for styled blocks. Default `#6918b4`. */
   accent?: string;
   /** Second accent (gradients, answers). Default `#6a5ef0`. */
@@ -754,16 +757,30 @@ function statWx(node: TiptapJSON, ctx: Ctx, margin: string, label: string | unde
         css({ borderLeft: `3px solid ${rgba(accent, 0.32)}`, paddingLeft: '10px' }),
         tag(
           'span',
-          css({ display: 'block', fontSize: '26px', fontWeight: 700, lineHeight: 1.2, color: accent }),
+          css({
+            display: 'block',
+            fontSize: '26px',
+            fontWeight: 700,
+            lineHeight: 1.2,
+            color: accent,
+          }),
           escapeHtml(first?.text ?? '')
         ) +
-          tag('span', css({ display: 'block', fontSize: '13px', lineHeight: 1.5, color: '#666666' }), inlineWx(rest, ctx).trim())
+          tag(
+            'span',
+            css({ display: 'block', fontSize: '13px', lineHeight: 1.5, color: '#666666' }),
+            inlineWx(rest, ctx).trim()
+          )
       )
     );
   });
   const others = children.filter((n) => !isFigure(n));
   const rest = others.length
-    ? tag('section', css({ marginTop: '4px', fontSize: '14px', color: '#555555' }), blocksWx(others, ctx, true))
+    ? tag(
+        'section',
+        css({ marginTop: '4px', fontSize: '14px', color: '#555555' }),
+        blocksWx(others, ctx, true)
+      )
     : '';
   return tag(
     'section',
@@ -775,7 +792,9 @@ function statWx(node: TiptapJSON, ctx: Ctx, margin: string, label: string | unde
       backgroundColor: rgba(accent, 0.06),
       backgroundImage: `linear-gradient(160deg, ${rgba(accent, 0.08)}, ${rgba(accent2, 0.03)})`,
     }),
-    (label ? badge(label, accent) : '') + tag('section', css({ lineHeight: 0 }), figures.join('')) + rest
+    (label ? badge(label, accent) : '') +
+      tag('section', css({ lineHeight: 0 }), figures.join('')) +
+      rest
   );
 }
 
@@ -1497,8 +1516,7 @@ function makeCtx(opts: WechatOptions): Ctx {
  * inline SVG and external links collected into a reference list.
  */
 export function convertWechat(json: TiptapJSON, opts: WechatOptions = {}): WechatResult {
-  const source: TiptapJSON =
-    json && typeof json === 'object' ? json : { type: 'doc', content: [] };
+  const source: TiptapJSON = json && typeof json === 'object' ? json : { type: 'doc', content: [] };
   const maskOpts = resolveMask(opts.mask);
   const masked = maskOpts ? maskTree(source, maskOpts) : null;
   const out = convertWechatTree(masked ? masked.json : source, opts);
@@ -1508,11 +1526,11 @@ export function convertWechat(json: TiptapJSON, opts: WechatOptions = {}): Wecha
   const maskSummary: MaskSummary | undefined = masked
     ? { count: masked.hits.length, hits: masked.hits }
     : undefined;
-  report.push(...maskReport(maskSummary));
+  report.push(...maskReport(maskSummary, opts.lang));
   const mobile =
     opts.mobile === undefined || opts.mobile === true ? mobileOptionsFor('wechat') : opts.mobile;
   if (mobile) {
-    const m = mobileHtml(out.html, mobile);
+    const m = mobileHtml(out.html, opts.lang ? { ...mobile, lang: opts.lang } : mobile);
     out.html = m.html;
     report.push(...m.report);
   }

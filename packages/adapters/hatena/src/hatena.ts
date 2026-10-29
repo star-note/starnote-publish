@@ -11,7 +11,13 @@
  * ⚠️ Not in the docs: title / body size limits, whether PUT can turn a published entry back into a draft, a page-view
  * API (none documented: no stats).
  */
-import { defineAdapter, mediaReport, mergeReports } from '@starnote/publish-core';
+import {
+  byLang,
+  defineAdapter,
+  localizedLabel,
+  mediaReport,
+  mergeReports,
+} from '@starnote/publish-core';
 import {
   articleOf,
   canonicalOf,
@@ -29,6 +35,8 @@ import {
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
+import { msg } from './i18n';
+
 import type {
   Adapter,
   AdapterPreview,
@@ -38,6 +46,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
 
@@ -56,62 +65,55 @@ export const HATENA_ID = /^[A-Za-z][A-Za-z0-9_-]{1,30}[A-Za-z0-9]$/;
 export const HATENA_BLOG_ID = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
-export const hatenaSchema = z.object({
-  /** The blog's 編集モード (設定 → 基本設定): the body is written in it. */
-  syntax: z
-    .enum(['markdown', 'html'])
-    .default('markdown')
-    .describe('博客编辑模式（Markdown / 見たまま）'),
-  /** true: 下書き. */
-  draft: z.boolean().default(false).describe('存为下書き'),
-  /** ISO 8601 with offset: saved as a draft that はてなブログ publishes at that time (予約投稿). */
-  schedule_at: z
-    .string()
-    .trim()
-    .regex(ISO, '请填写带时区的时间，如 2026-11-01T09:00:00+09:00')
-    .optional()
-    .describe('预约发布时间'),
-  /** The entry's URL path after `/entry/` (custom URL). */
-  custom_url: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9/_-]{1,100}$/, '只能用字母、数字、/、_ 和 -')
-    .optional()
-    .describe('自定义 URL'),
-  origin_note: z.boolean().default(true).describe('文末注明原文'),
-  canonical_url: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('原文链接'),
-  /** The entry id of an earlier publish (the last segment of its member URI). */
-  // ⚠️ entry ids seen in the docs' examples are digits; any URL-safe id is accepted
-  external_id: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9_-]{1,64}$/, '文章 ID 格式不对')
-    .optional()
-    .describe('已发布文章 ID'),
+export const hatenaSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** The blog's 編集モード (設定 → 基本設定): the body is written in it. */
+    syntax: z.enum(['markdown', 'html']).default('markdown').describe(t.syntax),
+    /** true: 下書き. */
+    draft: z.boolean().default(false).describe(t.draft),
+    /** ISO 8601 with offset: saved as a draft that はてなブログ publishes at that time (予約投稿). */
+    schedule_at: z.string().trim().regex(ISO, t.isoTime).optional().describe(t.scheduleAt),
+    /** The entry's URL path after `/entry/` (custom URL). */
+    custom_url: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9/_-]{1,100}$/, t.pathRule)
+      .optional()
+      .describe(t.customPath),
+    origin_note: z.boolean().default(true).describe(t.originNote),
+    canonical_url: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.canonicalUrl),
+    /** The entry id of an earlier publish (the last segment of its member URI). */
+    // ⚠️ entry ids seen in the docs' examples are digits; any URL-safe id is accepted
+    external_id: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9_-]{1,64}$/, t.entryId)
+      .optional()
+      .describe(t.externalId),
+  });
 });
+
+export const hatenaSchema = hatenaSchemaFor('zh-CN');
 
 export type HatenaForm = z.infer<typeof hatenaSchema>;
 export type HatenaFormInput = z.input<typeof hatenaSchema>;
 
-export const hatenaKeyForm = z.object({
-  hatena_id: z
-    .string()
-    .trim()
-    .regex(HATENA_ID, '请填写はてな ID（不带 id: 前缀）')
-    .describe('はてな ID'),
-  blog_id: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .regex(HATENA_BLOG_ID, '请填写博客域名，如 example.hatenablog.com')
-    .describe('ブログ ID（博客域名）'),
-  api_key: z.string().trim().min(8, '请粘贴詳細設定里的 API キー').max(64).describe('API キー'),
+export const hatenaKeyFormFor = byLang((lang) => {
+  const k = msg(lang).key;
+  return z.object({
+    hatena_id: z.string().trim().regex(HATENA_ID, k.hatenaIdHint).describe(k.hatenaId),
+    blog_id: z.string().trim().toLowerCase().regex(HATENA_BLOG_ID, k.blogIdHint).describe(k.blogId),
+    api_key: z.string().trim().min(8, k.apiKeyHint).max(64).describe(k.apiKey),
+  });
 });
+
+export const hatenaKeyForm = hatenaKeyFormFor('zh-CN');
 
 export const hatenaBinding: BindingSpec = {
   kind: 'token',
@@ -119,13 +121,10 @@ export const hatenaBinding: BindingSpec = {
   provider: 'hatena',
   fields: ['hatena_id', 'blog_id', 'api_key'],
   form: hatenaKeyForm,
+  formFor: hatenaKeyFormFor,
   helpUrl: 'https://developer.hatena.ne.jp/ja/documents/blog/apis/atom',
-  instructions: [
-    '打开はてなブログ的「設定 → 詳細設定」，找到「AtomPub」一栏',
-    'ルートエンドポイント形如 https://blog.hatena.ne.jp/<はてな ID>/<ブログ ID>/atom：分别填写はてな ID 和ブログ ID（博客域名）',
-    '复制同一栏的 API キー 粘贴到这里，点「测试连接」',
-    '发布时选择博客的编辑模式（Markdown 或見たまま）：正文按博客当前的编辑模式解析',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 export interface HatenaEntryBody {
@@ -156,9 +155,13 @@ export function renderHatena(
   form: HatenaForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  /** `lang` (SPEC-r14 B5): language of the report. Default `zh-CN`. */
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): HatenaRendered {
   const article = articleOf(doc, content);
+  const lang = opts.lang;
+  const m = msg(lang);
+  const name = localizedLabel('hatena', 'はてなブログ', lang);
   const html = form.syntax === 'html';
   const degraded = degradeArticle(
     article.doc,
@@ -172,33 +175,33 @@ export function renderHatena(
       stripHighlight: !html,
       ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
     },
-    'はてなブログ'
+    name,
+    lang
   );
   const title = fitTitle(
     common.title || article.doc.title || 'Untitled',
     HATENA_LIMITS.titleMax,
-    'はてなブログ'
+    name,
+    lang
   );
-  const categories = fitTags(common.tags, { max: HATENA_LIMITS.categories }, 'はてなブログ');
-  const report: ReportItem[] = [...mediaReport('hatena', 'はてなブログ', content, common)];
+  const categories = fitTags(common.tags, { max: HATENA_LIMITS.categories }, name, lang);
+  const report: ReportItem[] = [...mediaReport('hatena', 'はてなブログ', content, common, lang)];
   let body = degraded.body;
-  const canonical = canonicalOf({ canonical_url: form.canonical_url }, article, 'はてなブログ');
+  const canonical = canonicalOf({ canonical_url: form.canonical_url }, article, name, lang);
   if (form.origin_note && canonical.url) {
     const url = originLinkOf(form, article, canonical.url);
     body += html ? originNoteHtml(url, article.lang) : originNoteMarkdown(url, article.lang);
-    report.push({ kind: 'origin.note', text: '文末注明首发于辰记并附原文链接' });
+    report.push({ kind: 'origin.note', text: m.originNote });
   }
   report.push(
     ...degraded.report,
-    ...linkedImagesReport(degraded.doc.images.length, 'はてなブログ'),
+    ...linkedImagesReport(degraded.doc.images.length, name, lang),
     ...title.report,
     ...categories.report,
     {
       kind: 'syntax.mode',
       level: 'notice',
-      text: html
-        ? '正文以 HTML 提交：博客的编辑模式需要是「見たまま」'
-        : '正文以 Markdown 提交：博客的编辑模式需要是「Markdown」',
+      text: html ? m.syntaxHtml : m.syntaxMarkdown,
     }
   );
   const scheduled = !!form.schedule_at;
@@ -206,13 +209,13 @@ export function renderHatena(
     report.push({
       kind: 'scheduled',
       level: 'notice',
-      text: `存为下書き，はてなブログ在 ${form.schedule_at} 自动公开（予約投稿）`,
+      text: m.scheduled(form.schedule_at),
     });
   else if (form.draft)
     report.push({
       kind: 'draft.only',
       level: 'notice',
-      text: '存为はてなブログ的下書き，检查后在后台公开',
+      text: m.draftOnly,
     });
 
   return {
@@ -280,7 +283,10 @@ export interface HatenaAdapterOptions {
 /** Renders in the browser / desktop and publishes through 辰记's API (`POST /notes/{id}/publish/hatena`). */
 export function createHatenaAdapter(opts: HatenaAdapterOptions = {}): Adapter<typeof hatenaSchema> {
   const ref = hatenaRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'hatena',
     label: 'はてなブログ',
@@ -289,8 +295,9 @@ export function createHatenaAdapter(opts: HatenaAdapterOptions = {}): Adapter<ty
     binding: hatenaBinding,
     capabilities: { supportsUpdate: true, needsLogin: true, titleMax: HATENA_LIMITS.titleMax },
     schema: hatenaSchema,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderHatena(doc, form, common, content, renderOpts);
+    schemaFor: hatenaSchemaFor,
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderHatena(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: r.format,
         title: r.title,
@@ -299,17 +306,17 @@ export function createHatenaAdapter(opts: HatenaAdapterOptions = {}): Adapter<ty
         report: r.report,
       };
     },
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderHatena(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderHatena(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(hatenaRelayBody(r), previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderHatena(doc, form, common, content, renderOpts);
+        const r = renderHatena(doc, form, common, content, renderOpts(ctx.lang));
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '由服务器代发到はてなブログ' });
+        ctx.emit({ type: 'progress', percent: 40, text: msg(ctx.lang).relaying });
         const res = await relayPublish(ctx, ref, hatenaRelayBody(r), form.external_id);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: msg(ctx.lang).done });
         return {
           url: res.url,
           externalId: res.externalId,

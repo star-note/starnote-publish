@@ -11,16 +11,19 @@
  * `publish` ends with `state: 'handoff'` and `handoff: { via: 'web-share', openUrl, copyText, files }`; the host runs
  * `shareToInstagram` (phone) or downloads `files` (computer) inside the user's click.
  */
-import { defineAdapter, mediaReport, visibleLinkOf } from '@starnote/publish-core';
+import { byLang, defineAdapter, mediaReport, visibleLinkOf } from '@starnote/publish-core';
 import {
   absoluteUrl,
   codePoints,
   guard,
   helpError,
   linkCost,
+  refIn,
   truncate,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
+
+import { msg } from './i18n';
 
 import type {
   Adapter,
@@ -31,6 +34,7 @@ import type {
   PublishHandoff,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef } from '@starnote/publish-kit';
 
@@ -44,21 +48,27 @@ export const INSTAGRAM_LIMITS = {
 
 export const INSTAGRAM_HOME = 'https://www.instagram.com/';
 
-export const instagramSchema = z.object({
-  /** Your own caption instead of title + summary. */
-  caption: z.string().trim().max(5000).optional().describe('文案'),
-  include_summary: z.boolean().default(true).describe('带上摘要'),
-  include_tags: z.boolean().default(true).describe('带上话题'),
-  /** Links in captions are not clickable: we add it as plain text. */
-  include_link: z.boolean().default(true).describe('文末写上原文地址'),
-  max_images: z
-    .number()
-    .int()
-    .min(1)
-    .max(INSTAGRAM_LIMITS.images)
-    .default(INSTAGRAM_LIMITS.images)
-    .describe('图片张数'),
+/** The form in a language (SPEC-r14 B5). */
+export const instagramSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** Your own caption instead of title + summary. */
+    caption: z.string().trim().max(5000).optional().describe(t.caption),
+    include_summary: z.boolean().default(true).describe(t.includeSummary),
+    include_tags: z.boolean().default(true).describe(t.includeTags),
+    /** Links in captions are not clickable: we add it as plain text. */
+    include_link: z.boolean().default(true).describe(t.includeLink),
+    max_images: z
+      .number()
+      .int()
+      .min(1)
+      .max(INSTAGRAM_LIMITS.images)
+      .default(INSTAGRAM_LIMITS.images)
+      .describe(t.maxImages),
+  });
 });
+
+export const instagramSchema = instagramSchemaFor('zh-CN');
 
 export type InstagramForm = z.infer<typeof instagramSchema>;
 export type InstagramFormInput = z.input<typeof instagramSchema>;
@@ -95,11 +105,12 @@ export function renderInstagram(
   form: InstagramForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): InstagramRendered {
+  const t = msg(opts.lang);
   const report: ReportItem[] = [];
   // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
-  report.push(...mediaReport('instagram', 'Instagram', content, common));
+  report.push(...mediaReport('instagram', 'Instagram', content, common, opts.lang));
   const set = content?.kind === 'image-set' ? content : undefined;
   const article = content?.kind === 'article' ? content : undefined;
   const d = article?.doc ?? doc;
@@ -126,14 +137,14 @@ export function renderInstagram(
     report.push({
       kind: 'image.trimmed',
       level: 'notice',
-      text: `Instagram 单帖按 ${form.max_images} 张准备，去掉 ${usable.length - picked.length} 张`,
+      text: t.imagesTrimmed(form.max_images, usable.length - picked.length),
       count: usable.length - picked.length,
     });
   if (dropped)
     report.push({
       kind: 'image.failed',
       level: 'warn',
-      text: `${dropped} 张图片没有可下载的地址，已跳过`,
+      text: t.imagesSkipped(dropped),
       count: dropped,
     });
   const files = picked.map((p, i) => ({
@@ -160,7 +171,7 @@ export function renderInstagram(
   if (allTags.length > tags.length)
     report.push({
       kind: 'tags.trimmed',
-      text: `Instagram 最多 ${INSTAGRAM_LIMITS.hashtags} 个话题，已去掉多余的`,
+      text: t.tagsTrimmed(INSTAGRAM_LIMITS.hashtags),
     });
   const tail = [
     tags.map((t) => `#${t}`).join(' '),
@@ -179,7 +190,7 @@ export function renderInstagram(
     report.push({
       kind: 'share.truncated',
       level: 'notice',
-      text: `文案超过 ${INSTAGRAM_LIMITS.captionMax} 字，已截短`,
+      text: t.captionTruncated(INSTAGRAM_LIMITS.captionMax),
     });
   }
   const caption = [body, tail].filter(Boolean).join('\n\n');
@@ -187,7 +198,7 @@ export function renderInstagram(
     report.push({
       kind: 'link.not-clickable',
       level: 'notice',
-      text: 'Instagram 文案里的链接不能点，原文地址以文字附在文末（可放到个人主页链接）',
+      text: t.linkNotClickable,
     });
 
   const handoff: PublishHandoff = {
@@ -199,7 +210,7 @@ export function renderInstagram(
   report.push({
     kind: 'handoff.pending',
     level: 'notice',
-    text: '需要在 Instagram App 里完成发布：手机上用系统分享选 Instagram；电脑上下载图片并复制文案，再到手机或 instagram.com 发布',
+    text: t.handoff,
     detail: { via: 'web-share', openUrl: INSTAGRAM_HOME, copyText: caption, files: files.length },
   });
   return { caption, files, handoff, report };
@@ -262,12 +273,17 @@ export async function shareToInstagram(
   }
 }
 
-/** Computer: what the host shows next to the download button. */
+/** Computer: what the host shows next to the download button (`zh-CN`; `instagramManualSteps(lang)` for others). */
 export const INSTAGRAM_MANUAL_STEPS = [
   '下载图片（按顺序命名 starnote-01、02…）',
   '复制文案',
   '在手机 Instagram App（或 instagram.com）新建帖子，按顺序选图并粘贴文案后发布',
 ] as const;
+
+/** `INSTAGRAM_MANUAL_STEPS` in `lang` (SPEC-r14 B5). */
+export function instagramManualSteps(lang?: SdkLang): readonly string[] {
+  return msg(lang).manualSteps;
+}
 
 /* ---------------- adapter ---------------- */
 
@@ -281,22 +297,28 @@ export interface InstagramAdapterOptions {
   links?: ErrorLinks;
 }
 
+const notes = (key: 'notePhone' | 'noteComputer' | 'noteDesktop') => ({
+  note: msg('zh-CN')[key],
+  notes: { 'zh-TW': msg('zh-TW')[key], en: msg('en')[key] },
+});
+
 export const INSTAGRAM_RUNTIMES: RuntimeSupport[] = [
   {
     runtime: 'web',
     mode: 'handoff',
     handoff: { via: 'web-share', url: INSTAGRAM_HOME },
-    note: '手机：系统分享面板选 Instagram，在 App 里完成发布',
+    ...notes('notePhone'),
   },
-  { runtime: 'web', mode: 'manual', note: '电脑：下载图片 + 复制文案' },
-  { runtime: 'electron', mode: 'manual', note: '下载图片 + 复制文案' },
+  { runtime: 'web', mode: 'manual', ...notes('noteComputer') },
+  { runtime: 'electron', mode: 'manual', ...notes('noteDesktop') },
 ];
 
 export function createInstagramAdapter(
   opts: InstagramAdapterOptions = {}
 ): Adapter<typeof instagramSchema> {
   const ref = instagramRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const base = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({ ...base, ...(lang ? { lang } : {}) });
   return defineAdapter({
     key: 'instagram',
     label: 'Instagram',
@@ -305,8 +327,9 @@ export function createInstagramAdapter(
     binding: { kind: 'none', store: 'none' },
     capabilities: { supportsUpdate: false, needsLogin: false },
     schema: instagramSchema,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderInstagram(doc, form, common, content, renderOpts);
+    schemaFor: instagramSchemaFor,
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderInstagram(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'files',
         title: common?.title || doc.title,
@@ -317,13 +340,12 @@ export function createInstagramAdapter(
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderInstagram(doc, form, common, content, renderOpts);
+        const r = renderInstagram(doc, form, common, content, renderOpts(ctx.lang));
+        const t = msg(ctx.lang);
         if (!r.files.length)
-          throw helpError(ref, 'Instagram 帖子至少要 1 张图片：给笔记加封面或插图后再试', {
-            code: 'invalid',
-          });
+          throw helpError(refIn(ref, ctx.lang), t.needsImage, { code: 'invalid' });
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 100, text: '图片和文案已备好' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.ready });
         return { url: '', state: 'handoff' as const, report: r.report, handoff: r.handoff };
       });
     },

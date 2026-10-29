@@ -20,6 +20,7 @@
  * Not bound: the existing threads intent hand-off (`@starnote/publish-share`).
  */
 import {
+  byLang,
   defineAdapter,
   isUrlExternalId,
   mediaReport,
@@ -39,6 +40,7 @@ import {
   newPostReport,
   num,
   placeLink,
+  refIn,
   readJson,
   relayCheck,
   relayFinalize,
@@ -50,6 +52,8 @@ import {
 } from '@starnote/publish-kit';
 import { buildShare, shareInputOf } from '@starnote/publish-share';
 import { z } from 'zod';
+
+import { msg } from './i18n';
 
 import type {
   Adapter,
@@ -63,6 +67,7 @@ import type {
   PublishHandoff,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
   StatsContext,
 } from '@starnote/publish-core';
 import type {
@@ -86,21 +91,22 @@ export const THREADS_POLL = { intervalSec: 10, timeoutSec: 600 } as const;
 
 const URL_RE = /^https?:\/\/\S+$/;
 
-export const threadsSchema = z.object({
-  text: z.string().trim().max(2000).optional().describe('帖子文案'),
-  link: z
-    .string()
-    .trim()
-    .regex(URL_RE, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('链接'),
-  include_summary: z.boolean().default(true).describe('带上摘要'),
-  include_tags: z.boolean().default(true).describe('带上话题'),
-  /** Off (default): a text post with the link card. On: the cover as an image post, the link in the text. */
-  with_cover: z.boolean().default(false).describe('发封面图（链接写进文案）'),
-  /** SPEC-r12 §2: the link as the card (or in an image post's text), or as the author's first reply. */
-  linkPlacement: linkPlacementField('threads'),
+/** The form in a language (SPEC-r14 B5). */
+export const threadsSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    text: z.string().trim().max(2000).optional().describe(t.text),
+    link: z.string().trim().regex(URL_RE, t.httpUrl).optional().describe(t.link),
+    include_summary: z.boolean().default(true).describe(t.includeSummary),
+    include_tags: z.boolean().default(true).describe(t.includeTags),
+    /** Off (default): a text post with the link card. On: the cover as an image post, the link in the text. */
+    with_cover: z.boolean().default(false).describe(t.withCover),
+    /** SPEC-r12 §2: the link as the card (or in an image post's text), or as the author's first reply. */
+    linkPlacement: linkPlacementField('threads', lang),
+  });
 });
+
+export const threadsSchema = threadsSchemaFor('zh-CN');
 
 export type ThreadsForm = z.infer<typeof threadsSchema>;
 export type ThreadsFormInput = z.input<typeof threadsSchema>;
@@ -111,11 +117,8 @@ export const threadsBinding: BindingSpec = {
   provider: 'threads',
   scopes: ['threads_basic', 'threads_content_publish', 'threads_manage_insights'],
   helpUrl: 'https://www.threads.net/',
-  instructions: [
-    '点「用 Threads 授权」，在 Threads 页面允许辰记代你发帖、读取帖子数据',
-    '桌面端：令牌加密存在本机；网页：令牌只在当前页面，关闭即失效；打开「云端代发」才会存到辰记服务器',
-    '授权 60 天有效，辰记会自动续期；不用时到 Threads「设置 → 账户 → 网站权限」移除辰记',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 /** The container request (`POST /{user}/threads`) without the token. */
@@ -145,15 +148,17 @@ export function renderThreads(
   form: ThreadsForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): ThreadsRendered {
+  const lang = opts.lang;
+  const t = msg(lang);
   const card = cardOf(doc, common, content, {
     assetBase: opts.assetBase,
     text: form.text,
     link: form.link,
   });
   const report: ReportItem[] = [];
-  const placed = placeLink(form.linkPlacement, card.link, card.lang);
+  const placed = placeLink(form.linkPlacement, card.link, card.lang, lang);
   const link = placed.bodyLink;
   const image = form.with_cover ? card.cover : undefined;
   const allTags = form.include_tags ? card.tags : [];
@@ -170,25 +175,25 @@ export function renderThreads(
     report.push({
       kind: 'share.truncated',
       level: 'notice',
-      text: `Threads 最多 ${THREADS_LIMITS.textMax} 字（emoji 按字节计），已截短`,
+      text: t.truncated(THREADS_LIMITS.textMax),
     });
   if (allTags.length > fit.tags.length)
     report.push({
       kind: 'tags.trimmed',
-      text: `Threads 每帖只带 ${THREADS_LIMITS.maxTags} 个话题`,
+      text: t.tagsTrimmed(THREADS_LIMITS.maxTags),
       count: allTags.length - fit.tags.length,
     });
   if (link)
     report.push({
       kind: 'link.card',
-      text: image ? '以图片帖发出，原文链接写在文案里' : '以链接卡片发出',
+      text: image ? t.imagePost : t.linkCard,
       detail: { url: link },
     });
   else if (placed.followUp) report.push(...placed.report);
-  else report.push(missingLinkReport('Threads'));
+  else report.push(missingLinkReport('Threads', lang));
   report.push({
     kind: 'processing',
-    text: 'Threads 先建容器、处理完再发布，通常要等半分钟左右',
+    text: t.processing,
   });
   const body: ThreadsContainerBody = image
     ? {
@@ -202,7 +207,7 @@ export function renderThreads(
         text: fit.text,
         ...(link ? { link_attachment: link } : {}),
       };
-  report.push(...mediaReport('threads', 'Threads', content, common));
+  report.push(...mediaReport('threads', 'Threads', content, common, lang));
   return {
     text: fit.text,
     body,
@@ -329,11 +334,13 @@ export function threadsHandoff(
   form: ThreadsForm,
   common: CommonFormShape,
   content: PublishContent | undefined,
-  opts: { assetBase?: string } = {}
+  opts: { assetBase?: string } = {},
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
 ): { handoff: PublishHandoff; report: ReportItem[] } {
-  const input = shareInputOf('threads', doc, form, common, content, opts);
+  const input = shareInputOf('threads', doc, form, common, content, opts, lang);
   if ('error' in input) throw new Error(input.error);
-  const r = buildShare('threads', input);
+  const r = buildShare('threads', input, lang);
   return { handoff: { via: r.via, openUrl: r.openUrl, copyText: r.copyText }, report: r.report };
 }
 
@@ -350,7 +357,8 @@ export function createThreadsAdapter(
   opts: ThreadsAdapterOptions = {}
 ): Adapter<typeof threadsSchema> {
   const ref = threadsRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const base = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({ ...base, ...(lang ? { lang } : {}) });
   return defineAdapter({
     key: 'threads',
     label: 'Threads',
@@ -359,12 +367,13 @@ export function createThreadsAdapter(
     binding: threadsBinding,
     capabilities: { supportsUpdate: false, needsLogin: true },
     schema: threadsSchema,
+    schemaFor: threadsSchemaFor,
     maxConcurrent: 2,
     pollIntervalSec: opts.poll?.intervalSec ?? THREADS_POLL.intervalSec,
     pollTimeoutSec: opts.poll?.timeoutSec ?? THREADS_POLL.timeoutSec,
     statsRequires: 'token',
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderThreads(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderThreads(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'text',
         title: common?.title || doc.title,
@@ -373,8 +382,8 @@ export function createThreadsAdapter(
         ...(r.followUp ? { followUp: r.followUp } : {}),
       };
     },
-    renderRequest({ doc, form, common, content }) {
-      const r = renderThreads(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, lang }) {
+      const r = renderThreads(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(r.body, undefined, undefined, r.report, r.followUp);
     },
     // SPEC-r12 §2.2: a reply container (`reply_to_id`) published right away, through the relay
@@ -384,17 +393,18 @@ export function createThreadsAdapter(
         return relayFollowUp(ctx, ref, post, input, { credential });
       });
     },
-    renderHandoff({ doc, form, common, content }) {
-      return threadsHandoff(doc, form, common, content, renderOpts);
+    renderHandoff({ doc, form, common, content, lang }) {
+      return threadsHandoff(doc, form, common, content, base, lang);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderThreads(doc, form, common, content, renderOpts);
+        const r = renderThreads(doc, form, common, content, renderOpts(ctx.lang));
+        const t = msg(ctx.lang);
         if (!r.text.trim() && r.body.media_type === 'TEXT')
-          throw helpError(ref, '帖子是空的', { code: 'invalid' });
-        r.report.push(...newPostReport(ctx.previous));
+          throw helpError(refIn(ref, ctx.lang), t.empty, { code: 'invalid' });
+        r.report.push(...newPostReport(ctx.previous, ctx.lang));
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 30, text: '在 Threads 建帖子容器' });
+        ctx.emit({ type: 'progress', percent: 30, text: t.creating });
         const credential = await credentialOf(opts.credential, 'threads', ctx);
         const res = await relayPublish({ ...ctx, previous: undefined }, ref, r.body, undefined, {
           credential,
@@ -410,7 +420,7 @@ export function createThreadsAdapter(
             report,
             ...followUp,
           };
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

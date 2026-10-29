@@ -10,8 +10,9 @@ import {
   truncateText,
 } from '@starnote/publish-core';
 
+import { msg } from './i18n';
 import { renderWechatMp, replaceImageSrcs } from './render';
-import { wechatMpSchema } from './schema';
+import { wechatMpSchema, wechatMpSchemaFor } from './schema';
 import bundledSigned from './site-script.signed.json';
 
 import type {
@@ -23,6 +24,7 @@ import type {
   RuntimeSupport,
   SessionAdapterOptions,
   SessionClient,
+  SdkLang,
   SignedSiteScript,
   SiteScript,
   WechatOptions,
@@ -30,8 +32,9 @@ import type {
 
 export const WECHAT_MP_SITE_SCRIPT = bundledSigned as SignedSiteScript;
 const LABEL = '微信公众号';
-export const WECHAT_RELOGIN_TEXT = '公众号需要重新扫码登录';
-export const WECHAT_HANDOFF_TEXT = '已存进公众号后台，请在后台点「发表」，群发需管理员扫码确认';
+/** `zh-CN`; `wechatMpMessages(lang).relogin` / `.handoff` in other languages. */
+export const WECHAT_RELOGIN_TEXT = msg('zh-CN').relogin;
+export const WECHAT_HANDOFF_TEXT = msg('zh-CN').handoff;
 
 /**
  * 个人号的桌面端路线：管理员在桌面端弹出的公众号登录页上用微信扫码（二维码在微信自己的页面上，辰记不读取），
@@ -41,11 +44,8 @@ export const wechatMpBinding: BindingSpec = {
   kind: 'cookie',
   store: 'desktop',
   helpUrl: 'https://mp.weixin.qq.com/',
-  instructions: [
-    '在辰记桌面端点「在桌面端登录微信公众号」',
-    '桌面端弹出公众号自己的登录页，由管理员用微信扫码确认',
-    '登录成功后窗口自动关闭；公众号后台的登录几天就会过期，过期后再扫一次码',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
   checkEvery: 3600,
   desktopSession: bundledScript(WECHAT_MP_SITE_SCRIPT).session!,
 };
@@ -66,12 +66,19 @@ interface WxSession {
 }
 
 /** Reads the 后台 session (token…) from the home page; no token means the login expired. */
-async function wxSession(client: SessionClient, script: SiteScript): Promise<WxSession> {
+async function wxSession(
+  client: SessionClient,
+  script: SiteScript,
+  lang?: SdkLang
+): Promise<WxSession> {
   const home = await client.call('home');
   const r = home.result;
   const token = typeof r.token === 'string' ? r.token : '';
   if (!/^\d+$/.test(token))
-    throw new PlatformSessionError('relogin', WECHAT_RELOGIN_TEXT, { helpUrl: script.urls.help });
+    throw new PlatformSessionError('relogin', msg(lang).relogin, {
+      helpUrl: script.urls.help,
+      ...(lang ? { lang } : {}),
+    });
   return {
     token,
     ...(typeof r.ticket === 'string' ? { ticket: r.ticket } : {}),
@@ -90,13 +97,14 @@ export function createWechatMpAdapter(
 ): Adapter<typeof wechatMpSchema> {
   const random = opts.random ?? (() => String(Math.random()));
   const preview = (script: SiteScript) =>
-    ((doc, _form, common = {}) => {
-      const r = renderWechatMp(doc, common, script, opts.wechat);
+    ((doc, _form, common = {}, _content, popts) => {
+      const lang = popts?.lang;
+      const r = renderWechatMp(doc, common, script, lang ? { ...opts.wechat, lang } : opts.wechat);
       const report = [...r.report];
       if (r.images.length)
         report.push({
           kind: 'image.rehosted',
-          text: `${r.images.length} 张图片会上传到公众号素材库`,
+          text: msg(lang).imagesWillUpload(r.images.length),
           count: r.images.length,
           level: 'info',
         });
@@ -111,23 +119,29 @@ export function createWechatMpAdapter(
         runtime: 'electron',
         mode: 'automation',
         needs: ['session'],
-        note: '第 1 层：存进公众号后台，由你在后台点「发表」',
+        note: msg('zh-CN').runtimeNote,
+        notes: { 'zh-TW': msg('zh-TW').runtimeNote, en: msg('en').runtimeNote },
       },
     ],
     contentTypes: ['article'],
     binding: wechatMpBinding,
     capabilities: { supportsUpdate: false, titleMax: 64, coverRatio: 2.35, needsLogin: true },
     schema: wechatMpSchema,
+    schemaFor: wechatMpSchemaFor,
     preview: preview(bundledScript(WECHAT_MP_SITE_SCRIPT)),
     async publish({ doc, form, common, ctx, content }): Promise<PublishOutput> {
-      ctx.emit({ type: 'progress', percent: 5, text: '检查公众号登录状态' });
+      const lang = ctx.lang;
+      const t = msg(lang);
+      const L = lang ? { lang } : {};
+      ctx.emit({ type: 'progress', percent: 5, text: t.checkingLogin });
       const run = await openSessionRun(ctx, 'wechat', LABEL, WECHAT_MP_SITE_SCRIPT, opts);
       const { script, client } = run;
       try {
-        const wx = await wxSession(client, script);
+        const wx = await wxSession(client, script, lang);
         const r = renderWechatMp(doc, common, script, {
           ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
           ...opts.wechat,
+          ...L,
         });
         const report: ReportItem[] = [...r.report];
         ctx.emit({ type: 'report', items: report });
@@ -161,15 +175,16 @@ export function createWechatMpAdapter(
           return typeof res.result.url === 'string' ? res.result.url : undefined;
         };
         const assetBase = opts.assetBase ?? opts.wechat?.assetBase;
-        ctx.emit({ type: 'progress', percent: 15, text: '上传图片到公众号素材库' });
+        ctx.emit({ type: 'progress', percent: 15, text: t.uploadingImages });
         const images = await rehostImages(r.images, upload, {
-          label: '公众号素材库',
+          label: t.library,
+          ...L,
           ...(assetBase ? { assetBase } : {}),
           onProgress: (done, total) =>
             ctx.emit({
               type: 'progress',
               percent: 15 + Math.round((done / total) * 50),
-              text: `上传图片 ${done}/${total}`,
+              text: t.uploadProgress(done, total),
             }),
         });
         report.push(
@@ -177,7 +192,7 @@ export function createWechatMpAdapter(
             i.kind === 'image.failed'
               ? {
                   ...i,
-                  text: `${i.count} 张图片上传到公众号素材库失败，已保留原图链接（公众号里外部图片通常显示不出来，请在后台替换）`,
+                  text: t.imagesFailed(i.count ?? 0),
                 }
               : i
           )
@@ -187,14 +202,14 @@ export function createWechatMpAdapter(
         const coverSrc =
           common.cover && /^https?:\/\//.test(common.cover) ? common.cover : undefined;
         if (coverSrc) {
-          const c = await rehostImages([coverSrc], upload, { label: '公众号素材库（封面）' });
+          const c = await rehostImages([coverSrc], upload, { label: t.libraryCover, ...L });
           const url = c.map.get(coverSrc);
           if (url) cover = { url };
         }
         if (!cover)
           report.push({
             kind: 'cover.missing',
-            text: '没有设置封面：发表前请在公众号后台选一张封面',
+            text: t.noCover,
             level: 'notice',
           });
         ctx.emit({ type: 'report', items: report });
@@ -206,10 +221,9 @@ export function createWechatMpAdapter(
           // SPEC-r12 §5.3: 「阅读原文」 is clicked by readers: the tracking short link when given
           (content?.kind === 'article' ? content.trackingUrl || content.canonicalUrl : undefined) ??
           '';
-        if (sourceUrl)
-          report.push({ kind: 'canonical.set', text: '「阅读原文」指向辰记原文', level: 'info' });
+        if (sourceUrl) report.push({ kind: 'canonical.set', text: t.readMore, level: 'info' });
 
-        ctx.emit({ type: 'progress', percent: 75, text: '存进公众号后台' });
+        ctx.emit({ type: 'progress', percent: 75, text: t.saving });
         const saved = await client.call('saveAppmsg', {
           vars: { token: wx.token },
           data: {
@@ -227,24 +241,22 @@ export function createWechatMpAdapter(
         });
         const id = String(saved.result.id ?? '');
         if (!id)
-          throw new PlatformSessionError('help', '公众号后台没有返回图文 id', {
+          throw new PlatformSessionError('help', t.noId, {
             helpUrl: script.urls.help,
+            ...L,
           });
         const editUrl = fillTemplate(script.urls.edit!, { id, token: wx.token });
 
-        report.push({ kind: 'handoff.pending', text: WECHAT_HANDOFF_TEXT, level: 'notice' });
+        report.push({ kind: 'handoff.pending', text: t.handoff, level: 'notice' });
         // 发布台（或单个窗口）里打开图文编辑页，不再填写：正文已经由接口存好，由你点「发表」。
         await handOffEditor(ctx, run, LABEL, { editorUrl: editUrl });
-        ctx.emit({ type: 'progress', percent: 100, text: '已存进公众号后台' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.saved });
         return { url: editUrl, externalId: id, state: 'handoff', report };
       } catch (e) {
-        if (
-          e instanceof PlatformSessionError &&
-          e.kind === 'relogin' &&
-          e.message !== WECHAT_RELOGIN_TEXT
-        )
-          throw new PlatformSessionError('relogin', WECHAT_RELOGIN_TEXT, {
+        if (e instanceof PlatformSessionError && e.kind === 'relogin' && e.message !== t.relogin)
+          throw new PlatformSessionError('relogin', t.relogin, {
             helpUrl: script.urls.help,
+            ...L,
           });
         throw e;
       }

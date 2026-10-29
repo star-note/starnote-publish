@@ -17,7 +17,9 @@
  */
 import { convert } from '@starnote/publish-core';
 
-import type { Doc, ReportItem, TiptapJSON } from '@starnote/publish-core';
+import { kitMessages } from './i18n';
+
+import type { Doc, ReportItem, SdkLang, TiptapJSON } from '@starnote/publish-core';
 
 export type DegradeTarget = 'markdown' | 'html';
 
@@ -269,8 +271,11 @@ export function degradeJson(
 export function degradeReport(
   counts: DegradeCounts,
   profile: DegradeProfile,
-  platform: string
+  platform: string,
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
 ): ReportItem[] {
+  const m = kitMessages(lang).degrade;
   const md = profile.target === 'markdown';
   const items: ReportItem[] = [];
   const add = (n: number, item: Omit<ReportItem, 'count'>) => {
@@ -278,71 +283,67 @@ export function degradeReport(
   };
   add(counts.callout, {
     kind: 'block.degraded.callout',
-    text: `提示框降级为引用块 ${counts.callout} 处`,
+    text: m.callout(counts.callout),
     detail: { block: 'sn-box', to: 'blockquote' },
   });
   add(counts.heading, {
     kind: 'block.degraded.heading',
-    text: `徽章 / 装饰标题改为普通标题 ${counts.heading} 处`,
+    text: m.heading(counts.heading),
     detail: { block: 'sn-h', to: md ? '##' : 'h2/h3' },
   });
   add(counts.headingLevel, {
     kind: 'heading.mapped',
-    text: `标题层级调整为二、三级 ${counts.headingLevel} 处`,
+    text: m.headingLevel(counts.headingLevel),
   });
   add(counts.divider, {
     kind: 'block.degraded.divider',
-    text: `波浪线等装饰分割线改为普通分割线 ${counts.divider} 处`,
+    text: m.divider(counts.divider),
     detail: { block: 'divider', to: md ? '---' : 'hr' },
   });
   add(counts.quote, {
     kind: 'block.degraded.quote',
-    text: `装饰引用改为普通引用 ${counts.quote} 处`,
+    text: m.quote(counts.quote),
   });
   add(counts.code, {
     kind: 'code.fenced',
-    text: md
-      ? `代码块输出为带语言的围栏代码 ${counts.code} 处，高亮由 ${platform} 渲染`
-      : `代码块保留语言标记 ${counts.code} 处，高亮由主题决定`,
+    text: md ? m.codeFenced(counts.code, platform) : m.codeKept(counts.code),
   });
   add(counts.tableMerged, {
     kind: 'table.html',
     level: 'notice',
-    text: md
-      ? `含合并单元格的表格保留为 HTML 表格 ${counts.tableMerged} 个`
-      : `含合并单元格的表格以 HTML 提交 ${counts.tableMerged} 个，显示不正常时请转成图片`,
+    text: md ? m.tableMergedMd(counts.tableMerged) : m.tableMergedHtml(counts.tableMerged),
   });
   if (!md)
     add(counts.table, {
       kind: 'table.kept',
-      text: `表格以 HTML 提交 ${counts.table} 个`,
+      text: m.table(counts.table),
     });
   add(counts.math, {
     kind: profile.math === 'devto-liquid' ? 'math.liquid' : 'math.as-source',
     level: profile.math === 'devto-liquid' || profile.math === 'dollar' ? 'info' : 'warn',
     text:
       profile.math === 'devto-liquid'
-        ? `公式转为 katex liquid tag ${counts.math} 处`
+        ? m.mathLiquid(counts.math)
         : profile.math === 'dollar'
-          ? `公式保留 $…$ 写法 ${counts.math} 处，显示效果以平台为准`
-          : `公式暂以 TeX 源码提交 ${counts.math} 处（转图片尚未接入）`,
+          ? m.mathDollar(counts.math)
+          : m.mathTex(counts.math),
   });
   add(counts.videoEmbedded, {
     kind: 'video.embedded',
-    text: `YouTube 视频转为 youtube liquid tag ${counts.videoEmbedded} 处`,
+    text: m.youtube(counts.videoEmbedded),
   });
   add(counts.video - counts.videoEmbedded, {
     kind: 'video.linkified',
-    text: `视频改为链接 ${counts.video - counts.videoEmbedded} 处`,
+    text: m.video(counts.video - counts.videoEmbedded),
   });
-  add(counts.link, { kind: 'link.kept', text: `外链原样保留 ${counts.link} 处` });
+  add(counts.link, { kind: 'link.kept', text: m.link(counts.link) });
   add(counts.imageResolved, {
     kind: 'image.absolute',
-    text: `图片地址补全为绝对地址 ${counts.imageResolved} 处`,
+    text: m.imageAbsolute(counts.imageResolved),
   });
   add(counts.highlight, {
     kind: 'mark.stripped',
-    text: `${platform} 不支持高亮标记，已去掉 ${counts.highlight} 处`,
+    text: m.highlight(platform, counts.highlight),
   });
   return items;
 }
@@ -351,7 +352,9 @@ export function degradeReport(
 export function degradeArticle(
   doc: Doc,
   profile: DegradeProfile,
-  platform: string
+  platform: string,
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
 ): DegradedArticle {
   const { json, counts } = degradeJson(doc.json, profile);
   const out = convert(json);
@@ -360,6 +363,6 @@ export function degradeArticle(
     doc: out,
     body: profile.target === 'markdown' ? out.markdown : out.portableHtml,
     counts,
-    report: degradeReport(counts, profile, platform),
+    report: degradeReport(counts, profile, platform, lang),
   };
 }

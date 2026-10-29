@@ -39,7 +39,13 @@ export {
   type ScheduleTaskIn,
 } from './prepare';
 export {
+  adapterSchema,
+  bindingForm,
+  bindingInstructions,
+  bindingPermissions,
+  bindingSelects,
   commonSchema,
+  commonSchemaFor,
   formatZodError,
   zodFieldMeta,
   zodToAntdRules,
@@ -126,6 +132,7 @@ export {
   planPlatforms,
   planRuntime,
   resolveRuntimes,
+  runtimeNote,
   runtimeList,
   type GuideKind,
   type HandoffVia,
@@ -161,6 +168,8 @@ export {
   PLATFORM_KEYS,
   PLATFORMS,
   platformMeta,
+  platformLabel,
+  untranslatedRuntimeNotes,
   PLATFORM_LANGS,
   type MonetizationModel,
   type PlatformLang,
@@ -290,6 +299,7 @@ export {
   bundledScript,
   CHALLENGE_PROMPT,
   HANDOFF_FILLED_TEXT,
+  handoffFilledText,
   handOffEditor,
   handoffReport,
   openSessionRun,
@@ -308,6 +318,7 @@ export {
   ARTICLE_THEME_IDS,
   ARTICLE_THEMES,
   getArticleTheme,
+  themeText,
   isArticleThemeId,
   recommendThemes,
   resolveArticleTheme,
@@ -322,7 +333,14 @@ export {
 } from './themes';
 
 // CONTRACTS-r9 §5 平台规则与合规, §3 摘编.
-export { PLATFORM_RULES, platformRules, type PlatformRules } from './rules';
+export {
+  aiLabelNote,
+  payoutNote,
+  PLATFORM_RULES,
+  platformRules,
+  untranslatedRuleNotes,
+  type PlatformRules,
+} from './rules';
 export {
   AD_LAW_WORDS,
   AI_DECLARATION_TEXT,
@@ -350,3 +368,24 @@ export {
   type CondenseOptions,
   type CondenseResult,
 } from './condense';
+
+// SPEC-r14 B5: languages and dictionaries (also `@starnote/publish-core/i18n`).
+export {
+  byLang,
+  COMPLIANCE_MESSAGES,
+  coreMessages,
+  DEFAULT_SDK_LANG,
+  defineMessages,
+  fmt,
+  formatDuration,
+  isSdkLang,
+  localizedLabel,
+  normalizeLang,
+  pickText,
+  PLATFORM_LABELS,
+  SDK_LANGS,
+  type CoreMessages,
+  type I18nText,
+  type LangTable,
+  type SdkLang,
+} from './i18n/index';

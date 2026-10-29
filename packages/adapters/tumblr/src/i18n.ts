@@ -1,0 +1,115 @@
+/** SPEC-r14 B5: the Tumblr adapter's user-visible texts (form labels, binding help, report, progress). */
+import { defineMessages } from '@starnote/publish-core';
+
+const zhCN = {
+  selectBlog: '发布到哪个博客',
+  form: {
+    blogHint: '博客名只能是字母、数字和 -',
+    blog: '博客',
+    state: '发布方式',
+    setCanonical: '附原文链接',
+    httpUrl: '请填写以 http(s):// 开头的地址',
+    canonicalUrl: '原文链接',
+    slugHint: '只能用小写字母、数字和 -',
+    slug: '网址',
+    idDigits: '帖子 ID 是数字',
+    externalId: '已发布帖子 ID',
+  },
+  binding: [
+    '点「用 Tumblr 授权」，在 Tumblr 页面允许辰记代你发帖',
+    '回到辰记后选择要发布到的博客',
+    '桌面端：令牌加密存在本机；网页：令牌只在当前页面，关闭即失效；打开「云端代发」才会存到辰记服务器',
+    '不用时到 Tumblr「设置 → 应用」撤销辰记',
+  ],
+  noDivider: (n: number) => `Tumblr 没有分割线，去掉 ${n} 处`,
+  noTable: (n: number) => `Tumblr 没有表格，${n} 个表格按行转成文字（单元格用 | 分隔）`,
+  code: (n: number) => `${n} 个代码块转成等宽文字（没有高亮）`,
+  imageSkipped: (n: number) => `${n} 张图片没有可访问的地址，已去掉`,
+  source: 'Tumblr 没有 canonical：帖子的来源（source_url）设为辰记原文，文末附原文链接卡片',
+  imagesTrimmed: (max: number, dropped: number) =>
+    `Tumblr 单帖最多 ${max} 张图片，去掉 ${dropped} 张`,
+  bodyTruncated: (max: number) => `正文超过 ${max} 个段落，已截短`,
+  imagesUpload: (n: number) => `${n} 张图片将上传到 Tumblr`,
+  queue: '加入 Tumblr 发布队列，按队列设置的时间发出',
+  private: '以私密帖子发布，只有你自己能看到',
+  draft: '保存为 Tumblr 草稿',
+  publishing: '发布到 Tumblr',
+  done: '完成',
+};
+
+export const msg = defineMessages<typeof zhCN>({
+  'zh-CN': zhCN,
+  'zh-TW': {
+    selectBlog: '發布到哪個部落格',
+    form: {
+      blogHint: '部落格名稱只能是字母、數字和 -',
+      blog: '部落格',
+      state: '發布方式',
+      setCanonical: '附上原文連結',
+      httpUrl: '請填寫以 http(s):// 開頭的網址',
+      canonicalUrl: '原文連結',
+      slugHint: '只能用小寫字母、數字和 -',
+      slug: '網址',
+      idDigits: '貼文 ID 是數字',
+      externalId: '已發布貼文 ID',
+    },
+    binding: [
+      '按「用 Tumblr 授權」，在 Tumblr 頁面允許辰記代你發文',
+      '回到辰記後選擇要發布到的部落格',
+      '桌面版：權杖加密存在本機；網頁：權杖只在目前頁面，關閉即失效；開啟「雲端代發」才會存到辰記伺服器',
+      '不用時到 Tumblr「設定 → 應用程式」撤銷辰記',
+    ],
+    noDivider: (n) => `Tumblr 沒有分隔線，移除 ${n} 處`,
+    noTable: (n) => `Tumblr 沒有表格，${n} 個表格依列轉成文字（儲存格以 | 分隔）`,
+    code: (n) => `${n} 個程式碼區塊轉成等寬文字（沒有語法醒目）`,
+    imageSkipped: (n) => `${n} 張圖片沒有可存取的網址，已移除`,
+    source: 'Tumblr 沒有 canonical：貼文的來源（source_url）設為辰記原文，文末附上原文連結卡片',
+    imagesTrimmed: (max, dropped) => `Tumblr 單篇貼文最多 ${max} 張圖片，移除 ${dropped} 張`,
+    bodyTruncated: (max) => `內文超過 ${max} 個段落，已截短`,
+    imagesUpload: (n) => `${n} 張圖片將上傳到 Tumblr`,
+    queue: '加入 Tumblr 發布佇列，依佇列設定的時間發出',
+    private: '以私密貼文發布，只有你自己看得到',
+    draft: '儲存為 Tumblr 草稿',
+    publishing: '發布到 Tumblr',
+    done: '完成',
+  },
+  en: {
+    selectBlog: 'Blog to publish to',
+    form: {
+      blogHint: 'A blog name can only have letters, digits and -',
+      blog: 'Blog',
+      state: 'Publish as',
+      setCanonical: 'Link the original',
+      httpUrl: 'Enter a URL starting with http(s)://',
+      canonicalUrl: 'Original link',
+      slugHint: 'Only lowercase letters, digits and -',
+      slug: 'URL slug',
+      idDigits: 'The post ID is a number',
+      externalId: 'Published post ID',
+    },
+    binding: [
+      'Click “Authorize with Tumblr” and allow StarNote to post for you on the Tumblr page',
+      'Back in StarNote, pick the blog to publish to',
+      'Desktop app: the token is stored encrypted on this computer; web: the token lives only in this page and is gone when you close it; it’s stored on the StarNote server only with Cloud relay on',
+      'When you no longer need it, revoke StarNote under Settings → Apps on Tumblr',
+    ],
+    noDivider: (n) => `Tumblr has no dividers; ${n} removed`,
+    noTable: (n) =>
+      `Tumblr has no tables; ${n} ${n === 1 ? 'table' : 'tables'} turned into text row by row (cells separated by |)`,
+    code: (n) =>
+      `${n} ${n === 1 ? 'code block' : 'code blocks'} turned into monospace text (no highlighting)`,
+    imageSkipped: (n) =>
+      `${n} ${n === 1 ? 'image has' : 'images have'} no reachable URL and ${n === 1 ? 'was' : 'were'} removed`,
+    source:
+      'Tumblr has no canonical link: the post’s source (source_url) is set to the StarNote original, with a link card at the end',
+    imagesTrimmed: (max, dropped) =>
+      `Tumblr takes at most ${max} images per post; ${dropped} removed`,
+    bodyTruncated: (max) => `The body has more than ${max} blocks and was shortened`,
+    imagesUpload: (n) => `${n} ${n === 1 ? 'image' : 'images'} will be uploaded to Tumblr`,
+    queue: 'Added to your Tumblr queue; it goes out at the queue’s times',
+    private: 'Published as a private post that only you can see',
+    draft: 'Saved as a Tumblr draft',
+    publishing: 'Publishing to Tumblr',
+    done: 'Done',
+  },
+});

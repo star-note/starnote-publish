@@ -1,0 +1,92 @@
+/** SPEC-r14 B5: the Pinterest adapter's user-visible texts (form labels, binding help, report, progress). */
+import { defineMessages } from '@starnote/publish-core';
+
+const zhCN = {
+  form: {
+    boardDigits: '画板 ID 是数字',
+    board: '画板',
+    text: '描述',
+    httpUrl: '请填写以 http(s):// 开头的地址',
+    link: '链接',
+    includeSummary: '带上摘要',
+    includeTags: '带上话题',
+    altText: '图片描述',
+  },
+  selectBoard: '选择要发到的画板',
+  binding: [
+    '点「用 Pinterest 授权」，在 Pinterest 页面允许辰记创建 Pin、读取画板',
+    '回到辰记选择默认画板（发布时也可以换）',
+    '桌面端：令牌加密存在本机；网页：令牌只在当前页面；打开「云端代发」才会存到辰记服务器',
+    '不用时到 Pinterest「设置 → 安全与登录 → 已连接的应用」移除辰记',
+  ],
+  needsImage: 'Pinterest 的 Pin 需要一张 https 图片：给笔记加封面后再试',
+  needsBoard: '还没有选择画板：在绑定 Pinterest 时选择默认画板，或在表单里填写画板',
+  titleTruncated: (max: number) => `Pin 标题最多 ${max} 字，已截短`,
+  descriptionTruncated: (max: number) => `Pin 描述最多 ${max} 字，已截短`,
+  coverFallback: '没有封面图，用正文第一张图做 Pin 图片',
+  linkCard: '点开 Pin 会跳到辰记原文',
+  empty: 'Pin 没有标题和描述',
+  creating: '在 Pinterest 建 Pin',
+  done: '完成',
+};
+
+export const msg = defineMessages<typeof zhCN>({
+  'zh-CN': zhCN,
+  'zh-TW': {
+    form: {
+      boardDigits: '圖版 ID 是數字',
+      board: '圖版',
+      text: '描述',
+      httpUrl: '請填寫以 http(s):// 開頭的網址',
+      link: '連結',
+      includeSummary: '附上摘要',
+      includeTags: '附上主題標籤',
+      altText: '圖片替代文字',
+    },
+    selectBoard: '選擇要發到的圖版',
+    binding: [
+      '按「用 Pinterest 授權」，在 Pinterest 頁面允許辰記建立 Pin、讀取圖版',
+      '回到辰記選擇預設圖版（發布時也可以換）',
+      '桌面版：權杖加密存在本機；網頁：權杖只在目前頁面；開啟「雲端代發」才會存到辰記伺服器',
+      '不用時到 Pinterest「設定 → 安全性與登入 → 已連結的應用程式」移除辰記',
+    ],
+    needsImage: 'Pinterest 的 Pin 需要一張 https 圖片：替筆記加上封面後再試',
+    needsBoard: '還沒有選擇圖版：在綁定 Pinterest 時選擇預設圖版，或在表單裡填寫圖版',
+    titleTruncated: (max) => `Pin 標題最多 ${max} 字，已截短`,
+    descriptionTruncated: (max) => `Pin 描述最多 ${max} 字，已截短`,
+    coverFallback: '沒有封面圖，用內文第一張圖當 Pin 圖片',
+    linkCard: '點開 Pin 會跳到辰記原文',
+    empty: 'Pin 沒有標題和描述',
+    creating: '在 Pinterest 建立 Pin',
+    done: '完成',
+  },
+  en: {
+    form: {
+      boardDigits: 'The board ID is a number',
+      board: 'Board',
+      text: 'Description',
+      httpUrl: 'Enter a URL starting with http(s)://',
+      link: 'Link',
+      includeSummary: 'Include the summary',
+      includeTags: 'Include hashtags',
+      altText: 'Image alt text',
+    },
+    selectBoard: 'Choose the board to pin to',
+    binding: [
+      'Click “Authorize with Pinterest” and allow StarNote to create Pins and read your boards',
+      'Back in StarNote, choose a default board (you can change it when publishing)',
+      'Desktop app: the token is stored encrypted on this computer; web: it stays in this page only; it’s stored on the StarNote server only with Cloud relay on',
+      'When you no longer need it, remove StarNote under Pinterest Settings → Security and logins → Connected apps',
+    ],
+    needsImage: 'A Pinterest Pin needs an https image: add a cover to the note and try again',
+    needsBoard:
+      'No board chosen yet: pick a default board when connecting Pinterest, or enter one in the form',
+    titleTruncated: (max) => `Pin titles allow at most ${max} characters; shortened`,
+    descriptionTruncated: (max) => `Pin descriptions allow at most ${max} characters; shortened`,
+    coverFallback: 'No cover image: the first image in the body is used for the Pin',
+    linkCard: 'Opening the Pin leads to the StarNote original',
+    empty: 'The Pin has no title or description',
+    creating: 'Creating the Pin on Pinterest',
+    done: 'Done',
+  },
+});

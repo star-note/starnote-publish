@@ -5,11 +5,14 @@
  * the site script.
  */
 import { interpretSessionCheck, sessionPartition } from './desktop-session';
+import { localizedLabel } from './i18n/labels';
+import { coreMessages } from './i18n/messages';
 import { loadSiteScript, peekSiteScript } from './site-script';
 import { createSessionClient, PlatformSessionError } from './session-client';
 
 import type { AccountRef } from './binding';
 import type { SessionCheckResult, SessionFetch, SessionPage } from './desktop-session';
+import type { SdkLang } from './i18n/lang';
 import type { ReportItem } from './report';
 import type { SignedSiteScript, SiteScript } from './site-script';
 import type { SessionClient } from './session-client';
@@ -35,6 +38,7 @@ export interface SessionRun {
   account: AccountRef;
 }
 
+/** The `zh-CN` prompt; `coreMessages(lang).session.challengePrompt` in other languages. */
 export const CHALLENGE_PROMPT = '请在窗口中完成验证';
 
 /**
@@ -44,11 +48,12 @@ export const CHALLENGE_PROMPT = '请在窗口中完成验证';
  */
 export function withChallengeHandover(
   client: SessionClient,
-  ctx: Pick<PublishContext, 'page' | 'needInput' | 'emit'>,
+  ctx: Pick<PublishContext, 'page' | 'needInput' | 'emit' | 'lang'>,
   label: string,
   maxHandovers = 2
 ): SessionClient {
   let seq = 0;
+  const m = coreMessages(ctx.lang).session;
   return {
     partition: client.partition,
     has: (name) => client.has(name),
@@ -60,21 +65,18 @@ export function withChallengeHandover(
           if (!(e instanceof PlatformSessionError) || e.kind !== 'challenge') throw e;
           const page = ctx.page ? asSessionPage(await ctx.page(client.partition)) : null;
           if (!page || handed >= maxHandovers)
-            throw new PlatformSessionError(
-              'help',
-              `${label}要求完成验证，请在${label}网页上完成后重试`,
-              {
-                ...(e.challengeUrl ? { helpUrl: e.challengeUrl } : {}),
-              }
-            );
+            throw new PlatformSessionError('help', m.challengeNoWindow(label), {
+              ...(e.challengeUrl ? { helpUrl: e.challengeUrl } : {}),
+              ...(ctx.lang ? { lang: ctx.lang } : {}),
+            });
           if (e.challengeUrl) await page.goto(e.challengeUrl);
           await page.show();
           ctx.emit({
             type: 'log',
             level: 'warn',
-            text: `${label}要求验证，已暂停，等你在窗口中完成`,
+            text: m.challengePaused(label),
           });
-          await ctx.needInput({ id: `verify-${++seq}`, kind: 'confirm', title: CHALLENGE_PROMPT });
+          await ctx.needInput({ id: `verify-${++seq}`, kind: 'confirm', title: m.challengePrompt });
         }
       }
     },
@@ -92,6 +94,11 @@ export async function openSessionRun(
   bundled: SignedSiteScript,
   opts: SessionAdapterOptions = {}
 ): Promise<SessionRun> {
+  // SPEC-r14 B5: messages in the user's language, with the platform's name in it
+  const lang = ctx.lang;
+  const L = lang ? { lang } : {};
+  const m = coreMessages(lang).session;
+  label = localizedLabel(platform, label, lang);
   let script: SiteScript;
   if (opts.siteScript) script = await opts.siteScript(ctx);
   else {
@@ -101,28 +108,26 @@ export async function openSessionRun(
       apiBase: ctx.apiBase,
       remote: opts.remoteScript !== false,
       ...(opts.publicKeys ? { publicKeys: opts.publicKeys } : {}),
+      ...L,
     });
     for (const w of loaded.warnings) ctx.emit({ type: 'log', level: 'warn', text: w });
     script = loaded.script;
   }
   const helpUrl = script.urls.help ?? script.urls.home;
   if (script.flags?.disabled)
-    throw new PlatformSessionError(
-      'help',
-      `${label}的自动发布暂时停用（平台改版处理中），请复制后手动发布`,
-      {
-        helpUrl,
-      }
-    );
+    throw new PlatformSessionError('help', m.disabled(label), {
+      helpUrl,
+      ...L,
+    });
   if (!ctx.sessionFetch)
-    throw new PlatformSessionError('help', `${label}只能在辰记桌面端发布`, { helpUrl });
+    throw new PlatformSessionError('help', m.desktopOnly(label), { helpUrl, ...L });
   const account = ctx.account;
   if (!account || account.platform !== platform)
-    throw new PlatformSessionError('relogin', `还没有在桌面端登录${label}`, { helpUrl });
+    throw new PlatformSessionError('relogin', m.notLoggedIn(label), { helpUrl, ...L });
   const partition = sessionPartition(platform, account.id);
   // Pacing (serial per account, natural gaps, post gate, back-off) is enforced by the desktop's sessionFetch.
   const client = withChallengeHandover(
-    createSessionClient({ script, partition, sessionFetch: ctx.sessionFetch, label }),
+    createSessionClient({ script, partition, sessionFetch: ctx.sessionFetch, label, ...L }),
     ctx,
     label
   );
@@ -135,7 +140,10 @@ export function bundledScript(bundled: SignedSiteScript): SiteScript {
 }
 
 export interface RehostOptions {
+  /** The platform's name in the report (in `lang`). */
   label: string;
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang;
   /** Images already on the platform (its CDN, formula images): skipped. */
   skip?: (url: string) => boolean;
   assetBase?: string;
@@ -168,12 +176,13 @@ export async function rehostImages(
   let rehosted = 0;
   const todo = srcs.filter((s) => !opts.skip?.(s));
   let done = 0;
+  const m = coreMessages(opts.lang).session;
   for (const src of todo) {
     const abs = absoluteImageUrl(src, opts.assetBase);
     try {
-      if (!abs) throw new Error('不是可访问的图片地址');
+      if (!abs) throw new Error(m.badImageUrl);
       const url = await upload(abs);
-      if (!url) throw new Error('平台没有返回图片地址');
+      if (!url) throw new Error(m.noImageUrl);
       map.set(src, url);
       rehosted++;
     } catch (e) {
@@ -186,14 +195,14 @@ export async function rehostImages(
   if (rehosted)
     report.push({
       kind: 'image.rehosted',
-      text: `${rehosted} 张图片已上传到${opts.label}`,
+      text: m.imagesUploaded(rehosted, opts.label),
       count: rehosted,
       level: 'info',
     });
   if (failed.length)
     report.push({
       kind: 'image.failed',
-      text: `${failed.length} 张图片转存到${opts.label}失败，已保留原图链接（原图失效或被防盗链时会显示不出来）`,
+      text: m.imagesFailed(failed.length, opts.label),
       count: failed.length,
       level: 'warn',
       samples: failed.slice(0, 3),
@@ -272,24 +281,36 @@ export async function handOffEditor(
 }
 
 /** The report line for a prefill hand-off. */
-export function handoffReport(res: EditorHandoffResult, label: string): ReportItem[] {
+export function handoffReport(
+  res: EditorHandoffResult,
+  label: string,
+  /** SPEC-r14 B5: language of the line (pass `label` in it too). Default `zh-CN`. */
+  lang?: SdkLang
+): ReportItem[] {
   const items: ReportItem[] = [];
+  const m = coreMessages(lang).session;
   if (res.via === 'none')
     items.push({
       kind: 'prefill.failed',
-      text: `没有可用的桌面窗口，请复制内容到${label}编辑器里粘贴`,
+      text: m.noWindow(label),
       level: 'warn',
     });
   else if (res.filled && (!res.filled.title || !res.filled.body))
     items.push({
       kind: 'prefill.failed',
-      text: `没能自动填入${res.filled.body ? '标题' : res.filled.title ? '正文' : '标题和正文'}，请从辰记复制后粘贴到${label}编辑器`,
+      text: m.partFilled(res.filled.body ? 'title' : res.filled.title ? 'body' : 'both', label),
       level: 'warn',
     });
   return items;
 }
 
+/** The `zh-CN` text; `handoffFilledText(lang)` in other languages. */
 export const HANDOFF_FILLED_TEXT = '已填好，请在窗口中检查后点发布';
+
+/** 「已填好，请在窗口中检查后点发布」 in `lang` (SPEC-r14 B5). */
+export function handoffFilledText(lang?: SdkLang | string): string {
+  return coreMessages(lang).session.filled;
+}
 
 export function asSessionPage(page: unknown): SessionPage | null {
   const p = page as Partial<SessionPage> | null;
@@ -302,16 +323,18 @@ export function asSessionPage(page: unknown): SessionPage | null {
 export async function verifySession(
   script: SiteScript,
   sessionFetch: SessionFetch,
-  partition: string
+  partition: string,
+  /** SPEC-r14 B5: language of `detail`. Default `zh-CN`. */
+  lang?: SdkLang
 ): Promise<SessionCheckResult> {
   const check = script.session?.check;
-  if (!check) return { state: 'error', detail: '站点脚本没有检查接口' };
+  if (!check) return { state: 'error', detail: coreMessages(lang).session.noCheckEndpoint };
   try {
     const res = await sessionFetch(partition, check.url, {
       method: 'GET',
       ...(check.csrf ? { csrf: check.csrf } : {}),
     });
-    return interpretSessionCheck(check, res);
+    return interpretSessionCheck(check, res, lang);
   } catch (e) {
     return { state: 'error', detail: e instanceof Error ? e.message : String(e) };
   }

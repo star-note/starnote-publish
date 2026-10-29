@@ -30,18 +30,21 @@
  * Review; LinkedIn 要申请产品权限; Pinterest 见上). Reddit's share-intent stays as the fallback of the OAuth adapter
  * (`@starnote/publish-reddit`) while its app is not approved.
  */
-import { defineAdapter, visibleLinkOf } from '@starnote/publish-core';
+import { byLang, defineAdapter, localizedLabel, visibleLinkOf } from '@starnote/publish-core';
 import {
   codePoints,
   guard,
   helpError,
   linkCost,
+  refIn,
   threadsLength,
   truncate,
   weiboLength,
   xWeightedLength,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
+
+import { msg } from './i18n';
 
 import type {
   Adapter,
@@ -53,6 +56,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef } from '@starnote/publish-kit';
 
@@ -330,10 +334,15 @@ function qs(params: Record<string, string | undefined>): string {
   return q.toString();
 }
 
-/** Pure: the URL to open and the text to copy for one platform. */
-export function buildShare(key: ShareKey, input: ShareInput): ShareResult {
+/**
+ * Pure: the URL to open and the text to copy for one platform. `uiLang` (SPEC-r14 B5): language of the report
+ * (default `zh-CN`); `input.lang` is the article's language and never changes the post text's wording.
+ */
+export function buildShare(key: ShareKey, input: ShareInput, uiLang?: SdkLang): ShareResult {
   const p = SHARE_PLATFORMS[key];
   const report: ReportItem[] = [];
+  const t = msg(uiLang);
+  const name = localizedLabel(key, p.label, uiLang);
   const link = input.link;
 
   if (p.via === 'import-url') {
@@ -341,12 +350,12 @@ export function buildShare(key: ShareKey, input: ShareInput): ShareResult {
       {
         kind: 'handoff.pending',
         level: 'notice',
-        text: '已生成 Medium 导入链接，需你在新窗口粘贴原文链接并确认导入',
+        text: t.mediumPending,
         detail: { via: p.via, openUrl: p.base, copyText: link },
       },
       {
         kind: 'canonical.set',
-        text: 'Medium 导入会自动把 canonical 指回辰记原文',
+        text: t.mediumCanonical,
         detail: { url: link },
       }
     );
@@ -429,7 +438,7 @@ export function buildShare(key: ShareKey, input: ShareInput): ShareResult {
     report.push({
       kind: 'share.truncated',
       level: 'notice',
-      text: `分享文案按 ${p.label} 上限${p.limitNote ? ` ${p.limitNote}` : ` ${p.limit} 字`}截短`,
+      text: t.truncated(name, t.limitNote[key] ?? t.limitChars(p.limit ?? 0)),
       samples: [input.text ?? input.title],
     });
   const dropped = [...fit.droppedTags, ...overLimit];
@@ -437,7 +446,7 @@ export function buildShare(key: ShareKey, input: ShareInput): ShareResult {
     report.push({
       kind: 'tags.trimmed',
       level: 'info',
-      text: `${p.label} 最多带 ${p.maxTags} 个话题，去掉 ${dropped.length} 个`,
+      text: t.tagsTrimmed(name, p.maxTags, dropped.length),
       count: dropped.length,
       samples: dropped.slice(0, 3),
     });
@@ -445,17 +454,17 @@ export function buildShare(key: ShareKey, input: ShareInput): ShareResult {
     report.push({
       kind: 'share.no-image',
       level: 'notice',
-      text: '没有封面图：Pinterest 会让你从原文页面里挑一张图',
+      text: t.pinterestNoImage,
     });
   if (p.textSlot === 'clipboard')
     report.push({
       kind: 'share.copy',
-      text: `${p.label} 的分享页只接收链接，文案已备好，请在分享框里粘贴`,
+      text: t.clipboard(name),
     });
   report.push({
     kind: 'handoff.pending',
     level: 'notice',
-    text: '已生成分享链接，需你在新窗口确认发出',
+    text: t.pending,
     detail: { via: p.via, openUrl, copyText, verified: p.verified },
   });
   return {
@@ -471,30 +480,39 @@ export function buildShare(key: ShareKey, input: ShareInput): ShareResult {
 
 /* ---------------- adapters ---------------- */
 
-const baseFields = {
-  /** Your own copy (instead of title + summary); still fitted to the limit. */
-  text: z.string().trim().max(5000).optional().describe('分享文案'),
-  /** The page to share; default the 辰记 original. */
-  link: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('分享链接'),
-  include_summary: z.boolean().default(true).describe('带上摘要'),
-  include_tags: z.boolean().default(true).describe('带上话题'),
-};
+function baseFields(lang: SdkLang) {
+  const t = msg(lang).form;
+  return {
+    /** Your own copy (instead of title + summary); still fitted to the limit. */
+    text: z.string().trim().max(5000).optional().describe(t.text),
+    /** The page to share; default the 辰记 original. */
+    link: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.link),
+    include_summary: z.boolean().default(true).describe(t.includeSummary),
+    include_tags: z.boolean().default(true).describe(t.includeTags),
+  };
+}
 
-export const shareSchema = z.object(baseFields);
-export const redditShareSchema = z.object({
-  ...baseFields,
-  subreddit: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9_]{2,21}$/, '版块名只能是字母、数字和下划线')
-    .optional()
-    .describe('版块（r/…）'),
-});
+/** The forms in a language (SPEC-r14 B5). */
+export const shareSchemaFor = byLang((lang) => z.object(baseFields(lang)));
+export const redditShareSchemaFor = byLang((lang) =>
+  z.object({
+    ...baseFields(lang),
+    subreddit: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9_]{2,21}$/, msg(lang).form.subredditFormat)
+      .optional()
+      .describe(msg(lang).form.subreddit),
+  })
+);
+
+export const shareSchema = shareSchemaFor('zh-CN');
+export const redditShareSchema = redditShareSchemaFor('zh-CN');
 
 export type ShareForm = z.infer<typeof shareSchema> & { subreddit?: string | undefined };
 
@@ -522,14 +540,16 @@ export interface ShareAdapterOptions {
 }
 
 function handoffRuntimes(p: SharePlatform): RuntimeSupport[] {
+  const note = (lang: SdkLang) =>
+    p.via === 'import-url'
+      ? msg(lang).noteImport
+      : msg(lang).noteShare(localizedLabel(p.key, p.label, lang));
   return (['web', 'electron', 'server'] as const).map((runtime) => ({
     runtime,
     mode: 'handoff' as const,
     handoff: { via: p.via, url: p.base },
-    note:
-      p.via === 'import-url'
-        ? '先发到辰记，再用 Import story 导入'
-        : `打开${p.label}的分享页，由你确认发出`,
+    note: note('zh-CN'),
+    notes: { 'zh-TW': note('zh-TW'), en: note('en') },
   }));
 }
 
@@ -551,7 +571,9 @@ export function shareInputOf(
   form: ShareForm,
   common: CommonFormShape,
   content: PublishContent | undefined,
-  opts: Pick<ShareAdapterOptions, 'facebookAppId' | 'assetBase'> = {}
+  opts: Pick<ShareAdapterOptions, 'facebookAppId' | 'assetBase'> = {},
+  /** SPEC-r14 B5: language of `error`. Default `zh-CN`. */
+  uiLang?: SdkLang
 ): ShareInput | { error: string } {
   const article = content?.kind === 'article' ? content : undefined;
   const short = content?.kind === 'short-text' ? content : undefined;
@@ -559,7 +581,7 @@ export function shareInputOf(
   // canonical link (its import sets the canonical from it)
   const link =
     form.link || (key === 'medium' ? article?.canonicalUrl || short?.link : visibleLinkOf(content));
-  if (!link) return { error: '还没有可分享的链接：先发布到辰记（或在表单里填写链接）' };
+  if (!link) return { error: msg(uiLang).noLink };
   const d = article?.doc ?? doc;
   const text = form.text || short?.thread?.[0] || short?.text || undefined;
   const picture =
@@ -583,6 +605,8 @@ export function createShareAdapter(key: ShareKey, opts: ShareAdapterOptions = {}
   const p = SHARE_PLATFORMS[key];
   const ref: PlatformRef = { key, label: p.label, ...(opts.links ? { links: opts.links } : {}) };
   const schema = key === 'reddit' ? redditShareSchema : shareSchema;
+  const schemaFor = (lang: SdkLang) =>
+    key === 'reddit' ? redditShareSchemaFor(lang) : shareSchemaFor(lang);
   const kinds: ContentKind[] = key === 'medium' ? ['article'] : ['short-text', 'article'];
 
   return defineAdapter({
@@ -593,13 +617,16 @@ export function createShareAdapter(key: ShareKey, opts: ShareAdapterOptions = {}
     binding: { kind: 'none', store: 'none' },
     capabilities: { supportsUpdate: false, needsLogin: false },
     schema,
+    schemaFor,
     preview(
       doc: Doc,
       form: ShareForm,
       common: CommonFormShape = {},
-      content?: PublishContent
+      content?: PublishContent,
+      popts?: { lang?: SdkLang }
     ): AdapterPreview {
-      const input = shareInputOf(key, doc, form, common, content, opts);
+      const lang = popts?.lang;
+      const input = shareInputOf(key, doc, form, common, content, opts, lang);
       if ('error' in input)
         return {
           format: 'text',
@@ -607,7 +634,7 @@ export function createShareAdapter(key: ShareKey, opts: ShareAdapterOptions = {}
           body: '',
           report: [{ kind: 'share.no-link', level: 'warn', text: input.error }],
         };
-      const r = buildShare(key, input);
+      const r = buildShare(key, input, lang);
       return {
         format: 'text',
         title: input.title,
@@ -617,10 +644,10 @@ export function createShareAdapter(key: ShareKey, opts: ShareAdapterOptions = {}
       };
     },
     // SPEC-r11 §12: the reminder a scheduled hand-off task opens (rule-based copy; the AI rewrite runs only on click).
-    renderHandoff({ doc, form, common, content }) {
-      const input = shareInputOf(key, doc, form as ShareForm, common, content, opts);
+    renderHandoff({ doc, form, common, content, lang }) {
+      const input = shareInputOf(key, doc, form as ShareForm, common, content, opts, lang);
       if ('error' in input) throw new Error(input.error);
-      const r = buildShare(key, input);
+      const r = buildShare(key, input, lang);
       return {
         handoff: { via: r.via, openUrl: r.openUrl, copyText: r.copyText },
         report: r.report,
@@ -628,12 +655,15 @@ export function createShareAdapter(key: ShareKey, opts: ShareAdapterOptions = {}
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const input = shareInputOf(key, doc, form as ShareForm, common, content, opts);
-        if ('error' in input) throw helpError(ref, input.error, { code: 'no_link' });
+        const lang = ctx.lang;
+        const t = msg(lang);
+        const name = localizedLabel(key, p.label, lang);
+        const input = shareInputOf(key, doc, form as ShareForm, common, content, opts, lang);
+        if ('error' in input) throw helpError(refIn(ref, lang), input.error, { code: 'no_link' });
         const extra: ReportItem[] = [];
         if (opts.rewrite && !input.text && p.via === 'share-intent') {
           try {
-            ctx.emit({ type: 'progress', percent: 30, text: `AI 改写${p.label}文案` });
+            ctx.emit({ type: 'progress', percent: 30, text: t.aiRewriting(name) });
             const text = await opts.rewrite(
               {
                 platform: key,
@@ -650,21 +680,21 @@ export function createShareAdapter(key: ShareKey, opts: ShareAdapterOptions = {}
             );
             if (text?.trim()) {
               input.text = text.trim();
-              extra.push({ kind: 'summary.generated', text: `${p.label} 分享文案由 AI 改写` });
+              extra.push({ kind: 'summary.generated', text: t.aiRewritten(name) });
             }
           } catch (e) {
             if (ctx.signal.aborted) throw e;
             ctx.emit({
               type: 'log',
               level: 'warn',
-              text: `AI 改写失败，改用规则生成：${(e as Error).message}`,
+              text: t.aiFailed((e as Error).message),
             });
           }
         }
-        const r = buildShare(key, input);
+        const r = buildShare(key, input, lang);
         const report = [...extra, ...r.report];
         ctx.emit({ type: 'report', items: report });
-        ctx.emit({ type: 'progress', percent: 100, text: '分享链接已生成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: '',
           state: 'handoff' as const,

@@ -15,7 +15,7 @@
  *
  * Browser-safe: render + relay body only; 辰记's Python API holds the key and calls Buttondown (服务器代发).
  */
-import { defineAdapter, mediaReport, mergeReports } from '@starnote/publish-core';
+import { byLang, defineAdapter, mediaReport, mergeReports } from '@starnote/publish-core';
 import {
   absoluteUrl,
   articleOf,
@@ -36,6 +36,8 @@ import {
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
+import { msg } from './i18n';
+
 import type {
   Adapter,
   AdapterPreview,
@@ -46,6 +48,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
   StatsContext,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
@@ -65,46 +68,46 @@ const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$
 /** Email ids: UUIDs, or TypeIDs (`em_…`) since API version 2026-01-01. */
 const EMAIL_ID = /^[A-Za-z0-9_-]{8,80}$/;
 
-export const buttondownSchema = z.object({
-  status: z.enum(['draft', 'scheduled']).default('draft').describe('发送方式'),
-  publish_date: z
-    .string()
-    .trim()
-    .regex(ISO, '请填写带时区的时间，如 2026-11-01T09:00:00+08:00')
-    .optional()
-    .describe('定时发送时间'),
-  slug: z
-    .string()
-    .trim()
-    .regex(/^[a-z0-9][a-z0-9-]{0,99}$/, '只能用小写字母、数字和 -')
-    .optional()
-    .describe('网址'),
-  set_canonical: z.boolean().default(true).describe('设置原文链接'),
-  canonical_url: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('原文链接'),
-  origin_note: z.boolean().default(false).describe('文末注明原文'),
-  external_id: z
-    .string()
-    .trim()
-    .regex(EMAIL_ID, '邮件 ID 格式不对')
-    .optional()
-    .describe('已建邮件 ID'),
+export const buttondownSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    status: z.enum(['draft', 'scheduled']).default('draft').describe(t.status),
+    publish_date: z.string().trim().regex(ISO, t.isoTime).optional().describe(t.publishDate),
+    slug: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9][a-z0-9-]{0,99}$/, t.slugRule)
+      .optional()
+      .describe(t.slug),
+    set_canonical: z.boolean().default(true).describe(t.setCanonical),
+    canonical_url: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.canonicalUrl),
+    origin_note: z.boolean().default(false).describe(t.originNote),
+    external_id: z.string().trim().regex(EMAIL_ID, t.emailId).optional().describe(t.externalId),
+  });
 });
+
+export const buttondownSchema = buttondownSchemaFor('zh-CN');
 
 export type ButtondownForm = z.infer<typeof buttondownSchema>;
 export type ButtondownFormInput = z.input<typeof buttondownSchema>;
 
-export const buttondownKeyForm = z.object({
-  api_key: z
-    .string()
-    .trim()
-    .regex(/^\S{16,200}$/, '请粘贴 Buttondown 的 API key')
-    .describe('API key'),
+export const buttondownKeyFormFor = byLang((lang) => {
+  const k = msg(lang).key;
+  return z.object({
+    api_key: z
+      .string()
+      .trim()
+      .regex(/^\S{16,200}$/, k.apiKeyHint)
+      .describe(k.apiKey),
+  });
 });
+
+export const buttondownKeyForm = buttondownKeyFormFor('zh-CN');
 
 export const buttondownBinding: BindingSpec = {
   kind: 'token',
@@ -112,13 +115,11 @@ export const buttondownBinding: BindingSpec = {
   provider: 'buttondown',
   fields: ['api_key'],
   form: buttondownKeyForm,
+  formFor: buttondownKeyFormFor,
   createUrl: 'https://buttondown.com/requests',
   helpUrl: 'https://docs.buttondown.com/api-introduction',
-  instructions: [
-    '打开 Buttondown 的 API requests 页（Settings → API），复制 API key',
-    '粘贴到这里并点「测试连接」',
-    '辰记只建草稿或定时邮件，不会直接群发；在 Buttondown 里检查后发送',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 export interface ButtondownEmailBody {
@@ -148,9 +149,12 @@ export function renderButtondown(
   form: ButtondownForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  /** `lang` (SPEC-r14 B5): language of the report. Default `zh-CN`. */
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): ButtondownRendered {
   const article = articleOf(doc, content);
+  const lang = opts.lang;
+  const m = msg(lang);
   const degraded = degradeArticle(
     article.doc,
     {
@@ -162,43 +166,45 @@ export function renderButtondown(
       stripHighlight: true,
       ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
     },
-    'Buttondown'
+    'Buttondown',
+    lang
   );
   const title = fitTitle(
     common.title || article.doc.title || 'Untitled',
     BUTTONDOWN_LIMITS.subjectMax,
-    'Buttondown'
+    'Buttondown',
+    lang
   );
-  const summary = fitSummary(common.summary, BUTTONDOWN_LIMITS.descriptionMax, 'Buttondown');
-  const canonical = canonicalOf(form, article, 'Buttondown');
+  const summary = fitSummary(common.summary, BUTTONDOWN_LIMITS.descriptionMax, 'Buttondown', lang);
+  const canonical = canonicalOf(form, article, 'Buttondown', lang);
   const cover = absoluteUrl(common.cover, opts.assetBase);
-  const report: ReportItem[] = [...mediaReport('buttondown', 'Buttondown', content, common)];
+  const report: ReportItem[] = [...mediaReport('buttondown', 'Buttondown', content, common, lang)];
   let markdown = degraded.body;
   if (form.origin_note && canonical.url) {
     markdown += originNoteMarkdown(originLinkOf(form, article, canonical.url), article.lang);
-    report.push({ kind: 'origin.note', text: '邮件末尾注明首发于辰记并附原文链接' });
+    report.push({ kind: 'origin.note', text: m.originNote });
   }
   report.push(
     ...degraded.report,
-    ...linkedImagesReport(degraded.doc.images.length, 'Buttondown'),
+    ...linkedImagesReport(degraded.doc.images.length, 'Buttondown', lang),
     ...title.report,
     ...summary.report,
     ...canonical.report
   );
   const scheduled = form.status === 'scheduled';
   if (scheduled && !form.publish_date)
-    report.push({ kind: 'schedule.missing', level: 'error', text: '定时发送需要填写时间' });
+    report.push({ kind: 'schedule.missing', level: 'error', text: m.scheduleMissing });
   report.push(
     scheduled
       ? {
           kind: 'scheduled',
           level: 'notice',
-          text: `Buttondown 将在 ${form.publish_date ?? '指定时间'} 发给订阅者`,
+          text: m.scheduled(form.publish_date),
         }
       : {
           kind: 'draft.only',
           level: 'notice',
-          text: '存为 Buttondown 草稿，在 Buttondown 里检查后发送',
+          text: m.draftOnly,
         }
   );
 
@@ -298,7 +304,10 @@ export function createButtondownAdapter(
   opts: ButtondownAdapterOptions = {}
 ): Adapter<typeof buttondownSchema> {
   const ref = buttondownRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'buttondown',
     label: 'Buttondown',
@@ -311,12 +320,13 @@ export function createButtondownAdapter(
       titleMax: BUTTONDOWN_LIMITS.subjectMax,
     },
     schema: buttondownSchema,
+    schemaFor: buttondownSchemaFor,
     statsRequires: 'token',
     fetchStats(externalId, ctx) {
       return fetchButtondownStats(externalId, ctx);
     },
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderButtondown(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderButtondown(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'markdown',
         title: r.title,
@@ -325,17 +335,17 @@ export function createButtondownAdapter(
         report: r.report,
       };
     },
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderButtondown(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderButtondown(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(buttondownRelayBody(r), previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderButtondown(doc, form, common, content, renderOpts);
+        const r = renderButtondown(doc, form, common, content, renderOpts(ctx.lang));
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '由服务器代发到 Buttondown' });
+        ctx.emit({ type: 'progress', percent: 40, text: msg(ctx.lang).relaying });
         const res = await relayPublish(ctx, ref, buttondownRelayBody(r), form.external_id);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: msg(ctx.lang).done });
         return {
           url: res.url,
           externalId: res.externalId,

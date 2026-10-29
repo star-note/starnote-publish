@@ -2,7 +2,9 @@ import { escapeHtml } from '@starnote/publish-core';
 
 import { GENERATOR, postFileName, postUrl, resolveLayout, siteBaseUrl } from './layout';
 
-import type { CommonFormShape, Doc, ReportItem } from '@starnote/publish-core';
+import { msg } from './i18n';
+
+import type { CommonFormShape, Doc, ReportItem, SdkLang } from '@starnote/publish-core';
 import type { GithubPagesLayout } from './layout';
 import type { GithubPagesForm } from './schema';
 
@@ -28,6 +30,8 @@ export interface RenderPostInput {
   assets?: ReadonlyMap<string, string>;
   layout?: Partial<GithubPagesLayout>;
   now?: Date;
+  /** SPEC-r14 B5: language of the report (the post itself is not translated). Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 export interface RenderedFile {
@@ -148,15 +152,16 @@ export function renderPost(input: RenderPostInput): RenderedPost {
   });
 
   const report: ReportItem[] = [];
+  const m = msg(input.lang).render;
   if (versions.length > 1) {
     const langs = versions.filter((v) => !v.main).map((v) => v.lang);
     report.push({
       kind: 'translated',
-      text: `同时发布了 ${langs.join('、')} 版`,
+      text: m.translated(langs.join(m.langSeparator)),
       count: langs.length,
     });
   }
-  if (useChenji) report.push({ kind: 'canonical.set', text: '规范链接指向辰记原文' });
+  if (useChenji) report.push({ kind: 'canonical.set', text: m.canonicalChenji });
 
   return { postId, dir, files, url: urls[form.lang] ?? `${base}/${postId}/`, urls, report };
 }

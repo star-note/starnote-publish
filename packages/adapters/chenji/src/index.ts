@@ -1,4 +1,7 @@
+import { byLang } from '@starnote/publish-core';
 import { z } from 'zod';
+
+import { msg } from './i18n';
 
 import type {
   Adapter,
@@ -15,13 +18,18 @@ import type {
  * The blog's own category (SPEC-r3 §A): an existing one by id, or a new one by name — the API
  * creates it on first use. Blog categories are the blogger's free-form 栏目, not the public taxonomy.
  */
-export const blogCategoryRef = z.union(
-  [
-    z.object({ id: z.string().min(1, '请选择分类') }),
-    z.object({ name: z.string().trim().min(1, '请输入分类名').max(40, '分类名最多 40 个字符') }),
-  ],
-  { error: '请选择分类' }
-);
+export const blogCategoryRefFor = byLang((lang) => {
+  const t = msg(lang);
+  return z.union(
+    [
+      z.object({ id: z.string().min(1, t.pickCategory) }),
+      z.object({ name: z.string().trim().min(1, t.categoryName).max(40, t.categoryNameMax) }),
+    ],
+    { error: t.pickCategory }
+  );
+});
+
+export const blogCategoryRef = blogCategoryRefFor('zh-CN');
 
 export type BlogCategoryRef = z.infer<typeof blogCategoryRef>;
 
@@ -38,13 +46,20 @@ export const translationSchema = z.object({
 });
 export type ChenjiTranslation = z.infer<typeof translationSchema>;
 
-export const chenjiSchema = z.object({
-  category: blogCategoryRef.describe('分类'),
-  visibility: z.enum(VISIBILITIES).default('public'),
-  show_in_blog: z.boolean().default(true),
-  /** `{en: {...}}` saves / replaces that language, `{en: null}` removes it; absent = unchanged (r9 译文). */
-  translations: z.record(z.string().regex(/^[a-z]{2}(-[A-Za-z]{2,4})?$/), translationSchema.nullable()).optional(),
-});
+/** The form in a language (SPEC-r14 B5). */
+export const chenjiSchemaFor = byLang((lang) =>
+  z.object({
+    category: blogCategoryRefFor(lang).describe(msg(lang).category),
+    visibility: z.enum(VISIBILITIES).default('public'),
+    show_in_blog: z.boolean().default(true),
+    /** `{en: {...}}` saves / replaces that language, `{en: null}` removes it; absent = unchanged (r9 译文). */
+    translations: z
+      .record(z.string().regex(/^[a-z]{2}(-[A-Za-z]{2,4})?$/), translationSchema.nullable())
+      .optional(),
+  })
+);
+
+export const chenjiSchema = chenjiSchemaFor('zh-CN');
 
 export type ChenjiForm = z.infer<typeof chenjiSchema>;
 export type ChenjiFormInput = z.input<typeof chenjiSchema>;
@@ -151,6 +166,7 @@ export const chenjiAdapter: Adapter<typeof chenjiSchema> = {
   binding: CHENJI_BINDING,
   capabilities: { supportsUpdate: true, titleMax: 120 },
   schema: chenjiSchema,
+  schemaFor: chenjiSchemaFor,
 
   /** The blog shows `doc.html` as is; nothing is changed on the way. */
   preview(doc: Doc, _form: ChenjiForm, common: CommonFormShape = {}): AdapterPreview {
@@ -168,9 +184,10 @@ export const chenjiAdapter: Adapter<typeof chenjiSchema> = {
   },
 
   async publish({ doc, form, common, ctx }) {
-    ctx.emit({ type: 'progress', percent: 10, text: '转换正文' });
+    const t = msg(ctx.lang);
+    ctx.emit({ type: 'progress', percent: 10, text: t.converting });
     const body = chenjiBody(doc, form, common);
-    ctx.emit({ type: 'progress', percent: 40, text: '上传到辰记' });
+    ctx.emit({ type: 'progress', percent: 40, text: t.uploading });
     const response = await ctx.fetch(`${ctx.apiBase}/notes/${ctx.noteId}/publish/chenji`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -181,19 +198,18 @@ export const chenjiAdapter: Adapter<typeof chenjiSchema> = {
     try {
       envelope = (await response.json()) as Envelope<ChenjiPublication | null>;
     } catch {
-      throw new ChenjiApiError(
-        `辰记服务返回了无法解析的响应（HTTP ${response.status}）`,
-        response.status
-      );
+      throw new ChenjiApiError(t.unreadable(response.status), response.status);
     }
     if (envelope.code !== 0 || !envelope.data) {
-      throw new ChenjiApiError(envelope.message || `发布失败（${envelope.code}）`, envelope.code);
+      throw new ChenjiApiError(envelope.message || t.failed(envelope.code), envelope.code);
     }
     const publication = envelope.data;
-    ctx.emit({ type: 'progress', percent: 100, text: '发布完成' });
+    ctx.emit({ type: 'progress', percent: 100, text: t.done });
     ctx.emit({ type: 'done', url: publication.url, externalId: publication.id });
     return { url: publication.url, externalId: publication.id };
   },
 };
 
 export default chenjiAdapter;
+
+export { msg as chenjiMessages } from './i18n';

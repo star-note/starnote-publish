@@ -28,7 +28,13 @@ export {
   type WechatMpAdapterOptions,
 } from './adapter';
 export { isWechatImage, renderWechatMp, replaceImageSrcs, type WechatMpRendered } from './render';
-export { wechatMpSchema, type WechatMpForm, type WechatMpFormInput } from './schema';
+export {
+  wechatMpSchema,
+  wechatMpSchemaFor,
+  type WechatMpForm,
+  type WechatMpFormInput,
+} from './schema';
+export { msg as wechatMpMessages } from './i18n';
 
 export const wechatMeta = platformMeta('wechat') as PlatformMeta;
 

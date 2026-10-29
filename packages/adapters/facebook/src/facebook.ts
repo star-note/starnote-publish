@@ -12,7 +12,13 @@
  *
  * Personal timelines have no API. Not bound: the existing sharer.php hand-off (`@starnote/publish-share`).
  */
-import { defineAdapter, mediaReport, mergeReports, platformMeta } from '@starnote/publish-core';
+import {
+  byLang,
+  defineAdapter,
+  mediaReport,
+  mergeReports,
+  platformMeta,
+} from '@starnote/publish-core';
 import {
   cardOf,
   credentialOf,
@@ -23,12 +29,15 @@ import {
   missingLinkReport,
   newPostReport,
   placeLink,
+  refIn,
   relayFollowUp,
   relayPublish,
   relayRequestOf,
 } from '@starnote/publish-kit';
 import { buildShare, shareInputOf } from '@starnote/publish-share';
 import { z } from 'zod';
+
+import { msg } from './i18n';
 
 import type {
   Adapter,
@@ -41,6 +50,7 @@ import type {
   PublishHandoff,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type {
   CredentialSource,
@@ -61,26 +71,27 @@ export const FACEBOOK_LIMITS = {
 
 const URL_RE = /^https?:\/\/\S+$/;
 
-export const facebookSchema = z.object({
-  text: z.string().trim().max(FACEBOOK_LIMITS.cardMessageMax).optional().describe('帖子文案'),
-  link: z
-    .string()
-    .trim()
-    .regex(URL_RE, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('链接'),
-  include_summary: z.boolean().default(true).describe('带上摘要'),
-  include_tags: z.boolean().default(true).describe('带上话题'),
-  /** The Page; default the one picked when binding (`account.meta.page_id`). */
-  page_id: z
-    .string()
-    .trim()
-    .regex(/^\d{5,30}$/, '主页 ID 是数字')
-    .optional()
-    .describe('主页'),
-  /** SPEC-r12 §2: the link with its preview card, or as the Page's first comment. */
-  linkPlacement: linkPlacementField('facebook'),
+/** The form in a language (SPEC-r14 B5). */
+export const facebookSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    text: z.string().trim().max(FACEBOOK_LIMITS.cardMessageMax).optional().describe(t.text),
+    link: z.string().trim().regex(URL_RE, t.httpUrl).optional().describe(t.link),
+    include_summary: z.boolean().default(true).describe(t.includeSummary),
+    include_tags: z.boolean().default(true).describe(t.includeTags),
+    /** The Page; default the one picked when binding (`account.meta.page_id`). */
+    page_id: z
+      .string()
+      .trim()
+      .regex(/^\d{5,30}$/, t.pageDigits)
+      .optional()
+      .describe(t.page),
+    /** SPEC-r12 §2: the link with its preview card, or as the Page's first comment. */
+    linkPlacement: linkPlacementField('facebook', lang),
+  });
 });
+
+export const facebookSchema = facebookSchemaFor('zh-CN');
 
 export type FacebookForm = z.infer<typeof facebookSchema>;
 export type FacebookFormInput = z.input<typeof facebookSchema>;
@@ -90,14 +101,11 @@ export const facebookBinding: BindingSpec = {
   store: 'desktop',
   provider: 'facebook',
   scopes: ['pages_show_list', 'pages_manage_posts', 'pages_read_engagement'],
-  selects: [{ id: 'page', title: '选择要发布的主页' }],
+  selects: [{ id: 'page', title: msg('zh-CN').selectPage }],
+  selectsFor: (lang) => [{ id: 'page', title: msg(lang).selectPage }],
   helpUrl: 'https://www.facebook.com/pages/',
-  instructions: [
-    '点「用 Facebook 授权」，在 Facebook 页面勾选要让辰记管理的主页（Page）',
-    '回到辰记选择要发布的主页；个人主页没有发帖接口，只能用分享',
-    '桌面端：令牌加密存在本机；网页：令牌只在当前页面；打开「云端代发」才会存到辰记服务器',
-    '不用时到 Facebook「设置 → 商务集成」移除辰记',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 /** `POST /{page-id}/feed` without the token. */
@@ -121,15 +129,17 @@ export function renderFacebook(
   form: FacebookForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): FacebookRendered {
+  const lang = opts.lang;
+  const t = msg(lang);
   const card = cardOf(doc, common, content, {
     assetBase: opts.assetBase,
     text: form.text,
     link: form.link,
   });
   const report: ReportItem[] = [];
-  const placed = placeLink(form.linkPlacement, card.link, card.lang);
+  const placed = placeLink(form.linkPlacement, card.link, card.lang, lang);
   const link = placed.bodyLink;
   const allTags = form.include_tags ? card.tags : [];
   const fit = fitPost({
@@ -142,16 +152,16 @@ export function renderFacebook(
     report.push({
       kind: 'share.truncated',
       level: 'notice',
-      text: `引流文案按 ${FACEBOOK_LIMITS.cardMessageMax} 字截短`,
+      text: t.truncated(FACEBOOK_LIMITS.cardMessageMax),
     });
   if (link)
     report.push({
       kind: 'link.card',
-      text: 'Facebook 会按链接生成预览卡片',
+      text: t.linkCard,
       detail: { url: link },
     });
   else if (placed.followUp) report.push(...placed.report);
-  else report.push(missingLinkReport('Facebook'));
+  else report.push(missingLinkReport('Facebook', lang));
   return {
     text: fit.text,
     body: {
@@ -159,7 +169,7 @@ export function renderFacebook(
       ...(link ? { link } : {}),
       ...(form.page_id ? { page_id: form.page_id } : {}),
     },
-    report: [...report, ...mediaReport('facebook', 'Facebook', content, common)],
+    report: [...report, ...mediaReport('facebook', 'Facebook', content, common, lang)],
     ...(placed.followUp ? { followUp: placed.followUp } : {}),
   };
 }
@@ -196,11 +206,13 @@ export function facebookHandoff(
   form: FacebookForm,
   common: CommonFormShape,
   content: PublishContent | undefined,
-  opts: Pick<FacebookAdapterOptions, 'assetBase' | 'facebookAppId'> = {}
+  opts: Pick<FacebookAdapterOptions, 'assetBase' | 'facebookAppId'> = {},
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
 ): { handoff: PublishHandoff; report: ReportItem[] } {
-  const input = shareInputOf('facebook', doc, form, common, content, opts);
+  const input = shareInputOf('facebook', doc, form, common, content, opts, lang);
   if ('error' in input) throw new Error(input.error);
-  const r = buildShare('facebook', input);
+  const r = buildShare('facebook', input, lang);
   return { handoff: { via: r.via, openUrl: r.openUrl, copyText: r.copyText }, report: r.report };
 }
 
@@ -208,9 +220,10 @@ export function createFacebookAdapter(
   opts: FacebookAdapterOptions = {}
 ): Adapter<typeof facebookSchema> {
   const ref = facebookRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const base = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({ ...base, ...(lang ? { lang } : {}) });
   const shareOpts = {
-    ...renderOpts,
+    ...base,
     ...(opts.facebookAppId ? { facebookAppId: opts.facebookAppId } : {}),
   };
   return defineAdapter({
@@ -221,9 +234,10 @@ export function createFacebookAdapter(
     binding: facebookBinding,
     capabilities: { supportsUpdate: false, needsLogin: true },
     schema: facebookSchema,
+    schemaFor: facebookSchemaFor,
     maxConcurrent: 2,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderFacebook(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderFacebook(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'text',
         title: common?.title || doc.title,
@@ -232,8 +246,8 @@ export function createFacebookAdapter(
         ...(r.followUp ? { followUp: r.followUp } : {}),
       };
     },
-    renderRequest({ doc, form, common, content }) {
-      const r = renderFacebook(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, lang }) {
+      const r = renderFacebook(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(r.body, undefined, undefined, r.report, r.followUp);
     },
     // SPEC-r12 §2.2: the Page's comment on the post (`/{post-id}/comments`), through the relay
@@ -243,21 +257,23 @@ export function createFacebookAdapter(
         return relayFollowUp(ctx, ref, post, input, { credential });
       });
     },
-    renderHandoff({ doc, form, common, content }) {
-      return facebookHandoff(doc, form, common, content, shareOpts);
+    renderHandoff({ doc, form, common, content, lang }) {
+      return facebookHandoff(doc, form, common, content, shareOpts, lang);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderFacebook(doc, form, common, content, renderOpts);
-        if (!r.text.trim() && !r.body.link) throw helpError(ref, '帖子是空的', { code: 'invalid' });
-        r.report.push(...newPostReport(ctx.previous));
+        const r = renderFacebook(doc, form, common, content, renderOpts(ctx.lang));
+        const t = msg(ctx.lang);
+        if (!r.text.trim() && !r.body.link)
+          throw helpError(refIn(ref, ctx.lang), t.empty, { code: 'invalid' });
+        r.report.push(...newPostReport(ctx.previous, ctx.lang));
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '发到 Facebook 主页' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.posting });
         const credential = await credentialOf(opts.credential, 'facebook', ctx);
         const res = await relayPublish({ ...ctx, previous: undefined }, ref, r.body, undefined, {
           credential,
         });
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

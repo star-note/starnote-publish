@@ -13,8 +13,10 @@
  */
 import { needsBinding } from './binding';
 import { articleContent, visibleLinkOf, withTrackingUrl } from './content';
+import { coreMessages } from './i18n/messages';
+import { localizedLabel } from './i18n/labels';
 import { planRuntime, resolveRuntimes } from './runtime';
-import { formatZodError } from './schema';
+import { adapterSchema, formatZodError } from './schema';
 import { CANONICAL_PLACEHOLDER, hasCanonicalPlaceholder, targetKey } from './targets';
 
 import type { PublishContent } from './content';
@@ -73,6 +75,8 @@ export function prepareTasks(input: PrepareInput, deps: PrepareDeps): PreparedTa
   const canonical = known || (withChenji ? CANONICAL_PLACEHOLDER : undefined);
 
   let seq = 0;
+  const lang = input.lang;
+  const m = coreMessages(lang).prepare;
   const tasks: PreparedTask[] = input.targets.map((target) => {
     const p = target.platform;
     const key = targetKey(target);
@@ -80,7 +84,7 @@ export function prepareTasks(input: PrepareInput, deps: PrepareDeps): PreparedTa
     const plan = deps.planTarget(p);
     const chosen = pickAccount(input.accounts, target);
     const accountId = target.accountId ?? chosen?.accountId;
-    const base = adapter?.label ?? plan.label ?? p;
+    const base = localizedLabel(p, adapter?.label ?? plan.label ?? p, lang);
     const label = chosen?.label ? `${base} · ${chosen.label}` : base;
     const rawContent =
       target.content ??
@@ -108,19 +112,19 @@ export function prepareTasks(input: PrepareInput, deps: PrepareDeps): PreparedTa
     const guide = planRuntime(
       plan,
       { runtime: 'server', ...(input.disabled ? { disabled: input.disabled } : {}) },
-      { contentKind: content.kind }
+      { contentKind: content.kind, ...(lang ? { lang } : {}) }
     ).primary;
     if (guide.kind === 'unavailable')
       return fail(
         guide.code === 'disabled-remotely' ? 'disabled' : 'unsupported',
-        guide.reason ?? `${base} 暂不支持`
+        guide.reason ?? m.unsupported(base)
       );
 
     // the form
     let form: unknown = target.form ?? input.perPlatform?.[key] ?? input.perPlatform?.[p] ?? {};
     if (adapter) {
-      const parsed = adapter.schema.safeParse(form);
-      if (!parsed.success) return fail('invalid_form', formatZodError(parsed.error));
+      const parsed = adapterSchema(adapter, lang).safeParse(form);
+      if (!parsed.success) return fail('invalid_form', formatZodError(parsed.error, { lang }));
       form = parsed.data;
     }
     const previous = target.previous ?? input.previous?.[key] ?? input.previous?.[p];
@@ -134,6 +138,7 @@ export function prepareTasks(input: PrepareInput, deps: PrepareDeps): PreparedTa
         : {}),
       ...(previous ? { previous } : {}),
       ...(target.trackingUrl && p !== 'chenji' ? { trackingUrl: target.trackingUrl } : {}),
+      ...(lang ? { lang } : {}),
     };
 
     const runtimes = resolveRuntimes(plan);
@@ -176,14 +181,14 @@ export function prepareTasks(input: PrepareInput, deps: PrepareDeps): PreparedTa
       runtime = 'server';
       problem = {
         code: 'needs_cloud',
-        message: `${label} 的授权只在当前页面或其他设备上：到点要由服务器代发，请开启「云端代发」，或改为到点提醒你去分享`,
+        message: m.needsCloud(label),
       };
     } else {
       runtime = 'handoff';
       if (!hasOwnHandoff)
         problem = {
           code: 'needs_binding',
-          message: `还没有绑定${base}账号：到点会提醒你复制文案去${base}发布`,
+          message: m.needsBinding(base),
         };
     }
     out.runtime = runtime;
@@ -208,7 +213,7 @@ export function prepareTasks(input: PrepareInput, deps: PrepareDeps): PreparedTa
           return fail('render_failed', e instanceof Error ? e.message : String(e));
         }
       } else if (runtime === 'server') {
-        return fail('unsupported', `${base} 还不能由服务器定时代发`);
+        return fail('unsupported', m.noServer(base));
       }
       // desktop without `renderRequest` (发布台 / login session): rendered by the desktop when it claims the task
     }

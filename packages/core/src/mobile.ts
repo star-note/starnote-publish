@@ -8,6 +8,9 @@
 import { escapeHtml } from './convert';
 import { platformMeta } from './platforms';
 
+import { coreMessages } from './i18n/messages';
+
+import type { SdkLang } from './i18n/lang';
 import type { ReportItem } from './report';
 
 export interface MobileOptions {
@@ -20,6 +23,8 @@ export interface MobileOptions {
    * `fill`: `width:100%; height:auto` — for editors that stretch pictures to the column (公众号).
    */
   imageWidth?: 'fit' | 'fill';
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 export interface MobileResult {
@@ -49,7 +54,9 @@ function phoneStyle(style: string | undefined, imageWidth: 'fit' | 'fill'): stri
     .split(';')
     .map((d) => d.trim())
     .filter((d) => d && !/^(width|height|max-width|min-width|max-height)\s*:/i.test(d));
-  return [...kept, imageWidth === 'fill' ? 'width:100%' : 'max-width:100%', 'height:auto'].join(';');
+  return [...kept, imageWidth === 'fill' ? 'width:100%' : 'max-width:100%', 'height:auto'].join(
+    ';'
+  );
 }
 
 function phoneImage(tag: string, imageWidth: 'fit' | 'fill'): string {
@@ -131,26 +138,24 @@ export function mobileHtml(html: string, opts: MobileOptions = {}): MobileResult
     return `<div class="sn-table-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;">${table}</div>`;
   });
   const report: ReportItem[] = [];
+  const m = coreMessages(opts.lang).mobile;
   if (counts.images)
     report.push({
       kind: 'mobile.images',
-      text:
-        imageWidth === 'fill'
-          ? `${counts.images} 张图片按手机屏宽显示（宽 100%、高度自适应，去掉固定宽高）`
-          : `${counts.images} 张图片最宽到手机屏宽（max-width 100%、高度自适应，窄图保持原尺寸）`,
+      text: imageWidth === 'fill' ? m.imagesFill(counts.images) : m.imagesFit(counts.images),
       count: counts.images,
     });
   if (counts.scrolled)
     report.push({
       kind: 'mobile.table-scroll',
-      text: `${counts.scrolled} 个表格放进可横向滑动的容器，手机上左右滑动查看`,
+      text: m.tableScroll(counts.scrolled),
       count: counts.scrolled,
     });
   if (counts.cards)
     report.push({
       kind: 'mobile.table-cards',
       level: 'notice',
-      text: `${counts.cards} 个宽表格（超过 ${maxCols} 列）改为每行一张卡片的纵向排版`,
+      text: m.tableCards(counts.cards, maxCols),
       count: counts.cards,
     });
   return { html: out, report, counts };

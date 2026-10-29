@@ -6,7 +6,10 @@
  *
  * Browser-safe: WebCrypto only (Ed25519 is in Chromium 113+ / Electron 25+ / Node 22).
  */
+import { coreMessages } from './i18n/messages';
+
 import type { DesktopSessionSpec } from './desktop-session';
+import type { SdkLang } from './i18n/lang';
 import type { LearnedRule } from './learned';
 
 /** Version of `@starnote/publish-core` that `minCore` is compared with. */
@@ -210,9 +213,9 @@ export function compareVersions(a: string, b: string): number {
 
 /* ---------------------------------------------------------------- crypto */
 
-function subtle(): SubtleCrypto {
+function subtle(lang?: SdkLang): SubtleCrypto {
   const s = (globalThis as { crypto?: Crypto }).crypto?.subtle;
-  if (!s) throw new SiteScriptError('no-crypto', '当前环境没有 WebCrypto，无法校验站点脚本');
+  if (!s) throw new SiteScriptError('no-crypto', coreMessages(lang).siteScript.noWebCrypto);
   return s;
 }
 
@@ -238,6 +241,8 @@ export interface VerifyOptions {
   coreVersion?: string;
   /** Accept an expired script (only for the bundled copy, which ships with the code). */
   allowExpired?: boolean;
+  /** SPEC-r14 B5: language of the error messages. Default `zh-CN`. */
+  lang?: SdkLang;
 }
 
 /** Verifies the signature, platform, expiry and `minCore`; returns the script or throws `SiteScriptError`. */
@@ -245,6 +250,7 @@ export async function verifySiteScript(
   signed: SignedSiteScript,
   opts: VerifyOptions = {}
 ): Promise<SiteScript> {
+  const m = coreMessages(opts.lang).siteScript;
   if (
     !signed ||
     typeof signed !== 'object' ||
@@ -252,44 +258,40 @@ export async function verifySiteScript(
     typeof signed.sig !== 'string' ||
     typeof signed.kid !== 'string'
   ) {
-    throw new SiteScriptError('bad-format', '站点脚本格式不对');
+    throw new SiteScriptError('bad-format', m.badShape);
   }
-  if (signed.alg !== 'Ed25519')
-    throw new SiteScriptError('bad-format', `不支持的算法 ${signed.alg}`);
+  if (signed.alg !== 'Ed25519') throw new SiteScriptError('bad-format', m.badAlg(signed.alg));
   const keys = opts.publicKeys ?? SITE_SCRIPT_KEYS;
   // Own keys only: a `kid` such as `constructor` must not reach `Object.prototype`.
   const raw = Object.hasOwn(keys, signed.kid) ? keys[signed.kid] : undefined;
-  if (!raw) throw new SiteScriptError('unknown-key', `未知的签名密钥 ${signed.kid}`);
+  if (!raw) throw new SiteScriptError('unknown-key', m.unknownKey(signed.kid));
   const key = await importPublicKey(raw);
-  const ok = await subtle().verify(
+  const ok = await subtle(opts.lang).verify(
     { name: 'Ed25519' },
     key,
     base64UrlDecode(signed.sig) as BufferSource,
     utf8(signed.payload) as BufferSource
   );
-  if (!ok) throw new SiteScriptError('bad-signature', '站点脚本签名校验失败');
+  if (!ok) throw new SiteScriptError('bad-signature', m.badSignature);
 
   let script: SiteScript;
   try {
     script = JSON.parse(new TextDecoder().decode(base64UrlDecode(signed.payload))) as SiteScript;
   } catch {
-    throw new SiteScriptError('bad-format', '站点脚本内容不是 JSON');
+    throw new SiteScriptError('bad-format', m.notJson);
   }
   if (!script || typeof script.platform !== 'string' || typeof script.version !== 'string') {
-    throw new SiteScriptError('bad-format', '站点脚本缺少 platform / version');
+    throw new SiteScriptError('bad-format', m.missingFields);
   }
   if (opts.platform && script.platform !== opts.platform) {
-    throw new SiteScriptError(
-      'wrong-platform',
-      `站点脚本属于 ${script.platform}，不是 ${opts.platform}`
-    );
+    throw new SiteScriptError('wrong-platform', m.wrongPlatform(script.platform, opts.platform));
   }
   const now = (opts.now ?? new Date()).getTime();
   if (!opts.allowExpired && script.expiresAt && Date.parse(script.expiresAt) <= now) {
-    throw new SiteScriptError('expired', `站点脚本已于 ${script.expiresAt} 过期`);
+    throw new SiteScriptError('expired', m.expired(script.expiresAt));
   }
   if (script.minCore && compareVersions(opts.coreVersion ?? CORE_VERSION, script.minCore) < 0) {
-    throw new SiteScriptError('min-core', `站点脚本需要 publish-core ≥ ${script.minCore}`);
+    throw new SiteScriptError('min-core', m.needsCore(script.minCore));
   }
   return script;
 }
@@ -339,9 +341,10 @@ export async function loadSiteScript(
   opts: LoadSiteScriptOptions
 ): Promise<LoadedSiteScript> {
   const warnings: string[] = [];
+  const m = coreMessages(opts.lang).siteScript;
   const bundled = await verifySiteScript(opts.bundled, { ...opts, platform, allowExpired: true });
   if (bundled.expiresAt && Date.parse(bundled.expiresAt) <= (opts.now ?? new Date()).getTime()) {
-    warnings.push(`随包站点脚本已过期（${bundled.expiresAt}），仍按它执行`);
+    warnings.push(m.bundledExpired(bundled.expiresAt));
   }
   if (opts.fetch && opts.remote !== false) {
     const base = (opts.apiBase ?? '/api/v1').replace(/\/$/, '');
@@ -355,11 +358,9 @@ export async function loadSiteScript(
       if (compareVersions(remote.version, bundled.version) >= 0) {
         return { script: remote, source: 'remote', warnings };
       }
-      warnings.push(`远程站点脚本 ${remote.version} 比随包的 ${bundled.version} 旧，已忽略`);
+      warnings.push(m.remoteOlder(remote.version, bundled.version));
     } catch (e) {
-      warnings.push(
-        `远程站点脚本不可用，改用随包副本：${e instanceof Error ? e.message : String(e)}`
-      );
+      warnings.push(m.remoteUnavailable(e instanceof Error ? e.message : String(e)));
     }
   }
   return { script: bundled, source: 'bundled', warnings };

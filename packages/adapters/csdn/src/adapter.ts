@@ -3,14 +3,17 @@ import {
   defineAdapter,
   HANDOFF_FILLED_TEXT,
   handOffEditor,
+  handoffFilledText,
   handoffReport,
+  localizedLabel,
   openSessionRun,
   PlatformSessionError,
   rehostImages,
 } from '@starnote/publish-core';
 
+import { msg } from './i18n';
 import { renderCsdn, withImages } from './render';
-import { CSDN_ARTICLE_TYPES, csdnSchema } from './schema';
+import { CSDN_ARTICLE_TYPES, csdnSchema, csdnSchemaFor } from './schema';
 import bundledSigned from './site-script.signed.json';
 
 import type {
@@ -32,11 +35,8 @@ export const csdnBinding: BindingSpec = {
   kind: 'cookie',
   store: 'desktop',
   helpUrl: 'https://mp.csdn.net/',
-  instructions: [
-    '在辰记桌面端点「在桌面端登录 CSDN」',
-    '在弹出的 CSDN 登录页里用任意方式登录，验证码由你本人完成',
-    '登录成功后窗口自动关闭，登录状态只保存在这台电脑上',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
   checkEvery: 6 * 3600,
   desktopSession: bundledScript(CSDN_SITE_SCRIPT).session!,
 };
@@ -61,8 +61,8 @@ function imageSuffix(url: string): string {
  */
 export function createCsdnAdapter(opts: CsdnAdapterOptions = {}): Adapter<typeof csdnSchema> {
   const preview = (script: SiteScript) =>
-    ((doc, _form, common = {}) => {
-      const r = renderCsdn(doc, common, script);
+    ((doc, _form, common = {}, _content, popts) => {
+      const r = renderCsdn(doc, common, script, popts?.lang);
       return {
         format: 'markdown',
         title: r.title,
@@ -80,32 +80,38 @@ export function createCsdnAdapter(opts: CsdnAdapterOptions = {}): Adapter<typeof
         // Runs here on the desktop (planRuntime → run-here); the outcome is `state: 'handoff'`.
         mode: 'automation',
         needs: ['session'],
-        note: '第 3 层（交接）：打开 CSDN 编辑器粘贴好内容，由你点「发布文章」',
+        note: msg('zh-CN').runtimeNote,
+        notes: { 'zh-TW': msg('zh-TW').runtimeNote, en: msg('en').runtimeNote },
       },
     ],
     contentTypes: ['article'],
     binding: csdnBinding,
     capabilities: { supportsUpdate: false, titleMax: 100, needsLogin: true },
     schema: csdnSchema,
+    schemaFor: csdnSchemaFor,
     preview: preview(bundledScript(CSDN_SITE_SCRIPT)),
     async publish({ doc, form, common, ctx }): Promise<PublishOutput> {
-      ctx.emit({ type: 'progress', percent: 5, text: '读取 CSDN 站点脚本' });
+      const lang = ctx.lang;
+      const t = msg(lang);
+      const name = localizedLabel('csdn', LABEL, lang);
+      const L = lang ? { lang } : {};
+      ctx.emit({ type: 'progress', percent: 5, text: t.readScript });
       const run = await openSessionRun(ctx, 'csdn', LABEL, CSDN_SITE_SCRIPT, opts);
       const { script, client } = run;
       const helpUrl = script.urls.help;
       if (!ctx.handoff && !ctx.page)
-        throw new PlatformSessionError('help', 'CSDN 需要在桌面端打开编辑器发布', { helpUrl });
+        throw new PlatformSessionError('help', t.desktopOnly, { helpUrl, ...L });
       const editorSelector = script.selectors.editor;
       if (!editorSelector || !script.urls.editor)
-        throw new PlatformSessionError('help', 'CSDN 站点脚本缺少编辑器配置', { helpUrl });
+        throw new PlatformSessionError('help', t.noEditorConfig, { helpUrl, ...L });
 
-      const r = renderCsdn(doc, common, script);
+      const r = renderCsdn(doc, common, script, lang);
       const report: ReportItem[] = [...r.report];
       ctx.emit({ type: 'report', items: report });
 
       let map = new Map<string, string>();
       if (r.images.length && client.has('imagePolicy') && client.has('imageUpload')) {
-        ctx.emit({ type: 'progress', percent: 15, text: '上传图片到 CSDN' });
+        ctx.emit({ type: 'progress', percent: 15, text: t.uploadingImages });
         const upload = async (url: string) => {
           const suffix = imageSuffix(url);
           const policy = (await client.call('imagePolicy', { vars: { suffix } })).result;
@@ -119,13 +125,14 @@ export function createCsdnAdapter(opts: CsdnAdapterOptions = {}): Adapter<typeof
           return typeof res.result.url === 'string' ? res.result.url : undefined;
         };
         const res = await rehostImages(r.images, upload, {
-          label: LABEL,
+          label: name,
+          ...L,
           ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
           onProgress: (done, total) =>
             ctx.emit({
               type: 'progress',
               percent: 15 + Math.round((done / total) * 45),
-              text: `上传图片 ${done}/${total}`,
+              text: t.uploadProgress(done, total),
             }),
         });
         map = res.map;
@@ -133,7 +140,7 @@ export function createCsdnAdapter(opts: CsdnAdapterOptions = {}): Adapter<typeof
       } else if (r.images.length) {
         report.push({
           kind: 'image.failed',
-          text: `${r.images.length} 张图片没有预先上传，已保留原图链接；CSDN 编辑器粘贴时会尝试转存`,
+          text: t.imagesNotUploaded(r.images.length),
           count: r.images.length,
           level: 'warn',
         });
@@ -142,23 +149,23 @@ export function createCsdnAdapter(opts: CsdnAdapterOptions = {}): Adapter<typeof
 
       // 第 3 层：发布台（或单个窗口）里打开 CSDN 编辑器，insertText 填标题、剪贴板粘贴正文，由 CSDN 编辑器自己的粘贴逻辑
       // 处理；原剪贴板由桌面端恢复。不在页面里执行脚本，也不点「发布文章」。
-      ctx.emit({ type: 'progress', percent: 70, text: '打开 CSDN 编辑器' });
+      ctx.emit({ type: 'progress', percent: 70, text: t.openingEditor });
       const res = await handOffEditor(ctx, run, LABEL, {
         editorUrl: script.urls.editor,
         prefill: { title: r.title, text: withImages(r, map) },
       });
-      report.push(...handoffReport(res, LABEL));
+      report.push(...handoffReport(res, name, lang));
       const type = CSDN_ARTICLE_TYPES[form.article_type];
       report.push({
         kind: 'handoff.pending',
-        text: `${HANDOFF_FILLED_TEXT}：在 CSDN 编辑器里点「发布文章」，文章类型选「${type}」${
-          form.article_type === 'repost' && form.original_url
-            ? `并填写原文链接 ${form.original_url}`
-            : ''
-        }，再选标签和分类专栏`,
+        text: t.finish(
+          lang ? handoffFilledText(lang) : HANDOFF_FILLED_TEXT,
+          type,
+          form.article_type === 'repost' && form.original_url ? form.original_url : ''
+        ),
         level: 'notice',
       });
-      ctx.emit({ type: 'progress', percent: 100, text: '等你在 CSDN 编辑器里发布' });
+      ctx.emit({ type: 'progress', percent: 100, text: t.waitingPublish });
       return { url: script.urls.editor, state: 'handoff', report };
     },
   });

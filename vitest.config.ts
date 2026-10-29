@@ -8,6 +8,10 @@ export default defineConfig({
   resolve: {
     // Tests run against sources, so a package does not need a build of its siblings.
     alias: {
+      // the subpath first: a plain key would also match `@starnote/publish-core/…`
+      '@starnote/publish-core/i18n': fileURLToPath(
+        new URL('./packages/core/src/i18n/index.ts', import.meta.url)
+      ),
       '@starnote/publish-core': fileURLToPath(
         new URL('./packages/core/src/index.ts', import.meta.url)
       ),

@@ -12,6 +12,7 @@
  * Reddit Markdown with the link at the end.
  */
 import {
+  byLang,
   defineAdapter,
   isUrlExternalId,
   mediaReport,
@@ -30,6 +31,7 @@ import {
   linkCost,
   num,
   readJson,
+  refIn,
   relayPublish,
   relayRequestOf,
   stats,
@@ -37,6 +39,8 @@ import {
 } from '@starnote/publish-kit';
 import { buildShare } from '@starnote/publish-share';
 import { z } from 'zod';
+
+import { msg } from './i18n';
 
 import type {
   Adapter,
@@ -48,6 +52,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
   StatsContext,
 } from '@starnote/publish-core';
 import type {
@@ -67,37 +72,43 @@ export const REDDIT_LIMITS = {
   flairTextMax: 64,
 } as const;
 
-export const redditSchema = z.object({
-  subreddit: z
-    .string()
-    .trim()
-    .transform((s) => s.replace(/^\/?r\//i, ''))
-    .pipe(z.string().regex(/^[A-Za-z0-9_]{2,21}$/, '版块名只能是字母、数字和下划线'))
-    .describe('版块（r/…）'),
-  kind: z.enum(['link', 'self']).default('link').describe('帖子类型'),
-  nsfw: z.boolean().default(false).describe('NSFW'),
-  spoiler: z.boolean().default(false).describe('剧透'),
-  sendreplies: z.boolean().default(true).describe('回复通知我'),
-  flair_id: z
-    .string()
-    .trim()
-    .regex(/^[A-Za-z0-9-]{1,64}$/, 'flair ID 格式不对')
-    .optional()
-    .describe('Flair ID'),
-  flair_text: z.string().trim().max(REDDIT_LIMITS.flairTextMax).optional().describe('Flair 文字'),
-  link: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('链接'),
-  external_id: z
-    .string()
-    .trim()
-    .regex(/^[a-z0-9]{1,16}$/, '帖子 ID 是小写字母和数字')
-    .optional()
-    .describe('已发布帖子 ID'),
+/** The form in a language (SPEC-r14 B5). */
+export const redditSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    subreddit: z
+      .string()
+      .trim()
+      .transform((s) => s.replace(/^\/?r\//i, ''))
+      .pipe(z.string().regex(/^[A-Za-z0-9_]{2,21}$/, t.subredditFormat))
+      .describe(t.subreddit),
+    kind: z.enum(['link', 'self']).default('link').describe(t.kind),
+    nsfw: z.boolean().default(false).describe(t.nsfw),
+    spoiler: z.boolean().default(false).describe(t.spoiler),
+    sendreplies: z.boolean().default(true).describe(t.sendreplies),
+    flair_id: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9-]{1,64}$/, t.flairFormat)
+      .optional()
+      .describe(t.flairId),
+    flair_text: z.string().trim().max(REDDIT_LIMITS.flairTextMax).optional().describe(t.flairText),
+    link: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.link),
+    external_id: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9]{1,16}$/, t.idFormat)
+      .optional()
+      .describe(t.externalId),
+  });
 });
+
+export const redditSchema = redditSchemaFor('zh-CN');
 
 export type RedditForm = z.infer<typeof redditSchema>;
 export type RedditFormInput = z.input<typeof redditSchema>;
@@ -108,12 +119,8 @@ export const redditBinding: BindingSpec = {
   provider: 'reddit',
   scopes: ['identity', 'submit', 'edit'],
   helpUrl: 'https://www.reddit.com/',
-  instructions: [
-    '点「用 Reddit 授权」，在 Reddit 页面允许辰记代你提交帖子',
-    '桌面端：令牌加密存在本机；网页：令牌只在当前页面，关闭即失效；打开「云端代发」才会存到辰记服务器',
-    '发帖前先看版块规则：很多版块不允许自我推广或只接受特定 flair',
-    '不用时到 Reddit「User Settings → Safety & Privacy → Manage third-party app authorization」撤销',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 export interface RedditSubmitBody {
@@ -142,11 +149,13 @@ export function renderReddit(
   form: RedditForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): RedditRendered {
+  const lang = opts.lang;
+  const t = msg(lang);
   const report: ReportItem[] = [];
   // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
-  report.push(...mediaReport('reddit', 'Reddit', content, common));
+  report.push(...mediaReport('reddit', 'Reddit', content, common, lang));
   const short = content?.kind === 'short-text' ? content : undefined;
   const article = short ? undefined : articleOf(doc, content);
   const rawTitle = (
@@ -162,10 +171,10 @@ export function renderReddit(
   if (title !== rawTitle)
     report.push({
       kind: 'title.truncated',
-      text: `Reddit 标题最多 ${REDDIT_LIMITS.titleMax} 字，已截短`,
+      text: t.titleTruncated(REDDIT_LIMITS.titleMax),
     });
   const canonical = article
-    ? canonicalOf({ canonical_url: form.link }, article, 'Reddit')
+    ? canonicalOf({ canonical_url: form.link }, article, 'Reddit', lang)
     : { url: form.link || short?.link, report: [] as ReportItem[] };
   // SPEC-r12 §5.3: the submitted link / the closing line is what readers click: the tracking short link
   const link = form.link
@@ -186,14 +195,15 @@ export function renderReddit(
           stripHighlight: true,
           ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
         },
-        'Reddit'
+        'Reddit',
+        lang
       );
       text = degraded.body;
       report.push(...degraded.report);
       if (degraded.doc.images.length)
         report.push({
           kind: 'image.linked',
-          text: `${degraded.doc.images.length} 张图片以链接形式出现在正文（Reddit 文字帖不内嵌外链图片）`,
+          text: t.imagesLinked(degraded.doc.images.length),
           count: degraded.doc.images.length,
         });
     } else {
@@ -207,20 +217,19 @@ export function renderReddit(
       report.push({
         kind: 'body.truncated',
         level: 'warn',
-        text: `Reddit 文字帖最多 ${REDDIT_LIMITS.textMax} 字，已截短并附原文链接`,
+        text: t.bodyTruncated(REDDIT_LIMITS.textMax),
       });
     }
     text += tail;
-    if (link)
-      report.push({ kind: 'canonical.note', text: '文末附上辰记原文链接', detail: { url: link } });
+    if (link) report.push({ kind: 'canonical.note', text: t.originNote, detail: { url: link } });
   } else {
-    if (!link) throw new Error('还没有可分享的链接：先发布到辰记（或在表单里填写链接）');
-    report.push({ kind: 'link.post', text: `以链接帖发布，指向 ${link}`, detail: { url: link } });
+    if (!link) throw new Error(t.noLink);
+    report.push({ kind: 'link.post', text: t.linkPost(link), detail: { url: link } });
   }
   report.push({
     kind: 'subreddit.rules',
     level: 'notice',
-    text: `请确认 r/${form.subreddit} 允许这类帖子（自我推广、flair 要求），违规可能被删帖或封号`,
+    text: t.rules(form.subreddit),
   });
 
   return {
@@ -305,7 +314,8 @@ export interface RedditAdapterOptions {
 
 export function createRedditAdapter(opts: RedditAdapterOptions = {}): Adapter<typeof redditSchema> {
   const ref = redditRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const base = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({ ...base, ...(lang ? { lang } : {}) });
   return defineAdapter({
     key: 'reddit',
     label: 'Reddit',
@@ -314,15 +324,16 @@ export function createRedditAdapter(opts: RedditAdapterOptions = {}): Adapter<ty
     binding: redditBinding,
     capabilities: { supportsUpdate: true, needsLogin: true, titleMax: REDDIT_LIMITS.titleMax },
     schema: redditSchema,
+    schemaFor: redditSchemaFor,
     // SPEC-r11 §6: Reddit one at a time
     maxConcurrent: 1,
     statsRequires: 'none',
     fetchStats(externalId, ctx) {
       return fetchRedditStats(externalId, ctx);
     },
-    preview(doc, form, common, content): AdapterPreview {
+    preview(doc, form, common, content, popts): AdapterPreview {
       try {
-        const r = renderReddit(doc, form, common, content, renderOpts);
+        const r = renderReddit(doc, form, common, content, renderOpts(popts?.lang));
         return {
           format: form.kind === 'self' ? 'markdown' : 'text',
           title: r.title,
@@ -339,8 +350,8 @@ export function createRedditAdapter(opts: RedditAdapterOptions = {}): Adapter<ty
       }
     },
     // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderReddit(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderReddit(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(
         r.body,
         previous,
@@ -349,14 +360,18 @@ export function createRedditAdapter(opts: RedditAdapterOptions = {}): Adapter<ty
       );
     },
     // Not bound / app not approved: the share-intent hand-off (SPEC-r11 §10).
-    renderHandoff({ doc, form, common, content }) {
-      const r = renderReddit(doc, { ...form, kind: 'link' }, common, content, renderOpts);
-      const s = buildShare('reddit', {
-        title: r.title,
-        link: r.body.url!,
-        tags: [],
-        subreddit: form.subreddit,
-      });
+    renderHandoff({ doc, form, common, content, lang }) {
+      const r = renderReddit(doc, { ...form, kind: 'link' }, common, content, renderOpts(lang));
+      const s = buildShare(
+        'reddit',
+        {
+          title: r.title,
+          link: r.body.url!,
+          tags: [],
+          subreddit: form.subreddit,
+        },
+        lang
+      );
       return {
         handoff: { via: s.via, openUrl: s.openUrl, copyText: s.copyText },
         report: s.report,
@@ -365,21 +380,17 @@ export function createRedditAdapter(opts: RedditAdapterOptions = {}): Adapter<ty
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
         let r: RedditRendered;
+        const t = msg(ctx.lang);
+        const lref = refIn(ref, ctx.lang);
         try {
-          r = renderReddit(doc, form, common, content, renderOpts);
+          r = renderReddit(doc, form, common, content, renderOpts(ctx.lang));
         } catch (e) {
-          throw helpError(ref, (e as Error).message, { code: 'no_link' });
+          throw helpError(lref, (e as Error).message, { code: 'no_link' });
         }
         if (ctx.previous?.externalId && form.kind === 'link')
-          throw helpError(
-            ref,
-            'Reddit 的链接帖发布后不能修改；如需更新请发文字帖或在 Reddit 上删帖重发',
-            {
-              code: 'invalid',
-            }
-          );
+          throw helpError(lref, t.linkPostFixed, { code: 'invalid' });
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: `提交到 r/${form.subreddit}` });
+        ctx.emit({ type: 'progress', percent: 40, text: t.submitting(form.subreddit) });
         const credential = await credentialOf(opts.credential, 'reddit', ctx);
         const res = await relayPublish(
           ctx,
@@ -388,7 +399,7 @@ export function createRedditAdapter(opts: RedditAdapterOptions = {}): Adapter<ty
           form.kind === 'self' ? form.external_id : undefined,
           { credential }
         );
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

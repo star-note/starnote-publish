@@ -8,7 +8,13 @@
  *
  * Not bound: copy the text and paste it in Discord (`via: 'copy'`).
  */
-import { defineAdapter, mediaReport, mergeReports, platformMeta } from '@starnote/publish-core';
+import {
+  byLang,
+  defineAdapter,
+  mediaReport,
+  mergeReports,
+  platformMeta,
+} from '@starnote/publish-core';
 import {
   appendLink,
   cardOf,
@@ -17,11 +23,14 @@ import {
   helpError,
   missingLinkReport,
   newPostReport,
+  refIn,
   relayPublish,
   relayRequestOf,
   truncate,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
+
+import { msg } from './i18n';
 
 import type {
   Adapter,
@@ -33,6 +42,7 @@ import type {
   PublishHandoff,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
 
@@ -60,31 +70,36 @@ export const DISCORD_APP_URL = 'https://discord.com/channels/@me';
 
 const URL_RE = /^https?:\/\/\S+$/;
 
-export const discordSchema = z.object({
-  /** A line above the card (the card itself carries title, summary, link and cover). */
-  text: z.string().trim().max(DISCORD_LIMITS.contentMax).optional().describe('附言'),
-  link: z
-    .string()
-    .trim()
-    .regex(URL_RE, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('链接'),
-  include_summary: z.boolean().default(true).describe('卡片带摘要'),
-  with_cover: z.boolean().default(true).describe('卡片带封面图'),
-  /** Overrides the webhook's name for this message. */
-  username: z.string().trim().max(DISCORD_LIMITS.usernameMax).optional().describe('显示名称'),
+/** The form in a language (SPEC-r14 B5): labels and messages from `msg(lang)`. */
+export const discordSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** A line above the card (the card itself carries title, summary, link and cover). */
+    text: z.string().trim().max(DISCORD_LIMITS.contentMax).optional().describe(t.text),
+    link: z.string().trim().regex(URL_RE, t.httpUrl).optional().describe(t.link),
+    include_summary: z.boolean().default(true).describe(t.includeSummary),
+    with_cover: z.boolean().default(true).describe(t.withCover),
+    /** Overrides the webhook's name for this message. */
+    username: z.string().trim().max(DISCORD_LIMITS.usernameMax).optional().describe(t.username),
+  });
 });
+
+export const discordSchema = discordSchemaFor('zh-CN');
 
 export type DiscordForm = z.infer<typeof discordSchema>;
 export type DiscordFormInput = z.input<typeof discordSchema>;
 
-export const discordWebhookForm = z.object({
-  webhook_url: z
-    .string()
-    .trim()
-    .regex(DISCORD_WEBHOOK_RE, '请粘贴 https://discord.com/api/webhooks/… 形式的 Webhook 地址')
-    .describe('Webhook 地址'),
-});
+export const discordWebhookFormFor = byLang((lang) =>
+  z.object({
+    webhook_url: z
+      .string()
+      .trim()
+      .regex(DISCORD_WEBHOOK_RE, msg(lang).form.webhookHint)
+      .describe(msg(lang).form.webhook),
+  })
+);
+
+export const discordWebhookForm = discordWebhookFormFor('zh-CN');
 
 export const discordBinding: BindingSpec = {
   kind: 'token',
@@ -92,13 +107,12 @@ export const discordBinding: BindingSpec = {
   provider: 'discord',
   fields: ['webhook_url'],
   form: discordWebhookForm,
+  formFor: discordWebhookFormFor,
   createUrl: 'https://support.discord.com/hc/en-us/articles/228383668',
-  permissions: ['在频道设置里「管理 Webhook」的权限'],
-  instructions: [
-    '打开要发到的频道 → 编辑频道 → 整合（Integrations）→ Webhook → 新 Webhook',
-    '给它起个名字、选好头像，点「复制 Webhook URL」，粘贴到这里',
-    '地址相当于发帖凭据：加密存在辰记服务器，不要发给别人；不用时在 Discord 里删除这个 Webhook',
-  ],
+  permissions: msg('zh-CN').permissions,
+  permissionsFor: (lang) => msg(lang).permissions,
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 export interface DiscordEmbed {
@@ -129,8 +143,10 @@ export function renderDiscord(
   form: DiscordForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): DiscordRendered {
+  const ui = opts.lang;
+  const t = msg(ui);
   const card = cardOf(doc, common, content, {
     assetBase: opts.assetBase,
     text: form.text,
@@ -138,20 +154,20 @@ export function renderDiscord(
   });
   const report: ReportItem[] = [];
   // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
-  report.push(...mediaReport('discord', 'Discord', content, common));
+  report.push(...mediaReport('discord', 'Discord', content, common, ui));
   const rawTitle = card.title || card.text || 'Untitled';
   const title = truncate(rawTitle, DISCORD_LIMITS.titleMax);
   if (title !== rawTitle)
     report.push({
       kind: 'title.truncated',
-      text: `Discord 卡片标题最多 ${DISCORD_LIMITS.titleMax} 字，已截短`,
+      text: t.titleTruncated(DISCORD_LIMITS.titleMax),
     });
   let description = form.include_summary ? card.summary : '';
   if (codePoints(description) > DISCORD_LIMITS.cardDescriptionMax) {
     description = truncate(description, DISCORD_LIMITS.cardDescriptionMax);
     report.push({
       kind: 'summary.truncated',
-      text: `卡片摘要按 ${DISCORD_LIMITS.cardDescriptionMax} 字截短`,
+      text: t.summaryTruncated(DISCORD_LIMITS.cardDescriptionMax),
     });
   }
   // The user's line (form text / short text), never the title again.
@@ -161,7 +177,7 @@ export function renderDiscord(
     report.push({
       kind: 'share.truncated',
       level: 'notice',
-      text: `Discord 消息最多 ${DISCORD_LIMITS.contentMax} 字，已截短`,
+      text: t.messageTruncated(DISCORD_LIMITS.contentMax),
     });
   }
   const image = form.with_cover ? card.cover : undefined;
@@ -174,11 +190,11 @@ export function renderDiscord(
   if (card.link)
     report.push({
       kind: 'link.card',
-      text: '以卡片发出：标题链接到原文',
+      text: t.card,
       detail: { url: card.link },
     });
-  else report.push(missingLinkReport('Discord'));
-  report.push({ kind: 'mentions.disabled', text: '不会 @ 任何人（发送时关闭 allowed_mentions）' });
+  else report.push(missingLinkReport('Discord', ui));
+  report.push({ kind: 'mentions.disabled', text: t.noMentions });
 
   // the copy fallback: cut before the link, never through it
   const text = appendLink(
@@ -217,7 +233,11 @@ export const DISCORD_REQUESTS = {
 } as const satisfies Record<string, RequestDescription>;
 
 /** Not bound: copy the text, open Discord. */
-export function discordHandoff(r: DiscordRendered): {
+export function discordHandoff(
+  r: DiscordRendered,
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
+): {
   handoff: PublishHandoff;
   report: ReportItem[];
 } {
@@ -227,7 +247,7 @@ export function discordHandoff(r: DiscordRendered): {
       {
         kind: 'handoff.pending',
         level: 'notice',
-        text: '还没有绑定 Discord Webhook：文案已备好，请到频道里粘贴发出',
+        text: msg(lang).handoff,
         detail: { via: 'copy', openUrl: DISCORD_APP_URL, copyText: r.text },
       },
     ],
@@ -243,8 +263,11 @@ export interface DiscordAdapterOptions {
 export function createDiscordAdapter(
   opts: DiscordAdapterOptions = {}
 ): Adapter<typeof discordSchema> {
-  const ref = discordRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const baseRef = discordRef(opts.links);
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'discord',
     label: 'Discord',
@@ -253,27 +276,30 @@ export function createDiscordAdapter(
     binding: discordBinding,
     capabilities: { supportsUpdate: false, needsLogin: true, titleMax: DISCORD_LIMITS.titleMax },
     schema: discordSchema,
+    schemaFor: discordSchemaFor,
     maxConcurrent: 3,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderDiscord(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderDiscord(doc, form, common, content, renderOpts(popts?.lang));
       return { format: 'text', title: r.body.embeds[0]!.title, body: r.text, report: r.report };
     },
-    renderRequest({ doc, form, common, content }) {
-      const r = renderDiscord(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, lang }) {
+      const r = renderDiscord(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(r.body, undefined, undefined, r.report);
     },
-    renderHandoff({ doc, form, common, content }) {
-      return discordHandoff(renderDiscord(doc, form, common, content, renderOpts));
+    renderHandoff({ doc, form, common, content, lang }) {
+      return discordHandoff(renderDiscord(doc, form, common, content, renderOpts(lang)), lang);
     },
     publish({ doc, form, common, ctx, content }) {
+      const ref = refIn(baseRef, ctx.lang);
+      const t = msg(ctx.lang);
       return guard(ctx, ref, async () => {
-        const r = renderDiscord(doc, form, common, content, renderOpts);
-        if (!r.text.trim()) throw helpError(ref, '消息是空的', { code: 'invalid' });
-        r.report.push(...newPostReport(ctx.previous));
+        const r = renderDiscord(doc, form, common, content, renderOpts(ctx.lang));
+        if (!r.text.trim()) throw helpError(ref, t.empty, { code: 'invalid' });
+        r.report.push(...newPostReport(ctx.previous, ctx.lang));
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '经 Webhook 发到 Discord' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.sending });
         const res = await relayPublish({ ...ctx, previous: undefined }, ref, r.body);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

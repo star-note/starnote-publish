@@ -12,6 +12,7 @@ import { createWordpressAdapter } from './wordpress';
 import type { PlatformMeta } from '@starnote/publish-core';
 
 export * from './wordpress';
+export { msg as wordpressMessages } from './i18n';
 
 export const wordpressAdapter = createWordpressAdapter();
 

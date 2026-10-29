@@ -1,6 +1,10 @@
 import { needsBinding } from './binding';
+import { coreMessages } from './i18n/messages';
+import { pickText } from './i18n/lang';
+import { localizedLabel } from './i18n/labels';
 
 import type { BindingSpec } from './binding';
+import type { I18nText, SdkLang } from './i18n/lang';
 import type { ContentKind } from './content';
 import type { Runtime } from './types';
 
@@ -29,7 +33,14 @@ export interface RuntimeSupport {
   kinds?: ContentKind[];
   /** `mode: 'handoff'`: how and where to hand over. */
   handoff?: { via: HandoffVia; url?: string };
+  /** Shown to the user (简体 source); `notes` has it in the other languages (`runtimeNote`). */
   note?: string;
+  notes?: I18nText;
+}
+
+/** `note` in `lang` (SPEC-r14 B5). */
+export function runtimeNote(s: Pick<RuntimeSupport, 'note' | 'notes'>, lang?: string | null) {
+  return s.note === undefined ? undefined : pickText(s.note, s.notes, lang);
 }
 
 /** Where the host runs and what else is reachable from it. */
@@ -97,6 +108,8 @@ export interface PlanOptions {
   scheduleAt?: string;
   /** Kind of content about to be published. Default `article`. */
   contentKind?: ContentKind;
+  /** Language of the guide texts (SPEC-r14 B5). Default `zh-CN`. */
+  lang?: SdkLang | string;
 }
 
 export interface RuntimePlan {
@@ -114,26 +127,10 @@ export const DEFAULT_GUIDE_LINKS = {
   bind: (platform: string) => `/settings?tab=platforms&bind=${platform}`,
 };
 
-const RUNTIME_LABEL: Record<Runtime, string> = {
-  web: '浏览器',
-  electron: '桌面端',
-  server: '服务器',
-  node: '服务器',
-};
-
 /** `'node'` (deprecated) → `'server'`; other runtimes unchanged. */
 export function normalizeRuntime<R extends Runtime>(runtime: R): Exclude<R, 'node'> | 'server' {
   return (runtime === 'node' ? 'server' : runtime) as Exclude<R, 'node'> | 'server';
 }
-
-const HANDOFF_LABEL: Record<HandoffVia, string> = {
-  deeplink: '跳转 App 完成',
-  'share-intent': '打开分享页完成',
-  'import-url': '用导入链接发布',
-  qrcode: '扫码在手机上完成',
-  'web-share': '分享到 App 完成',
-  copy: '复制文案去发布',
-};
 
 /** `runtimes`, or the legacy `runtime` list read as official-API support. */
 export function resolveRuntimes(
@@ -182,11 +179,15 @@ export function planRuntime(
   const env: HostEnv = { ...hostEnv, runtime: normalizeRuntime(hostEnv.runtime) };
   const kind = opts.contentKind ?? 'article';
   const links = { ...DEFAULT_GUIDE_LINKS, ...env.links };
+  const lang = opts.lang;
+  const m = coreMessages(lang).runtime;
+  const name = localizedLabel(target.key, target.label, lang);
+  const where = m.names[normalizeRuntime(env.runtime) as 'web' | 'electron' | 'server'];
   const copy: RuntimeGuide = {
     kind: 'copy',
-    label: '复制后手动发',
+    label: m.copyLabel,
     ...(target.homepage ? { href: target.homepage } : {}),
-    reason: '复制正文，到平台编辑器粘贴发布',
+    reason: m.copyReason,
   };
   const finish = (guides: RuntimeGuide[]): RuntimePlan => {
     const seen = new Set<string>();
@@ -211,8 +212,8 @@ export function planRuntime(
       {
         kind: 'unavailable',
         code: 'kind-unsupported',
-        label: '暂不支持',
-        reason: `${target.label} 不接受这种内容（支持：${contentTypes.join(' / ')}）`,
+        label: m.unsupportedLabel,
+        reason: m.kindUnsupported(name, contentTypes.join(' / ')),
       },
     ]);
   }
@@ -221,8 +222,8 @@ export function planRuntime(
       {
         kind: 'unavailable',
         code: 'disabled-remotely',
-        label: '暂时停用',
-        reason: `${target.label} 的自动发布暂时停用（平台改版处理中）`,
+        label: m.disabledLabel,
+        reason: m.disabledReason(name),
       },
       copy,
     ]);
@@ -241,9 +242,9 @@ export function planRuntime(
   ) {
     guides.push({
       kind: 'bind-first',
-      label: '先绑定账号',
+      label: m.bindFirstLabel,
       href: links.bind(target.key),
-      reason: `还没有绑定${target.label}账号`,
+      reason: m.bindFirstReason(name),
     });
   }
 
@@ -255,10 +256,10 @@ export function planRuntime(
   if (here && (!scheduled || env.runtime === 'server')) {
     guides.push({
       kind: 'run-here',
-      label: here.mode === 'automation' ? '本机自动发布' : '本机直接发',
+      label: here.mode === 'automation' ? m.runHereAutomation : m.runHereApi,
       mode: here.mode,
       schedulable: env.runtime === 'server',
-      reason: `${RUNTIME_LABEL[env.runtime]}可以直接发布到${target.label}`,
+      reason: m.runHereReason(where, name),
     });
   }
 
@@ -271,10 +272,10 @@ export function planRuntime(
     if ((via === 'deeplink' || via === 'web-share') && !env.mobile) continue;
     handoff = {
       kind: 'handoff',
-      label: HANDOFF_LABEL[via],
+      label: m.handoff[via],
       via,
       ...(s.handoff?.url ? { href: s.handoff.url } : {}),
-      reason: s.note ?? `在${target.label}自己的页面里完成发布`,
+      reason: runtimeNote(s, lang) ?? m.handoffReason(name),
     };
     break;
   }
@@ -285,11 +286,9 @@ export function planRuntime(
   if (server && env.runtime !== 'server' && env.serverRelay) {
     guides.push({
       kind: 'server',
-      label: '由服务器代发（支持定时）',
+      label: m.serverLabel,
       schedulable: true,
-      reason: here
-        ? '交给服务器，可以定时发布'
-        : `${RUNTIME_LABEL[env.runtime]}不能直接调用${target.label}`,
+      reason: here ? m.serverReasonSchedule : m.serverReasonCannot(where, name),
     });
   }
 
@@ -299,20 +298,22 @@ export function planRuntime(
   );
   if (desktop && env.runtime !== 'electron') {
     const reason = scheduled
-      ? '桌面端上线后补发（桌面端不开就不能准点发布）'
-      : `${target.label} 需要桌面端${desktop.mode === 'automation' ? '借登录态发布' : '发布'}`;
+      ? m.desktopScheduled
+      : desktop.mode === 'automation'
+        ? m.desktopNeedsSession(name)
+        : m.desktopNeeds(name);
     if (env.desktopOnline) {
-      guides.push({ kind: 'desktop', label: '交给桌面端', online: true, reason });
+      guides.push({ kind: 'desktop', label: m.desktopOnlineLabel, online: true, reason });
     } else {
       if (env.runtime === 'web' && !env.mobile) {
         guides.push({
           kind: 'download-desktop',
-          label: '下载桌面端',
+          label: m.downloadDesktopLabel,
           href: links.downloadDesktop,
-          reason: `${target.label} 只能在桌面端发布`,
+          reason: m.desktopOnlyReason(name),
         });
       }
-      guides.push({ kind: 'desktop', label: '排队等桌面端上线', online: false, reason });
+      guides.push({ kind: 'desktop', label: m.desktopQueueLabel, online: false, reason });
     }
   }
 

@@ -2,9 +2,11 @@
 import { LINK_PLACEMENT, visibleLinkOf } from '@starnote/publish-core';
 import { z } from 'zod';
 
+import { kitMessages } from './i18n';
 import { hashtagWord } from './text';
 
 import type {
+  SdkLang,
   ArticleContent,
   CommonFormShape,
   Doc,
@@ -28,9 +30,12 @@ export function articleOf(doc: Doc, content?: PublishContent): ArticleContent {
 export function canonicalOf(
   form: { canonical_url?: string | undefined; set_canonical?: boolean | undefined },
   article: ArticleContent,
-  platform: string
+  platform: string,
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
 ): { url: string | undefined; report: ReportItem[] } {
   if (form.set_canonical === false) return { url: undefined, report: [] };
+  const m = kitMessages(lang);
   const url = form.canonical_url || article.canonicalUrl;
   if (!url) {
     return {
@@ -39,7 +44,7 @@ export function canonicalOf(
         {
           kind: 'canonical.missing',
           level: 'notice',
-          text: '还没有辰记原文链接，这次没有设置 canonical（先发布到辰记再同步可以把搜索权重留给原文）',
+          text: m.canonicalMissing,
         },
       ],
     };
@@ -49,7 +54,7 @@ export function canonicalOf(
     report: [
       {
         kind: 'canonical.set',
-        text: form.canonical_url ? `设置 canonical 指向 ${url}` : `设置 canonical 指回辰记原文`,
+        text: form.canonical_url ? m.canonicalTo(url) : m.canonicalBack,
         detail: { url, platform },
       },
     ],
@@ -72,18 +77,34 @@ export function originLinkOf(
  * Browser / desktop through 辰记's API (`relayPublish`): the SDK renders the request body, the server adds the
  * stored credential and sends it (服务器代发). Scheduling is the server's business, not this runtime's.
  */
+const RELAY_NOTES = {
+  'zh-TW': kitMessages('zh-TW').relayNote,
+  en: kitMessages('en').relayNote,
+};
 export const CLIENT_RELAY: RuntimeSupport[] = [
-  { runtime: 'web', mode: 'api', needs: ['token'], note: '由服务器代发（凭据只在服务器）' },
-  { runtime: 'electron', mode: 'api', needs: ['token'], note: '由服务器代发（凭据只在服务器）' },
+  {
+    runtime: 'web',
+    mode: 'api',
+    needs: ['token'],
+    note: kitMessages().relayNote,
+    notes: RELAY_NOTES,
+  },
+  {
+    runtime: 'electron',
+    mode: 'api',
+    needs: ['token'],
+    note: kitMessages().relayNote,
+    notes: RELAY_NOTES,
+  },
 ];
 
 /** Predicted report for images linked from 辰记 (or uploaded by the server where the relay body asks for it). */
-export function linkedImagesReport(n: number, platform: string): ReportItem[] {
+export function linkedImagesReport(n: number, platform: string, lang?: SdkLang): ReportItem[] {
   return n
     ? [
         {
           kind: 'image.linked',
-          text: `${n} 张图片以辰记图片链接引用（${platform} 直接加载外链）`,
+          text: kitMessages(lang).imagesLinked(n, platform),
           count: n,
         },
       ]
@@ -198,11 +219,11 @@ export function cardOf(
 }
 
 /** `canonical.missing` for a short post without a link back to 辰记. */
-export function missingLinkReport(platform: string): ReportItem {
+export function missingLinkReport(platform: string, lang?: SdkLang): ReportItem {
   return {
     kind: 'canonical.missing',
     level: 'notice',
-    text: `还没有辰记原文链接，${platform} 帖子里没有链接（先发布到辰记再同步可以带上原文卡片）`,
+    text: kitMessages(lang).shortMissingLink(platform),
   };
 }
 
@@ -210,13 +231,16 @@ export function missingLinkReport(platform: string): ReportItem {
  * SPEC-r11 §10: the short-post platforms never edit an earlier post — with `ctx.previous` the new post is a new one,
  * and the report says so (`update.unsupported`).
  */
-export function newPostReport(previous: { externalId?: string } | undefined): ReportItem[] {
+export function newPostReport(
+  previous: { externalId?: string } | undefined,
+  lang?: SdkLang
+): ReportItem[] {
   return previous?.externalId
     ? [
         {
           kind: 'update.unsupported',
           level: 'notice',
-          text: '这次发出的是一条新帖子（不修改之前发过的）',
+          text: kitMessages(lang).newPost,
         },
       ]
     : [];
@@ -226,11 +250,11 @@ export function newPostReport(previous: { externalId?: string } | undefined): Re
  * SPEC-r12 §2.2: the platform form's `linkPlacement` field (only on the platforms of `LINK_PLACEMENT`), defaulting
  * to the registry's choice.
  */
-export function linkPlacementField(platform: PlatformKey) {
+export function linkPlacementField(platform: PlatformKey, lang?: SdkLang) {
   return z
     .enum(['body', 'first_comment'])
     .default(LINK_PLACEMENT[platform] ?? 'body')
-    .describe('原文链接');
+    .describe(kitMessages(lang).linkPlacementLabel);
 }
 
 /** SPEC-r12 §2.2: the link comment — `原文：{url}` for a Chinese note, `Read more: {url}` for another language. */
@@ -246,7 +270,10 @@ export function linkCommentText(url: string, lang?: string): string {
 export function placeLink(
   placement: LinkPlacement | undefined,
   link: string | undefined,
-  lang?: string
+  /** The article's language: picks the comment text (content, not UI). */
+  lang?: string,
+  /** SPEC-r14 B5: the user's language, for the report. Default `zh-CN`. */
+  uiLang?: SdkLang
 ): { bodyLink: string | undefined; followUp?: FollowUpInput; report: ReportItem[] } {
   if (placement !== 'first_comment' || !link) return { bodyLink: link, report: [] };
   const text = linkCommentText(link, lang);
@@ -256,7 +283,7 @@ export function placeLink(
     report: [
       {
         kind: 'link.first_comment',
-        text: '原文链接不放正文，发帖后作为第一条评论发出',
+        text: kitMessages(uiLang).linkFirstComment,
         detail: { url: link, text },
       },
     ],

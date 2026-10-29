@@ -1,4 +1,7 @@
 /** Minimal GitHub REST client over an injected `fetch` (browser, desktop and server alike). */
+import { msg } from './i18n';
+
+import type { SdkLang } from '@starnote/publish-core';
 
 export const GITHUB_API = 'https://api.github.com';
 
@@ -29,6 +32,8 @@ export interface GitHubClientOptions {
   token?: string | undefined;
   apiUrl?: string;
   signal?: AbortSignal;
+  /** SPEC-r14 B5: language of the error messages (and the steps / details built on this client). */
+  lang?: SdkLang;
 }
 
 export interface GitHubResponse<T> {
@@ -67,15 +72,16 @@ export async function github<T>(
   }
   if (!res.ok && !allow.includes(res.status)) {
     const detail = typeof data?.message === 'string' ? data.message : `HTTP ${res.status}`;
+    const m = msg(opts.lang).github;
     const hint =
       res.status === 401
-        ? 'GitHub 令牌无效或已过期，请重新填写'
+        ? m.badToken
         : res.status === 403
-          ? 'GitHub 拒绝了请求（权限不足或触发限流）'
+          ? m.forbidden
           : res.status === 404
-            ? '找不到仓库、分支或没有访问权限'
-            : 'GitHub 请求失败';
-    throw new GitHubApiError(`${hint}：${detail}`, res.status);
+            ? m.notFound
+            : m.failed;
+    throw new GitHubApiError(m.withDetail(hint, detail), res.status);
   }
   return { status: res.status, data: data as T, headers: res.headers };
 }

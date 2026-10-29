@@ -8,11 +8,14 @@
  * accounts.
  */
 import { PLATFORM_DOMAINS } from './domains';
+import { normalizeLang } from './i18n/lang';
+import { PLATFORM_LABELS } from './i18n/labels';
 import { MEDIA_LIMITS } from './media';
 import { PLATFORM_RULES } from './rules';
 
 import type { CredentialKind, CredentialStore } from './binding';
 import type { PlatformDomains } from './domains';
+import type { I18nText } from './i18n/lang';
 import type { MediaLimits } from './media';
 import type { PlatformRules } from './rules';
 import type { ContentKind } from './content';
@@ -167,7 +170,13 @@ export type PlatformStage = 'implemented' | 'live';
 
 export interface PlatformMeta {
   key: PlatformKey;
+  /** The platform's own name, in its original language (知乎, はてなブログ, Medium). */
   label: string;
+  /**
+   * SPEC-r14 B5: the name in the SDK's languages where it differs from `label` (English / romanized names of the
+   * Chinese platforms, 繁體 forms); see `platformLabel(key, lang)`.
+   */
+  labels?: I18nText;
   /** One-glyph badge. */
   short: string;
   /** Brand colour. */
@@ -246,6 +255,91 @@ export const LINK_PLACEMENT: Partial<Record<PlatformKey, LinkPlacement>> = {
   mastodon: 'body',
   facebook: 'body',
 };
+
+export { localizedLabel, PLATFORM_LABELS } from './i18n/labels';
+
+/**
+ * A platform's name in `lang` (default `zh-CN`): `labels[lang]`, else the original `label`; `fallback` (else the key)
+ * for keys outside the registry. `platformLabel('wechat', 'en')` → `WeChat Official Account`.
+ */
+export function platformLabel(key: string, lang?: string | null, fallback?: string): string {
+  const meta = BY_KEY.get(key);
+  const base = meta?.label ?? fallback ?? key;
+  if (!lang) return base;
+  return PLATFORM_LABELS[key as PlatformKey]?.[normalizeLang(lang)] ?? base;
+}
+
+/** SPEC-r14 B5: the registry's runtime notes (`RuntimeSupport.note`, the 简体 source) in the other languages. */
+const RUNTIME_NOTES: Record<string, I18nText> = {
+  '经辰记服务器代发（凭据只在服务器）': {
+    'zh-TW': '經辰記伺服器代發（憑證只在伺服器）',
+    en: 'Sent by the StarNote server (the credential stays on the server)',
+  },
+  '桌面端：授权后令牌加密存本机，直接调官方接口': {
+    'zh-TW': '桌面版：授權後權杖加密存在本機，直接呼叫官方 API',
+    en: 'Desktop app: after you authorize, the token is stored encrypted on this computer and the official API is called directly',
+  },
+  '网页：令牌只在当前页面内存，经辰记服务器转发（不保存）': {
+    'zh-TW': '網頁：權杖只在目前頁面的記憶體中，經辰記伺服器轉發（不儲存）',
+    en: 'Web: the token stays in this page’s memory only and is forwarded by the StarNote server (not stored)',
+  },
+  '打开「云端代发」后由服务器发布（可定时）': {
+    'zh-TW': '開啟「雲端代發」後由伺服器發布（可排程）',
+    en: 'With Cloud relay on, the server publishes it (can be scheduled)',
+  },
+  到点由服务器代发: {
+    'zh-TW': '到時由伺服器代發',
+    en: 'The server sends it at the scheduled time',
+  },
+  '登录公众号后台，在编辑器里粘贴': {
+    'zh-TW': '登入公眾號後台，在編輯器裡貼上',
+    en: 'Log in to the Official Account admin and paste into the editor',
+  },
+  '手机上保存图片集，打开小红书发布': {
+    'zh-TW': '在手機上儲存圖片集，開啟小紅書發布',
+    en: 'Save the image set on your phone, then open Xiaohongshu to post',
+  },
+  在手机上拉起抖音发布器确认发布: {
+    'zh-TW': '在手機上開啟抖音發布器確認發布',
+    en: 'Open the Douyin composer on your phone and confirm',
+  },
+  '仅限已有 integration token 的老用户': {
+    'zh-TW': '僅限已有 integration token 的舊使用者',
+    en: 'Only for existing users who already have an integration token',
+  },
+  '自动填写 Import story': {
+    'zh-TW': '自動填寫 Import story',
+    en: 'Fills in Import story automatically',
+  },
+  '先发到辰记或 GitHub Pages，再用 Import story 导入': {
+    'zh-TW': '先發到辰記或 GitHub Pages，再用 Import story 匯入',
+    en: 'Publish to StarNote or GitHub Pages first, then import it with Import story',
+  },
+  '复制文案，到 Discord 频道粘贴': {
+    'zh-TW': '複製文案，到 Discord 頻道貼上',
+    en: 'Copy the text and paste it into a Discord channel',
+  },
+  '复制文案，到 Slack 频道粘贴': {
+    'zh-TW': '複製文案，到 Slack 頻道貼上',
+    en: 'Copy the text and paste it into a Slack channel',
+  },
+  '手机：系统分享面板选 Instagram，在 App 里完成发布': {
+    'zh-TW': '手機：在系統分享選單選 Instagram，在 App 裡完成發布',
+    en: 'Phone: pick Instagram in the share sheet and finish in the app',
+  },
+  '网页：令牌只在当前页面内存，网页直接调 PDS': {
+    'zh-TW': '網頁：權杖只在目前頁面的記憶體中，網頁直接呼叫 PDS',
+    en: 'Web: the token stays in this page’s memory only; the page calls the PDS directly',
+  },
+};
+
+/** The registry notes still untranslated (tests: must be empty). */
+export function untranslatedRuntimeNotes(): string[] {
+  const out = new Set<string>();
+  for (const p of ENTRIES)
+    for (const r of p.runtimes) if (r.note && !RUNTIME_NOTES[r.note]) out.add(r.note);
+  return [...out];
+}
 
 /** A registry entry as written below; `mobileFirst` defaults to false. */
 type PlatformEntry = Omit<PlatformMeta, 'mobileFirst' | 'domains'> & { mobileFirst?: boolean };
@@ -1433,6 +1527,10 @@ const ENTRIES: readonly PlatformEntry[] = [
 
 export const PLATFORMS: readonly PlatformMeta[] = ENTRIES.map((p) => ({
   ...p,
+  ...(PLATFORM_LABELS[p.key] ? { labels: PLATFORM_LABELS[p.key] } : {}),
+  runtimes: p.runtimes.map((r) =>
+    r.note && RUNTIME_NOTES[r.note] ? { ...r, notes: RUNTIME_NOTES[r.note] } : r
+  ),
   mobileFirst: p.mobileFirst ?? false,
   domains: PLATFORM_DOMAINS[p.key],
   ...(PLATFORM_LANGS[p.key] ? { langs: PLATFORM_LANGS[p.key] } : {}),

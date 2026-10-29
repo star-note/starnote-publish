@@ -5,6 +5,7 @@ import {
   degradeTree,
   handOffEditor,
   handoffReport,
+  localizedLabel,
   openSessionRun,
   platformMeta,
   PlatformSessionError,
@@ -13,6 +14,7 @@ import {
 } from '@starnote/publish-core';
 import { z } from 'zod';
 
+import { msg } from './i18n';
 import { GENERIC_SITE_SCRIPTS } from './sites';
 
 import type { GenericDeskKey } from './sites';
@@ -24,6 +26,7 @@ import type {
   Doc,
   PublishOutput,
   ReportItem,
+  SdkLang,
   SessionAdapterOptions,
 } from '@starnote/publish-core';
 
@@ -46,7 +49,9 @@ const labelOf = (key: GenericDeskKey) => platformMeta(key)?.label ?? key;
 export function renderGeneric(
   doc: Doc,
   common: CommonFormShape,
-  assetBase?: string
+  assetBase?: string,
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
 ): GenericRendered {
   const report: ReportItem[] = [];
   const rawTitle = (common.title || doc.title || '').trim();
@@ -54,7 +59,7 @@ export function renderGeneric(
   if (cut.truncated)
     report.push({
       kind: 'title.truncated',
-      text: '标题超过 100 字，已截短',
+      text: msg(lang).titleTruncated,
       level: 'notice',
       samples: [rawTitle],
     });
@@ -66,6 +71,7 @@ export function renderGeneric(
     taskList: 'keep',
     flattenDetails: true,
     videoLabel: '视频',
+    ...(lang ? { lang } : {}),
   });
   report.push(...degraded.report);
   let json = degraded.json;
@@ -89,11 +95,8 @@ export function genericDeskBinding(key: GenericDeskKey): BindingSpec {
     kind: 'cookie',
     store: 'desktop',
     helpUrl: platformMeta(key)?.homepage ?? session.loginUrl,
-    instructions: [
-      `在辰记桌面端点「在桌面端登录${label}」`,
-      `在弹出的${label}页面里用任意方式登录，验证码由你本人完成`,
-      '登录好后关掉窗口，在提示里点「已登录」。登录状态只保存在这台电脑上',
-    ],
+    instructions: msg('zh-CN').binding(label),
+    instructionsFor: (lang) => msg(lang).binding(localizedLabel(key, label, lang)),
     checkEvery: 0,
     desktopSession: session,
   };
@@ -117,15 +120,19 @@ export function createGenericDeskAdapter(
         runtime: 'electron',
         mode: 'automation',
         needs: ['session'],
-        note: `通用模式：在发布台打开${label}，复制标题和正文粘贴进去，由你点发布`,
+        note: msg('zh-CN').runtimeNote(label),
+        notes: {
+          'zh-TW': msg('zh-TW').runtimeNote(localizedLabel(key, label, 'zh-TW')),
+          en: msg('en').runtimeNote(localizedLabel(key, label, 'en')),
+        },
       },
     ],
     contentTypes: ['article'],
     binding: genericDeskBinding(key),
     capabilities: { supportsUpdate: false, needsLogin: true },
     schema: genericDeskSchema,
-    preview: ((doc, _form, common = {}) => {
-      const r = renderGeneric(doc, common, opts.assetBase);
+    preview: ((doc, _form, common = {}, _content, popts) => {
+      const r = renderGeneric(doc, common, opts.assetBase, popts?.lang);
       return {
         format: 'html',
         title: r.title,
@@ -134,29 +141,30 @@ export function createGenericDeskAdapter(
       } satisfies AdapterPreview;
     }) as NonNullable<Adapter<typeof genericDeskSchema>['preview']>,
     async publish({ doc, common, ctx }): Promise<PublishOutput> {
-      ctx.emit({ type: 'progress', percent: 10, text: `读取${label}的站点脚本` });
+      const lang = ctx.lang;
+      const t = msg(lang);
+      const name = localizedLabel(key, label, lang);
+      const L = lang ? { lang } : {};
+      ctx.emit({ type: 'progress', percent: 10, text: t.readScript(name) });
       const run = await openSessionRun(ctx, key, label, signed, { ...opts, remoteScript: false });
       const { script } = run;
       const editorUrl = script.urls.write ?? script.urls.home;
       if (!ctx.handoff && !ctx.page)
-        throw new PlatformSessionError('help', `${label}需要在辰记桌面端发布`, {
+        throw new PlatformSessionError('help', t.desktopOnly(name), {
           helpUrl: script.urls.home,
+          ...L,
         });
-      if (!editorUrl) throw new PlatformSessionError('help', `${label}的站点脚本缺少入口地址`, {});
-      const r = renderGeneric(doc, common, opts.assetBase);
+      if (!editorUrl) throw new PlatformSessionError('help', t.noEntry(name), { ...L });
+      const r = renderGeneric(doc, common, opts.assetBase, lang);
       const report: ReportItem[] = [...r.report];
-      ctx.emit({ type: 'progress', percent: 60, text: `在发布台打开${label}` });
+      ctx.emit({ type: 'progress', percent: 60, text: t.opening(name) });
       const res = await handOffEditor(ctx, run, label, {
         editorUrl,
         prefill: { title: r.title, html: r.html, text: r.text },
       });
-      report.push(...handoffReport(res, label));
-      report.push({
-        kind: 'handoff.pending',
-        text: `在${label}里打开写文章，点格子顶栏的「复制标题」「复制正文」粘贴进去，检查后自己点发布，再点「我已发布」并把文章链接贴回辰记`,
-        level: 'notice',
-      });
-      ctx.emit({ type: 'progress', percent: 100, text: `等你在${label}里发布` });
+      report.push(...handoffReport(res, name, lang));
+      report.push({ kind: 'handoff.pending', text: t.steps(name), level: 'notice' });
+      ctx.emit({ type: 'progress', percent: 100, text: t.waiting(name) });
       return { url: editorUrl, state: 'handoff', report };
     },
   });

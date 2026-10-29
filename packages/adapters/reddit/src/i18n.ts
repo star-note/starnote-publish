@@ -1,0 +1,111 @@
+/** SPEC-r14 B5: the Reddit adapter's user-visible texts (form labels, binding help, report, progress). */
+import { defineMessages } from '@starnote/publish-core';
+
+const zhCN = {
+  form: {
+    subredditFormat: '版块名只能是字母、数字和下划线',
+    subreddit: '版块（r/…）',
+    kind: '帖子类型',
+    nsfw: 'NSFW',
+    spoiler: '剧透',
+    sendreplies: '回复通知我',
+    flairFormat: 'flair ID 格式不对',
+    flairId: 'Flair ID',
+    flairText: 'Flair 文字',
+    httpUrl: '请填写以 http(s):// 开头的地址',
+    link: '链接',
+    idFormat: '帖子 ID 是小写字母和数字',
+    externalId: '已发布帖子 ID',
+  },
+  binding: [
+    '点「用 Reddit 授权」，在 Reddit 页面允许辰记代你提交帖子',
+    '桌面端：令牌加密存在本机；网页：令牌只在当前页面，关闭即失效；打开「云端代发」才会存到辰记服务器',
+    '发帖前先看版块规则：很多版块不允许自我推广或只接受特定 flair',
+    '不用时到 Reddit「User Settings → Safety & Privacy → Manage third-party app authorization」撤销',
+  ],
+  titleTruncated: (max: number) => `Reddit 标题最多 ${max} 字，已截短`,
+  imagesLinked: (n: number) => `${n} 张图片以链接形式出现在正文（Reddit 文字帖不内嵌外链图片）`,
+  bodyTruncated: (max: number) => `Reddit 文字帖最多 ${max} 字，已截短并附原文链接`,
+  originNote: '文末附上辰记原文链接',
+  noLink: '还没有可分享的链接：先发布到辰记（或在表单里填写链接）',
+  linkPost: (url: string) => `以链接帖发布，指向 ${url}`,
+  rules: (sub: string) =>
+    `请确认 r/${sub} 允许这类帖子（自我推广、flair 要求），违规可能被删帖或封号`,
+  linkPostFixed: 'Reddit 的链接帖发布后不能修改；如需更新请发文字帖或在 Reddit 上删帖重发',
+  submitting: (sub: string) => `提交到 r/${sub}`,
+  done: '完成',
+};
+
+export const msg = defineMessages<typeof zhCN>({
+  'zh-CN': zhCN,
+  'zh-TW': {
+    form: {
+      subredditFormat: '看板名稱只能是字母、數字和底線',
+      subreddit: '看板（r/…）',
+      kind: '貼文類型',
+      nsfw: 'NSFW',
+      spoiler: '劇透',
+      sendreplies: '有回覆時通知我',
+      flairFormat: 'flair ID 格式不對',
+      flairId: 'Flair ID',
+      flairText: 'Flair 文字',
+      httpUrl: '請填寫以 http(s):// 開頭的網址',
+      link: '連結',
+      idFormat: '貼文 ID 是小寫字母和數字',
+      externalId: '已發布貼文 ID',
+    },
+    binding: [
+      '按「用 Reddit 授權」，在 Reddit 頁面允許辰記代你提交貼文',
+      '桌面版：權杖加密存在本機；網頁：權杖只在目前頁面，關閉即失效；開啟「雲端代發」才會存到辰記伺服器',
+      '發文前先看看板規則：很多看板不允許自我推廣或只接受特定 flair',
+      '不用時到 Reddit「User Settings → Safety & Privacy → Manage third-party app authorization」撤銷',
+    ],
+    titleTruncated: (max) => `Reddit 標題最多 ${max} 字，已截短`,
+    imagesLinked: (n) => `${n} 張圖片以連結形式出現在內文（Reddit 文字貼文不內嵌外部圖片）`,
+    bodyTruncated: (max) => `Reddit 文字貼文最多 ${max} 字，已截短並附上原文連結`,
+    originNote: '文末附上辰記原文連結',
+    noLink: '還沒有可分享的連結：先發布到辰記（或在表單裡填寫連結）',
+    linkPost: (url) => `以連結貼文發布，指向 ${url}`,
+    rules: (sub) => `請確認 r/${sub} 允許這類貼文（自我推廣、flair 要求），違規可能被刪文或停權`,
+    linkPostFixed: 'Reddit 的連結貼文發布後無法修改；如需更新請發文字貼文，或在 Reddit 上刪文重發',
+    submitting: (sub) => `提交到 r/${sub}`,
+    done: '完成',
+  },
+  en: {
+    form: {
+      subredditFormat: 'A subreddit name has only letters, digits and underscores',
+      subreddit: 'Subreddit (r/…)',
+      kind: 'Post type',
+      nsfw: 'NSFW',
+      spoiler: 'Spoiler',
+      sendreplies: 'Notify me of replies',
+      flairFormat: 'Invalid flair ID',
+      flairId: 'Flair ID',
+      flairText: 'Flair text',
+      httpUrl: 'Enter a URL starting with http(s)://',
+      link: 'Link',
+      idFormat: 'The post ID is lowercase letters and digits',
+      externalId: 'Published post ID',
+    },
+    binding: [
+      'Click “Authorize with Reddit” and allow StarNote to submit posts for you',
+      'Desktop app: the token is stored encrypted on this computer; web: it stays in this page only and expires when closed; it’s stored on the StarNote server only with Cloud relay on',
+      'Read the subreddit’s rules before posting: many don’t allow self-promotion or require a specific flair',
+      'When you no longer need it, revoke it under Reddit User Settings → Safety & Privacy → Manage third-party app authorization',
+    ],
+    titleTruncated: (max) => `Reddit titles allow at most ${max} characters; shortened`,
+    imagesLinked: (n) =>
+      `${n === 1 ? '1 image appears' : `${n} images appear`} as links in the body (Reddit text posts don’t embed external images)`,
+    bodyTruncated: (max) =>
+      `Reddit text posts allow at most ${max} characters; shortened, with the article link added`,
+    originNote: 'Added the StarNote article link at the end',
+    noLink: 'Nothing to share yet: publish to StarNote first (or enter a link in the form)',
+    linkPost: (url) => `Posted as a link post to ${url}`,
+    rules: (sub) =>
+      `Make sure r/${sub} allows this kind of post (self-promotion, flair rules); breaking them can get the post removed or the account banned`,
+    linkPostFixed:
+      'Reddit link posts can’t be edited: to update, post a text post, or delete it on Reddit and post again',
+    submitting: (sub) => `Submitting to r/${sub}`,
+    done: 'Done',
+  },
+});

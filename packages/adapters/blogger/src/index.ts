@@ -9,6 +9,7 @@ import { createBloggerAdapter } from './blogger';
 import type { PlatformMeta } from '@starnote/publish-core';
 
 export * from './blogger';
+export { msg as bloggerMessages } from './i18n';
 
 export const bloggerAdapter = createBloggerAdapter();
 

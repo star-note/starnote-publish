@@ -10,15 +10,18 @@ import {
   fillTemplate,
   HANDOFF_FILLED_TEXT,
   handOffEditor,
+  handoffFilledText,
   handoffReport,
+  localizedLabel,
   openSessionRun,
   PlatformSessionError,
   rehostImages,
   sessionPartition,
 } from '@starnote/publish-core';
 
+import { msg } from './i18n';
 import { renderJuejin, withImages } from './render';
-import { juejinSchema } from './schema';
+import { juejinSchema, juejinSchemaFor } from './schema';
 import bundledSigned from './site-script.signed.json';
 
 import type {
@@ -41,11 +44,8 @@ export const juejinBinding: BindingSpec = {
   kind: 'cookie',
   store: 'desktop',
   helpUrl: 'https://juejin.cn/creator/home',
-  instructions: [
-    '在辰记桌面端点「在桌面端登录掘金」',
-    '在弹出的掘金登录页里用任意方式登录，验证码由你本人完成',
-    '登录成功后窗口自动关闭，登录状态只保存在这台电脑上',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
   checkEvery: 6 * 3600,
   desktopSession: bundledScript(JUEJIN_SITE_SCRIPT).session!,
 };
@@ -57,8 +57,8 @@ export interface JuejinAdapterOptions extends SessionAdapterOptions {
 /** 掘金 over the desktop session: CSRF token → draft → images → body → publish (掘金 then reviews it). */
 export function createJuejinAdapter(opts: JuejinAdapterOptions = {}): Adapter<typeof juejinSchema> {
   const preview = (script: SiteScript) =>
-    ((doc, form, common = {}) => {
-      const r = renderJuejin(doc, common, script, (form as { brief?: string }).brief);
+    ((doc, form, common = {}, _content, popts) => {
+      const r = renderJuejin(doc, common, script, (form as { brief?: string }).brief, popts?.lang);
       return {
         format: 'markdown',
         title: r.title,
@@ -75,26 +75,32 @@ export function createJuejinAdapter(opts: JuejinAdapterOptions = {}): Adapter<ty
         runtime: 'electron',
         mode: 'automation',
         needs: ['session'],
-        note: '第 1 层：平台网页自己的接口',
+        note: msg('zh-CN').runtimeNote,
+        notes: { 'zh-TW': msg('zh-TW').runtimeNote, en: msg('en').runtimeNote },
       },
     ],
     contentTypes: ['article'],
     binding: juejinBinding,
     capabilities: { supportsUpdate: false, titleMax: 100, needsLogin: true },
     schema: juejinSchema,
+    schemaFor: juejinSchemaFor,
     preview: preview(bundledScript(JUEJIN_SITE_SCRIPT)),
     async publish({ doc, form, common, ctx }): Promise<PublishOutput> {
-      ctx.emit({ type: 'progress', percent: 5, text: '读取掘金站点脚本' });
+      const lang = ctx.lang;
+      const t = msg(lang);
+      const name = localizedLabel('juejin', LABEL, lang);
+      const L = lang ? { lang } : {};
+      ctx.emit({ type: 'progress', percent: 5, text: t.readScript });
       const run = await openSessionRun(ctx, 'juejin', LABEL, JUEJIN_SITE_SCRIPT, opts);
       const { script, client } = run;
-      const r = renderJuejin(doc, common, script, form.brief);
+      const r = renderJuejin(doc, common, script, form.brief, lang);
       const report: ReportItem[] = [...r.report];
       const tagsMax = script.limits?.tagsMax ?? 3;
       const tagIds = (form.tag_ids ?? []).slice(0, tagsMax);
       if (tagIds.length < (form.tag_ids ?? []).length)
         report.push({
           kind: 'tags.trimmed',
-          text: `掘金最多 ${tagsMax} 个标签，多出的已去掉`,
+          text: t.tagsTrimmed(tagsMax),
           level: 'notice',
         });
       ctx.emit({ type: 'report', items: report });
@@ -106,7 +112,7 @@ export function createJuejinAdapter(opts: JuejinAdapterOptions = {}): Adapter<ty
           csrfToken = String((await client.call('csrfToken')).result.token ?? '');
         let images = { map: new Map<string, string>(), report: [] as ReportItem[] };
         if (r.images.length && client.has('uploadImageByUrl')) {
-          ctx.emit({ type: 'progress', percent: 20, text: '转存图片到掘金' });
+          ctx.emit({ type: 'progress', percent: 20, text: t.rehosting });
           images = await rehostImages(
             r.images,
             async (url) => {
@@ -116,13 +122,14 @@ export function createJuejinAdapter(opts: JuejinAdapterOptions = {}): Adapter<ty
               return typeof v === 'string' && /^https?:\/\//.test(v) ? v : undefined;
             },
             {
-              label: LABEL,
+              label: name,
+              ...L,
               ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
               onProgress: (done, total) =>
                 ctx.emit({
                   type: 'progress',
                   percent: 20 + Math.round((done / total) * 50),
-                  text: `转存图片 ${done}/${total}`,
+                  text: t.rehostProgress(done, total),
                 }),
             }
           );
@@ -130,29 +137,28 @@ export function createJuejinAdapter(opts: JuejinAdapterOptions = {}): Adapter<ty
         report.push(...images.report);
         report.push({
           kind: 'fields.manual',
-          text: `发布时请在掘金弹窗里选分类和标签，摘要可用：${r.brief}`,
+          text: t.fieldsManual(r.brief),
           level: 'notice',
         });
-        ctx.emit({ type: 'progress', percent: 80, text: '打开掘金编辑器并填好内容' });
+        ctx.emit({ type: 'progress', percent: 80, text: t.openingEditor });
         const editorUrl = script.urls.write!;
         const res = await handOffEditor(ctx, run, LABEL, {
           editorUrl,
           prefill: { title: r.title, text: withImages(r, images.map) },
         });
-        report.push(...handoffReport(res, LABEL), {
+        report.push(...handoffReport(res, name, lang), {
           kind: 'handoff.pending',
-          text: HANDOFF_FILLED_TEXT,
+          text: lang ? handoffFilledText(lang) : HANDOFF_FILLED_TEXT,
           level: 'notice',
         });
-        ctx.emit({ type: 'progress', percent: 100, text: '等你在窗口中发布' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.waitingPublish });
         return { url: editorUrl, state: 'handoff', report };
       }
 
       let csrf = '';
       if (client.has('csrfToken')) {
         csrf = String((await client.call('csrfToken')).result.token ?? '');
-        if (!csrf)
-          ctx.emit({ type: 'log', level: 'warn', text: '没有拿到掘金的 CSRF token，继续尝试' });
+        if (!csrf) ctx.emit({ type: 'log', level: 'warn', text: t.noCsrf });
       }
       const vars = { csrf };
       const fields = {
@@ -162,12 +168,13 @@ export function createJuejinAdapter(opts: JuejinAdapterOptions = {}): Adapter<ty
         brief: r.brief,
       };
 
-      ctx.emit({ type: 'progress', percent: 15, text: '在掘金创建文章' });
+      ctx.emit({ type: 'progress', percent: 15, text: t.creating });
       const created = await client.call('createDraft', { vars, data: { ...fields, markdown: '' } });
       const id = String(created.result.id ?? '');
       if (!id)
-        throw new PlatformSessionError('help', '掘金没有返回文章 id', {
+        throw new PlatformSessionError('help', t.noArticleId, {
           helpUrl: script.urls.help,
+          ...L,
         });
       const editUrl = fillTemplate(script.urls.edit!, { id });
 
@@ -179,15 +186,16 @@ export function createJuejinAdapter(opts: JuejinAdapterOptions = {}): Adapter<ty
       const assetBase = opts.assetBase ? { assetBase: opts.assetBase } : {};
       let map = new Map<string, string>();
       if (r.images.length && canUpload) {
-        ctx.emit({ type: 'progress', percent: 25, text: '转存图片到掘金' });
+        ctx.emit({ type: 'progress', percent: 25, text: t.rehosting });
         const res = await rehostImages(r.images, upload, {
-          label: LABEL,
+          label: name,
+          ...L,
           ...assetBase,
           onProgress: (done, total) =>
             ctx.emit({
               type: 'progress',
               percent: 25 + Math.round((done / total) * 35),
-              text: `转存图片 ${done}/${total}`,
+              text: t.rehostProgress(done, total),
             }),
         });
         map = res.map;
@@ -195,7 +203,7 @@ export function createJuejinAdapter(opts: JuejinAdapterOptions = {}): Adapter<ty
       } else if (r.images.length) {
         report.push({
           kind: 'image.failed',
-          text: `${r.images.length} 张图片暂时不能转存到掘金，已保留原图链接`,
+          text: t.imagesKept(r.images.length),
           count: r.images.length,
           level: 'warn',
         });
@@ -203,18 +211,22 @@ export function createJuejinAdapter(opts: JuejinAdapterOptions = {}): Adapter<ty
       let cover: string | undefined;
       if (common.cover && canUpload) {
         cover = (
-          await rehostImages([common.cover], upload, { label: `${LABEL}（封面）`, ...assetBase })
+          await rehostImages([common.cover], upload, {
+            label: t.cover(name),
+            ...L,
+            ...assetBase,
+          })
         ).map.get(common.cover);
         if (!cover)
           report.push({
             kind: 'cover.failed',
-            text: '封面转存失败，文章没有设置封面',
+            text: t.coverFailed,
             level: 'warn',
           });
       }
       ctx.emit({ type: 'report', items: report });
 
-      ctx.emit({ type: 'progress', percent: 65, text: '写入正文' });
+      ctx.emit({ type: 'progress', percent: 65, text: t.writingBody });
       await client.call('updateDraft', {
         vars,
         data: { id, ...fields, markdown: withImages(r, map), ...(cover ? { cover } : {}) },
@@ -223,7 +235,7 @@ export function createJuejinAdapter(opts: JuejinAdapterOptions = {}): Adapter<ty
       if (form.mode === 'review') {
         report.push({
           kind: 'handoff.pending',
-          text: '文章已写入掘金编辑器，请检查后点「发布」',
+          text: t.reviewInEditor,
           level: 'notice',
         });
         const page = ctx.page ? asSessionPage(await ctx.page(run.partition)) : null;
@@ -234,19 +246,20 @@ export function createJuejinAdapter(opts: JuejinAdapterOptions = {}): Adapter<ty
         return { url: editUrl, externalId: id, state: 'handoff', report };
       }
 
-      ctx.emit({ type: 'progress', percent: 85, text: '提交发布' });
+      ctx.emit({ type: 'progress', percent: 85, text: t.submitting });
       const published = await client.call('publish', { vars, data: { draftId: id } });
       const articleId = String(published.result.articleId ?? '');
       if (!articleId || articleId === '0')
-        throw new PlatformSessionError('help', '掘金没有返回文章 id', {
+        throw new PlatformSessionError('help', t.noArticleId, {
           helpUrl: script.urls.help,
+          ...L,
         });
       report.push({
         kind: 'review.pending',
-        text: '掘金会先审核，审核通过后文章才对外可见',
+        text: t.reviewPending,
         level: 'info',
       });
-      ctx.emit({ type: 'progress', percent: 100, text: '已提交，等待掘金审核' });
+      ctx.emit({ type: 'progress', percent: 100, text: t.submitted });
       return {
         url: fillTemplate(script.urls.article!, { id: articleId }),
         externalId: articleId,

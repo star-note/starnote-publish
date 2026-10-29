@@ -1,0 +1,100 @@
+/** SPEC-r14 B5: the beehiiv adapter's user-visible texts (form labels, binding help, report, progress). */
+import { defineMessages } from '@starnote/publish-core';
+
+const zhCN = {
+  form: {
+    status: '发布方式',
+    isoTime: '请填写带时区的时间，如 2026-11-01T09:00:00+08:00',
+    scheduledAt: '定时发布时间',
+    originNote: '文末注明原文',
+    httpUrl: '请填写以 http(s):// 开头的地址',
+    canonicalUrl: '原文链接',
+    postId: '文章 ID 形如 post_…',
+    externalId: '已发布文章 ID',
+  },
+  key: {
+    apiKeyHint: '请粘贴 beehiiv 生成的 API key',
+    apiKey: 'API key',
+    publicationHint: 'Publication ID 形如 pub_xxxxxxxx-xxxx-…',
+    publication: 'Publication ID',
+  },
+  binding: [
+    '注意：beehiiv 的发文接口只对 Pro 和 Enterprise 档位开放，免费档绑定后发文会被拒绝',
+    '打开 beehiiv 的 Settings → Integrations → API，点「New API Key」起名「StarNote」，立刻复制（只显示一次）',
+    '同一页复制 Publication ID（pub_ 开头），一起粘贴到这里并点「测试连接」',
+    '辰记默认存为 beehiiv 草稿；选「发布」会立刻发给订阅者',
+  ],
+  originNote: '文末注明首发于辰记并附原文链接',
+  scheduleMissing: '定时发布需要填写时间',
+  draftOnly: '存为 beehiiv 草稿，在 beehiiv 里检查后发布',
+  scheduled: (at: string) => `beehiiv 将在 ${at} 发布并发给订阅者`,
+  sentNow: '发布后 beehiiv 会立刻把这期发给订阅者',
+  relaying: '由服务器代发到 beehiiv',
+  done: '完成',
+};
+
+export const msg = defineMessages<typeof zhCN>({
+  'zh-CN': zhCN,
+  'zh-TW': {
+    form: {
+      status: '發布方式',
+      isoTime: '請填寫含時區的時間，例如 2026-11-01T09:00:00+08:00',
+      scheduledAt: '排程發布時間',
+      originNote: '文末註明原文',
+      httpUrl: '請填寫以 http(s):// 開頭的網址',
+      canonicalUrl: '原文連結',
+      postId: '文章 ID 的格式為 post_…',
+      externalId: '已發布文章 ID',
+    },
+    key: {
+      apiKeyHint: '請貼上 beehiiv 產生的 API key',
+      apiKey: 'API key',
+      publicationHint: 'Publication ID 的格式為 pub_xxxxxxxx-xxxx-…',
+      publication: 'Publication ID',
+    },
+    binding: [
+      '注意：beehiiv 的發文 API 只對 Pro 和 Enterprise 方案開放，免費方案綁定後發文會被拒絕',
+      '開啟 beehiiv 的 Settings → Integrations → API，按「New API Key」命名為「StarNote」，立刻複製（只顯示一次）',
+      '在同一頁複製 Publication ID（pub_ 開頭），一起貼到這裡並按「測試連線」',
+      '辰記預設存為 beehiiv 草稿；選「發布」會立刻寄給訂閱者',
+    ],
+    originNote: '文末註明首發於辰記並附上原文連結',
+    scheduleMissing: '排程發布需要填寫時間',
+    draftOnly: '存為 beehiiv 草稿，在 beehiiv 裡檢查後發布',
+    scheduled: (at) => `beehiiv 將在 ${at} 發布並寄給訂閱者`,
+    sentNow: '發布後 beehiiv 會立刻把這期寄給訂閱者',
+    relaying: '由伺服器代發到 beehiiv',
+    done: '完成',
+  },
+  en: {
+    form: {
+      status: 'Publishing',
+      isoTime: 'Enter a time with a time zone, e.g. 2026-11-01T09:00:00+08:00',
+      scheduledAt: 'Scheduled publish time',
+      originNote: 'Credit the original at the end',
+      httpUrl: 'Enter a URL starting with http(s)://',
+      canonicalUrl: 'Canonical link',
+      postId: 'The post ID looks like post_…',
+      externalId: 'Published post ID',
+    },
+    key: {
+      apiKeyHint: 'Paste the API key generated in beehiiv',
+      apiKey: 'API key',
+      publicationHint: 'The Publication ID looks like pub_xxxxxxxx-xxxx-…',
+      publication: 'Publication ID',
+    },
+    binding: [
+      'Note: beehiiv’s post API is only open to the Pro and Enterprise plans; on the free plan, posting is refused',
+      'In beehiiv, open Settings → Integrations → API, click “New API Key”, name it “StarNote” and copy it right away (it’s shown only once)',
+      'Copy the Publication ID (starts with pub_) from the same page, paste both here and click “Test connection”',
+      'StarNote saves posts as beehiiv drafts by default; choosing “Publish” sends it to subscribers at once',
+    ],
+    originNote: 'Added a line at the end saying it first appeared on StarNote, with the link',
+    scheduleMissing: 'A scheduled publish needs a time',
+    draftOnly: 'Saved as a beehiiv draft: check it in beehiiv, then publish',
+    scheduled: (at) => `beehiiv will publish it and send it to subscribers at ${at}`,
+    sentNow: 'Once published, beehiiv sends this issue to subscribers right away',
+    relaying: 'Sending to beehiiv through the server',
+    done: 'Done',
+  },
+});

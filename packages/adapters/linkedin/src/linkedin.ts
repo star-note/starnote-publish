@@ -16,7 +16,13 @@
  *
  * Not bound: the existing share-offsite hand-off (`@starnote/publish-share`).
  */
-import { defineAdapter, mediaReport, mergeReports, platformMeta } from '@starnote/publish-core';
+import {
+  byLang,
+  defineAdapter,
+  mediaReport,
+  mergeReports,
+  platformMeta,
+} from '@starnote/publish-core';
 import {
   cardOf,
   codePoints,
@@ -28,6 +34,7 @@ import {
   missingLinkReport,
   newPostReport,
   placeLink,
+  refIn,
   relayFollowUp,
   relayPublish,
   relayRequestOf,
@@ -35,6 +42,8 @@ import {
 } from '@starnote/publish-kit';
 import { buildShare, shareInputOf } from '@starnote/publish-share';
 import { z } from 'zod';
+
+import { msg } from './i18n';
 
 import type {
   Adapter,
@@ -47,6 +56,7 @@ import type {
   PublishHandoff,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
 } from '@starnote/publish-core';
 import type {
   CredentialSource,
@@ -70,22 +80,23 @@ export const LINKEDIN_LIMITS = {
 
 const URL_RE = /^https?:\/\/\S+$/;
 
-export const linkedinSchema = z.object({
-  /** Your own commentary instead of title + summary. */
-  text: z.string().trim().max(LINKEDIN_LIMITS.commentaryMax).optional().describe('动态文案'),
-  link: z
-    .string()
-    .trim()
-    .regex(URL_RE, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('链接'),
-  visibility: z.enum(['PUBLIC', 'CONNECTIONS']).default('PUBLIC').describe('可见范围'),
-  include_summary: z.boolean().default(true).describe('文案带上摘要'),
-  include_tags: z.boolean().default(true).describe('带上话题'),
-  with_cover: z.boolean().default(true).describe('卡片带封面图'),
-  /** SPEC-r12 §2: the link as the article card, or as the member's first comment (default). */
-  linkPlacement: linkPlacementField('linkedin'),
+/** The form in a language (SPEC-r14 B5). */
+export const linkedinSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** Your own commentary instead of title + summary. */
+    text: z.string().trim().max(LINKEDIN_LIMITS.commentaryMax).optional().describe(t.text),
+    link: z.string().trim().regex(URL_RE, t.httpUrl).optional().describe(t.link),
+    visibility: z.enum(['PUBLIC', 'CONNECTIONS']).default('PUBLIC').describe(t.visibility),
+    include_summary: z.boolean().default(true).describe(t.includeSummary),
+    include_tags: z.boolean().default(true).describe(t.includeTags),
+    with_cover: z.boolean().default(true).describe(t.withCover),
+    /** SPEC-r12 §2: the link as the article card, or as the member's first comment (default). */
+    linkPlacement: linkPlacementField('linkedin', lang),
+  });
 });
+
+export const linkedinSchema = linkedinSchemaFor('zh-CN');
 
 export type LinkedinForm = z.infer<typeof linkedinSchema>;
 export type LinkedinFormInput = z.input<typeof linkedinSchema>;
@@ -96,12 +107,8 @@ export const linkedinBinding: BindingSpec = {
   provider: 'linkedin',
   scopes: ['openid', 'profile', 'w_member_social'],
   helpUrl: 'https://www.linkedin.com/',
-  instructions: [
-    '点「用 LinkedIn 授权」，在 LinkedIn 页面允许辰记代你发动态',
-    '桌面端：令牌加密存在本机；网页：令牌只在当前页面，关闭即失效；打开「云端代发」才会存到辰记服务器',
-    'LinkedIn 的授权 60 天后过期且不能自动续期，到期前会提醒你重新授权',
-    '不用时到 LinkedIn「设置 → 数据隐私 → 其他应用」撤销辰记',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 /**
@@ -150,15 +157,17 @@ export function renderLinkedin(
   form: LinkedinForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): LinkedinRendered {
+  const lang = opts.lang;
+  const t = msg(lang);
   const card = cardOf(doc, common, content, {
     assetBase: opts.assetBase,
     text: form.text,
     link: form.link,
   });
   const report: ReportItem[] = [];
-  const placed = placeLink(form.linkPlacement, card.link, card.lang);
+  const placed = placeLink(form.linkPlacement, card.link, card.lang, lang);
   const link = placed.bodyLink;
   const allTags = form.include_tags ? card.tags : [];
   // The link is the article card, not part of the text.
@@ -178,7 +187,7 @@ export function renderLinkedin(
     report.push({
       kind: 'share.truncated',
       level: 'notice',
-      text: `LinkedIn 动态最多 ${LINKEDIN_LIMITS.commentaryMax} 字，已截短`,
+      text: t.truncated(LINKEDIN_LIMITS.commentaryMax),
     });
   let article: { source: string; title: string; description?: string } | undefined;
   if (link) {
@@ -190,14 +199,13 @@ export function renderLinkedin(
     article = { source: link, title, ...(description ? { description } : {}) };
     report.push({
       kind: 'link.card',
-      text: '以文章卡片发出，点开是辰记原文',
+      text: t.linkCard,
       detail: { url: link },
     });
   } else if (placed.followUp) report.push(...placed.report);
-  else report.push(missingLinkReport('LinkedIn'));
+  else report.push(missingLinkReport('LinkedIn', lang));
   const thumb = form.with_cover && link ? card.cover : undefined;
-  if (thumb)
-    report.push({ kind: 'image.rehosted', text: '封面图由服务器上传为卡片缩略图', count: 1 });
+  if (thumb) report.push({ kind: 'image.rehosted', text: t.thumbnail, count: 1 });
   return {
     text: fit.text,
     body: {
@@ -215,7 +223,7 @@ export function renderLinkedin(
       },
       ...(thumb ? { thumb_url: thumb } : {}),
     },
-    report: [...report, ...mediaReport('linkedin', 'LinkedIn', content, common)],
+    report: [...report, ...mediaReport('linkedin', 'LinkedIn', content, common, lang)],
     ...(placed.followUp ? { followUp: placed.followUp } : {}),
   };
 }
@@ -253,11 +261,13 @@ export function linkedinHandoff(
   form: LinkedinForm,
   common: CommonFormShape,
   content: PublishContent | undefined,
-  opts: { assetBase?: string } = {}
+  opts: { assetBase?: string } = {},
+  /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
+  lang?: SdkLang
 ): { handoff: PublishHandoff; report: ReportItem[] } {
-  const input = shareInputOf('linkedin', doc, form, common, content, opts);
+  const input = shareInputOf('linkedin', doc, form, common, content, opts, lang);
   if ('error' in input) throw new Error(input.error);
-  const r = buildShare('linkedin', input);
+  const r = buildShare('linkedin', input, lang);
   return { handoff: { via: r.via, openUrl: r.openUrl, copyText: r.copyText }, report: r.report };
 }
 
@@ -272,7 +282,8 @@ export function createLinkedinAdapter(
   opts: LinkedinAdapterOptions = {}
 ): Adapter<typeof linkedinSchema> {
   const ref = linkedinRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const base = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({ ...base, ...(lang ? { lang } : {}) });
   return defineAdapter({
     key: 'linkedin',
     label: 'LinkedIn',
@@ -281,10 +292,11 @@ export function createLinkedinAdapter(
     binding: linkedinBinding,
     capabilities: { supportsUpdate: false, needsLogin: true },
     schema: linkedinSchema,
+    schemaFor: linkedinSchemaFor,
     // SPEC-r11 §6: LinkedIn one at a time
     maxConcurrent: 1,
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderLinkedin(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderLinkedin(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'text',
         title: common?.title || doc.title,
@@ -293,8 +305,8 @@ export function createLinkedinAdapter(
         ...(r.followUp ? { followUp: r.followUp } : {}),
       };
     },
-    renderRequest({ doc, form, common, content }) {
-      const r = renderLinkedin(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, lang }) {
+      const r = renderLinkedin(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(r.body, undefined, undefined, r.report, r.followUp);
     },
     // SPEC-r12 §2.2: the member's comment on the post (`socialActions/{urn}/comments`), through the relay
@@ -304,22 +316,23 @@ export function createLinkedinAdapter(
         return relayFollowUp(ctx, ref, post, input, { credential });
       });
     },
-    renderHandoff({ doc, form, common, content }) {
-      return linkedinHandoff(doc, form, common, content, renderOpts);
+    renderHandoff({ doc, form, common, content, lang }) {
+      return linkedinHandoff(doc, form, common, content, base, lang);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderLinkedin(doc, form, common, content, renderOpts);
+        const r = renderLinkedin(doc, form, common, content, renderOpts(ctx.lang));
+        const t = msg(ctx.lang);
         if (!r.text.trim() && !r.body.post.content)
-          throw helpError(ref, '动态是空的', { code: 'invalid' });
-        r.report.push(...newPostReport(ctx.previous));
+          throw helpError(refIn(ref, ctx.lang), t.empty, { code: 'invalid' });
+        r.report.push(...newPostReport(ctx.previous, ctx.lang));
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '发到 LinkedIn' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.posting });
         const credential = await credentialOf(opts.credential, 'linkedin', ctx);
         const res = await relayPublish({ ...ctx, previous: undefined }, ref, r.body, undefined, {
           credential,
         });
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

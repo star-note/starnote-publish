@@ -14,7 +14,7 @@
  *
  * Browser-safe: render + relay body only; 辰记's Python API holds the key and calls Kit (服务器代发).
  */
-import { defineAdapter, mediaReport, mergeReports } from '@starnote/publish-core';
+import { byLang, defineAdapter, mediaReport, mergeReports } from '@starnote/publish-core';
 import {
   absoluteUrl,
   articleOf,
@@ -35,6 +35,8 @@ import {
 } from '@starnote/publish-kit';
 import { z } from 'zod';
 
+import { msg } from './i18n';
+
 import type {
   Adapter,
   AdapterPreview,
@@ -45,6 +47,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
   StatsContext,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
@@ -60,43 +63,43 @@ export const KIT_LIMITS = {
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
-export const convertkitSchema = z.object({
-  /** `draft`: saved in Kit, sent from there; `schedule`: Kit sends it at `send_at`. */
-  send: z.enum(['draft', 'schedule']).default('draft').describe('发送方式'),
-  send_at: z
-    .string()
-    .trim()
-    .regex(ISO, '请填写带时区的时间，如 2026-11-01T09:00:00+08:00')
-    .optional()
-    .describe('定时发送时间'),
-  /** Also list it on the Kit web newsletter feed (Creator Profile / landing pages). */
-  public: z.boolean().default(false).describe('同时发布到 Kit 网页'),
-  origin_note: z.boolean().default(true).describe('文末注明原文'),
-  canonical_url: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('原文链接'),
-  /** The broadcast id of an earlier publish: set it to update the (unsent) broadcast. */
-  external_id: z
-    .string()
-    .trim()
-    .regex(/^\d+$/, '广播 ID 是数字')
-    .optional()
-    .describe('已建广播 ID'),
+/** The form in a language (SPEC-r14 B5): labels and messages from `msg(lang)`. */
+export const convertkitSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** `draft`: saved in Kit, sent from there; `schedule`: Kit sends it at `send_at`. */
+    send: z.enum(['draft', 'schedule']).default('draft').describe(t.send),
+    send_at: z.string().trim().regex(ISO, t.isoTime).optional().describe(t.sendAt),
+    /** Also list it on the Kit web newsletter feed (Creator Profile / landing pages). */
+    public: z.boolean().default(false).describe(t.public),
+    origin_note: z.boolean().default(true).describe(t.originNote),
+    canonical_url: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.canonicalUrl),
+    /** The broadcast id of an earlier publish: set it to update the (unsent) broadcast. */
+    external_id: z.string().trim().regex(/^\d+$/, t.idDigits).optional().describe(t.externalId),
+  });
 });
+
+export const convertkitSchema = convertkitSchemaFor('zh-CN');
 
 export type ConvertkitForm = z.infer<typeof convertkitSchema>;
 export type ConvertkitFormInput = z.input<typeof convertkitSchema>;
 
-export const convertkitKeyForm = z.object({
-  api_key: z
-    .string()
-    .trim()
-    .regex(/^\S{16,200}$/, '请粘贴 Kit 设置 → Developer 里生成的 v4 API key')
-    .describe('API key'),
-});
+export const convertkitKeyFormFor = byLang((lang) =>
+  z.object({
+    api_key: z
+      .string()
+      .trim()
+      .regex(/^\S{16,200}$/, msg(lang).key.apiKeyHint)
+      .describe(msg(lang).key.apiKey),
+  })
+);
+
+export const convertkitKeyForm = convertkitKeyFormFor('zh-CN');
 
 export const convertkitBinding: BindingSpec = {
   kind: 'token',
@@ -104,13 +107,11 @@ export const convertkitBinding: BindingSpec = {
   provider: 'convertkit',
   fields: ['api_key'],
   form: convertkitKeyForm,
+  formFor: convertkitKeyFormFor,
   createUrl: 'https://app.kit.com/account_settings/developer_settings',
   helpUrl: 'https://developers.kit.com/api-reference/authentication',
-  instructions: [
-    '打开 Kit 的 Settings → Developer，点「Add a new key」，起名「StarNote」',
-    'Kit 只显示一次 key：立刻复制，粘贴到这里并点「测试连接」',
-    '辰记默认把文章存为 Kit 的草稿（broadcast），由你在 Kit 里检查后发送；不用时在同一页删除 key',
-  ],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
 };
 
 export interface ConvertkitBroadcastBody {
@@ -140,9 +141,12 @@ export function renderConvertkit(
   form: ConvertkitForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  /** `lang` (SPEC-r14 B5): language of the report. Default `zh-CN`. */
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): ConvertkitRendered {
   const article = articleOf(doc, content);
+  const lang = opts.lang;
+  const t = msg(lang);
   const degraded = degradeArticle(
     article.doc,
     {
@@ -153,25 +157,27 @@ export function renderConvertkit(
       video: 'link',
       ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
     },
-    'Kit'
+    'Kit',
+    lang
   );
   const title = fitTitle(
     common.title || article.doc.title || 'Untitled',
     KIT_LIMITS.subjectMax,
-    'Kit'
+    'Kit',
+    lang
   );
-  const summary = fitSummary(common.summary, KIT_LIMITS.previewMax, 'Kit');
+  const summary = fitSummary(common.summary, KIT_LIMITS.previewMax, 'Kit', lang);
   const cover = absoluteUrl(common.cover, opts.assetBase);
-  const report: ReportItem[] = [...mediaReport('convertkit', 'Kit', content, common)];
+  const report: ReportItem[] = [...mediaReport('convertkit', 'Kit', content, common, lang)];
   let html = degraded.body;
-  const canonical = canonicalOf({ canonical_url: form.canonical_url }, article, 'Kit');
+  const canonical = canonicalOf({ canonical_url: form.canonical_url }, article, 'Kit', lang);
   if (form.origin_note && canonical.url) {
     html += originNoteHtml(originLinkOf(form, article, canonical.url), article.lang);
-    report.push({ kind: 'origin.note', text: '邮件末尾注明首发于辰记并附原文链接' });
+    report.push({ kind: 'origin.note', text: t.originNote });
   }
   report.push(
     ...degraded.report,
-    ...linkedImagesReport(degraded.doc.images.length, 'Kit'),
+    ...linkedImagesReport(degraded.doc.images.length, 'Kit', lang),
     ...title.report,
     ...summary.report
   );
@@ -180,16 +186,16 @@ export function renderConvertkit(
     report.push({
       kind: 'schedule.missing',
       level: 'error',
-      text: '定时发送需要填写发送时间',
+      text: t.scheduleMissing,
     });
   report.push(
     schedule
       ? {
           kind: 'scheduled',
           level: 'notice',
-          text: `Kit 将在 ${schedule} 发给订阅者（默认全部订阅者）`,
+          text: t.scheduled(schedule),
         }
-      : { kind: 'draft.only', level: 'notice', text: '存为 Kit 草稿，在 Kit 里检查收件人后发送' }
+      : { kind: 'draft.only', level: 'notice', text: t.draftOnly }
   );
 
   return {
@@ -274,7 +280,10 @@ export function createConvertkitAdapter(
   opts: ConvertkitAdapterOptions = {}
 ): Adapter<typeof convertkitSchema> {
   const ref = convertkitRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'convertkit',
     label: 'Kit',
@@ -283,12 +292,13 @@ export function createConvertkitAdapter(
     binding: convertkitBinding,
     capabilities: { supportsUpdate: true, needsLogin: true, titleMax: KIT_LIMITS.subjectMax },
     schema: convertkitSchema,
+    schemaFor: convertkitSchemaFor,
     statsRequires: 'token',
     fetchStats(externalId, ctx) {
       return fetchConvertkitStats(externalId, ctx);
     },
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderConvertkit(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderConvertkit(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'html',
         title: r.title,
@@ -297,17 +307,18 @@ export function createConvertkitAdapter(
         report: r.report,
       };
     },
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderConvertkit(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderConvertkit(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(convertkitRelayBody(r), previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
-        const r = renderConvertkit(doc, form, common, content, renderOpts);
+        const r = renderConvertkit(doc, form, common, content, renderOpts(ctx.lang));
+        const t = msg(ctx.lang);
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '由服务器代发到 Kit' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.relaying });
         const res = await relayPublish(ctx, ref, convertkitRelayBody(r), form.external_id);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

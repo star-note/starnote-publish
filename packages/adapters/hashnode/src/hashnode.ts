@@ -14,6 +14,7 @@
  * endpoint is an option; we only send fields both schemas share plus `coverImage` / `enableToc`.
  */
 import {
+  byLang,
   defineAdapter,
   isUrlExternalId,
   mediaReport,
@@ -33,11 +34,14 @@ import {
   linkedImagesReport,
   num,
   readJson,
+  refIn,
   relayPublish,
   relayRequestOf,
   stats,
 } from '@starnote/publish-kit';
 import { z } from 'zod';
+
+import { msg } from './i18n';
 
 import type {
   Adapter,
@@ -49,6 +53,7 @@ import type {
   PublishContent,
   ReportItem,
   RuntimeSupport,
+  SdkLang,
   StatsContext,
 } from '@starnote/publish-core';
 import type { ErrorLinks, PlatformRef, RequestDescription } from '@starnote/publish-kit';
@@ -77,44 +82,40 @@ export function hashnodeTagSlug(tag: string): string | null {
 
 const OBJECT_ID = /^[a-f0-9]{24}$/i;
 
-export const hashnodeSchema = z.object({
-  /** Which blog; defaults to the one picked when binding (`account.meta.publication_id`). */
-  publication_id: z
-    .string()
-    .trim()
-    .regex(OBJECT_ID, '博客 ID 是 24 位十六进制')
-    .optional()
-    .describe('博客'),
-  mode: z.enum(['publish', 'draft']).default('publish').describe('发布方式'),
-  subtitle: z.string().trim().optional().describe('副标题'),
-  slug: z
-    .string()
-    .trim()
-    .regex(/^[a-z0-9][a-z0-9-]*$/, '只能用小写字母、数字和 -')
-    .optional()
-    .describe('网址'),
-  enable_toc: z.boolean().default(false).describe('显示目录'),
-  series_id: z
-    .string()
-    .trim()
-    .regex(OBJECT_ID, '系列 ID 是 24 位十六进制')
-    .optional()
-    .describe('系列'),
-  set_canonical: z.boolean().default(true).describe('设置原文链接'),
-  canonical_url: z
-    .string()
-    .trim()
-    .regex(/^https?:\/\/\S+$/, '请填写以 http(s):// 开头的地址')
-    .optional()
-    .describe('原文链接'),
-  /** The Hashnode post id from an earlier publish: set it to update instead of creating. */
-  external_id: z
-    .string()
-    .trim()
-    .regex(OBJECT_ID, '文章 ID 是 24 位十六进制')
-    .optional()
-    .describe('已发布文章 ID'),
+/** The form in a language (SPEC-r14 B5): labels and messages from `msg(lang)`. */
+export const hashnodeSchemaFor = byLang((lang) => {
+  const t = msg(lang).form;
+  return z.object({
+    /** Which blog; defaults to the one picked when binding (`account.meta.publication_id`). */
+    publication_id: z
+      .string()
+      .trim()
+      .regex(OBJECT_ID, t.publicationFormat)
+      .optional()
+      .describe(t.publication),
+    mode: z.enum(['publish', 'draft']).default('publish').describe(t.mode),
+    subtitle: z.string().trim().optional().describe(t.subtitle),
+    slug: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9][a-z0-9-]*$/, t.slugFormat)
+      .optional()
+      .describe(t.slug),
+    enable_toc: z.boolean().default(false).describe(t.enableToc),
+    series_id: z.string().trim().regex(OBJECT_ID, t.seriesFormat).optional().describe(t.series),
+    set_canonical: z.boolean().default(true).describe(t.setCanonical),
+    canonical_url: z
+      .string()
+      .trim()
+      .regex(/^https?:\/\/\S+$/, t.httpUrl)
+      .optional()
+      .describe(t.canonicalUrl),
+    /** The Hashnode post id from an earlier publish: set it to update instead of creating. */
+    external_id: z.string().trim().regex(OBJECT_ID, t.idFormat).optional().describe(t.externalId),
+  });
 });
+
+export const hashnodeSchema = hashnodeSchemaFor('zh-CN');
 
 export type HashnodeForm = z.infer<typeof hashnodeSchema>;
 export type HashnodeFormInput = z.input<typeof hashnodeSchema>;
@@ -125,13 +126,13 @@ export interface HashnodeCredentials {
   publicationId?: string;
 }
 
-export const hashnodeTokenForm = z.object({
-  token: z
-    .string()
-    .trim()
-    .min(16, '请粘贴 Hashnode 开发者设置页生成的令牌')
-    .describe('个人访问令牌'),
-});
+export const hashnodeTokenFormFor = byLang((lang) =>
+  z.object({
+    token: z.string().trim().min(16, msg(lang).key.tokenHint).describe(msg(lang).key.token),
+  })
+);
+
+export const hashnodeTokenForm = hashnodeTokenFormFor('zh-CN');
 
 export const hashnodeBinding: BindingSpec = {
   kind: 'token',
@@ -139,13 +140,13 @@ export const hashnodeBinding: BindingSpec = {
   provider: 'hashnode',
   fields: ['token'],
   form: hashnodeTokenForm,
+  formFor: hashnodeTokenFormFor,
   createUrl: 'https://hashnode.com/settings/developer',
-  instructions: [
-    '打开 hashnode.com/settings/developer，生成一个新令牌并复制',
-    '粘贴到这里并点「测试连接」；有多个博客时选要发到哪一个',
-    '注意：Hashnode 要求博客开通 Pro 才能通过接口发文',
-  ],
-  selects: [{ id: 'publication_id', title: '发布到哪个博客' }],
+  instructions: msg('zh-CN').binding,
+  instructionsFor: (lang) => msg(lang).binding,
+  // the title in other languages: `msg(lang).selectPublication` (exported as `hashnodeMessages`)
+  selects: [{ id: 'publication_id', title: msg('zh-CN').selectPublication }],
+  selectsFor: (lang) => [{ id: 'publication_id', title: msg(lang).selectPublication }],
 };
 
 export interface HashnodeTagInput {
@@ -193,9 +194,11 @@ export function renderHashnode(
   form: HashnodeForm,
   common: CommonFormShape = {},
   content?: PublishContent,
-  opts: { assetBase?: string } = {}
+  /** `lang` (SPEC-r14 B5): language of the report. Default `zh-CN`. */
+  opts: { assetBase?: string; lang?: SdkLang } = {}
 ): HashnodeRendered {
   const article = articleOf(doc, content);
+  const lang = opts.lang;
   const degraded = degradeArticle(
     article.doc,
     {
@@ -207,18 +210,21 @@ export function renderHashnode(
       stripHighlight: true,
       ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
     },
-    'Hashnode'
+    'Hashnode',
+    lang
   );
   const title = fitTitle(
     common.title || article.doc.title || 'Untitled',
     HASHNODE_LIMITS.titleMax,
-    'Hashnode'
+    'Hashnode',
+    lang
   );
-  const subtitle = fitSummary(form.subtitle, HASHNODE_LIMITS.subtitleMax, 'Hashnode');
+  const subtitle = fitSummary(form.subtitle, HASHNODE_LIMITS.subtitleMax, 'Hashnode', lang);
   const slugs = fitTags(
     common.tags,
     { max: HASHNODE_LIMITS.tags, normalize: hashnodeTagSlug },
-    'Hashnode'
+    'Hashnode',
+    lang
   );
   // Keep the author's tag text as the display name of each slug.
   const names = new Map<string, string>();
@@ -227,12 +233,12 @@ export function renderHashnode(
     if (s && !names.has(s)) names.set(s, t.trim());
   }
   const tags = slugs.tags.map((slug) => ({ slug, name: names.get(slug) ?? slug }));
-  const canonical = canonicalOf(form, article, 'Hashnode');
+  const canonical = canonicalOf(form, article, 'Hashnode', lang);
   const cover = absolute(common.cover, opts.assetBase);
 
   const report: ReportItem[] = [
     ...degraded.report,
-    ...linkedImagesReport(degraded.doc.images.length, 'Hashnode'),
+    ...linkedImagesReport(degraded.doc.images.length, 'Hashnode', lang),
     ...title.report,
     ...subtitle.report,
     // Slugs are an internal form; only report what was dropped.
@@ -242,12 +248,12 @@ export function renderHashnode(
 
   // SPEC-r12 §3: what the platform will not take (or will change) about the cover / images / video
 
-  report.push(...mediaReport('hashnode', 'Hashnode', content, common));
+  report.push(...mediaReport('hashnode', 'Hashnode', content, common, lang));
   if (form.mode === 'draft')
     report.push({
       kind: 'draft.only',
       level: 'notice',
-      text: '以未公开状态保存到 Hashnode，检查后在 Hashnode 后台发布',
+      text: msg(lang).draftOnly,
     });
 
   return {
@@ -390,7 +396,10 @@ export function createHashnodeAdapter(
   opts: HashnodeAdapterOptions = {}
 ): Adapter<typeof hashnodeSchema> {
   const ref = hashnodeRef(opts.links);
-  const renderOpts = opts.assetBase ? { assetBase: opts.assetBase } : {};
+  const renderOpts = (lang?: SdkLang) => ({
+    ...(opts.assetBase ? { assetBase: opts.assetBase } : {}),
+    ...(lang ? { lang } : {}),
+  });
   return defineAdapter({
     key: 'hashnode',
     label: 'Hashnode',
@@ -399,12 +408,13 @@ export function createHashnodeAdapter(
     binding: hashnodeBinding,
     capabilities: { supportsUpdate: true, needsLogin: true, titleMax: HASHNODE_LIMITS.titleMax },
     schema: hashnodeSchema,
+    schemaFor: hashnodeSchemaFor,
     statsRequires: 'token',
     fetchStats(externalId, ctx) {
       return fetchHashnodeStats(externalId, ctx);
     },
-    preview(doc, form, common, content): AdapterPreview {
-      const r = renderHashnode(doc, form, common, content, renderOpts);
+    preview(doc, form, common, content, popts): AdapterPreview {
+      const r = renderHashnode(doc, form, common, content, renderOpts(popts?.lang));
       return {
         format: 'markdown',
         title: r.title,
@@ -414,27 +424,26 @@ export function createHashnodeAdapter(
       };
     },
     // SPEC-r11 §12: the same rendering as `publish`, as the relay request of a scheduled task.
-    renderRequest({ doc, form, common, content, previous }) {
-      const r = renderHashnode(doc, form, common, content, renderOpts);
+    renderRequest({ doc, form, common, content, previous, lang }) {
+      const r = renderHashnode(doc, form, common, content, renderOpts(lang));
       return relayRequestOf(hashnodeRelayBody(r, form), previous, form.external_id, r.report);
     },
     publish({ doc, form, common, ctx, content }) {
       return guard(ctx, ref, async () => {
         const updating = !!(ctx.previous?.externalId ?? form.external_id);
-        const r = renderHashnode(doc, form, common, content, renderOpts);
+        const r = renderHashnode(doc, form, common, content, renderOpts(ctx.lang));
+        const t = msg(ctx.lang);
         const body = hashnodeRelayBody(r, form);
         // A body over Hashnode's 100 KB limit would only fail there; stop before sending.
         const size = new TextEncoder().encode(JSON.stringify(body)).length;
         if (size > HASHNODE_LIMITS.bodyBytes)
-          throw helpError(
-            ref,
-            `正文太长：Hashnode 单次请求最多 100 KB，这篇约 ${Math.ceil(size / 1024)} KB`,
-            { code: 'too_large' }
-          );
+          throw helpError(refIn(ref, ctx.lang), t.tooLarge(Math.ceil(size / 1024)), {
+            code: 'too_large',
+          });
         ctx.emit({ type: 'report', items: r.report });
-        ctx.emit({ type: 'progress', percent: 40, text: '由服务器代发到 Hashnode' });
+        ctx.emit({ type: 'progress', percent: 40, text: t.relaying });
         const res = await relayPublish(ctx, ref, body, form.external_id);
-        ctx.emit({ type: 'progress', percent: 100, text: '完成' });
+        ctx.emit({ type: 'progress', percent: 100, text: t.done });
         return {
           url: res.url,
           externalId: res.externalId,

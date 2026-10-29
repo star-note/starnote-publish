@@ -5,6 +5,9 @@
  * them, global ones after an admin approved; global ones travel inside the signed site script as `learnedRules`).
  * Nothing here blocks publishing: every item is a suggestion.
  */
+import { coreMessages } from './i18n/messages';
+import { fmt } from './i18n/lang';
+
 import type { ComplianceField, ComplianceInput, ComplianceItem } from './compliance';
 
 export interface LearnedRulePattern {
@@ -33,7 +36,10 @@ const FIELDS: ComplianceField[] = ['title', 'summary', 'body'];
 function around(text: string, index: number, length: number, pad = 8): string {
   const start = Math.max(0, index - pad);
   const end = Math.min(text.length, index + length + pad);
-  return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`.replace(/\s+/g, ' ');
+  return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`.replace(
+    /\s+/g,
+    ' '
+  );
 }
 
 function escapeRe(text: string): string {
@@ -55,11 +61,12 @@ function regexOf(p: LearnedRulePattern): RegExp | null {
  * Ids are stable per rule + match, so 「忽略」 survives re-runs.
  */
 export function checkLearnedRules(
-  input: Pick<ComplianceInput, 'platform' | 'title' | 'summary' | 'text'>,
+  input: Pick<ComplianceInput, 'platform' | 'title' | 'summary' | 'text' | 'lang'>,
   rules: readonly LearnedRule[] | undefined
 ): ComplianceItem[] {
   const out: ComplianceItem[] = [];
   if (!rules?.length) return out;
+  const m = coreMessages(input.lang).learned;
   const texts: [ComplianceField, string | undefined][] = [
     ['title', input.title],
     ['summary', input.summary],
@@ -69,16 +76,19 @@ export function checkLearnedRules(
     if (rule.platform !== input.platform && rule.platform !== '*') continue;
     const learned = { id: rule.id, source: rule.source ?? 'global' } as const;
     const base = `learned:${rule.id}`;
-    const note = rule.source === 'user' ? '根据你近期的发布反馈' : '根据近期发布反馈';
+    const note = rule.source === 'user' ? m.fromUser : m.fromGlobal;
     if (rule.pattern.type === 'semantic') {
-      const text = texts.map(([, v]) => v ?? '').join('\n').trim();
+      const text = texts
+        .map(([, v]) => v ?? '')
+        .join('\n')
+        .trim();
       if (!text) continue;
       out.push({
         id: base,
         rule: 'learned',
         field: 'body',
         level: 'info',
-        message: `${note}：${rule.pattern.value}。${rule.suggestion}`,
+        message: fmt(m.semantic, { note, value: rule.pattern.value, suggestion: rule.suggestion }),
         needsAi: true,
         learned,
       });
@@ -90,16 +100,21 @@ export function checkLearnedRules(
     for (const field of FIELDS) {
       const value = texts.find(([f]) => f === field)?.[1];
       if (!value) continue;
-      for (const m of value.matchAll(re)) {
-        if (!m[0]) continue;
+      for (const hit of value.matchAll(re)) {
+        if (!hit[0]) continue;
         out.push({
           id: `${base}:${field}:${n++}`,
           rule: 'learned',
           field,
           level: rule.confidence >= 0.85 ? 'warn' : 'info',
-          message: `${note}：「${m[0]}」在${platformWord(rule.platform)}曾被驳回。${rule.suggestion}`,
-          excerpt: around(value, m.index!, m[0].length),
-          fix: { kind: 'replace', from: m[0], to: '' },
+          message: fmt(m.rejected, {
+            note,
+            word: hit[0],
+            where: rule.platform === '*' ? m.manyPlatforms : m.thisPlatform,
+            suggestion: rule.suggestion,
+          }),
+          excerpt: around(value, hit.index!, hit[0].length),
+          fix: { kind: 'replace', from: hit[0], to: '' },
           needsAi: true,
           learned,
         });
@@ -107,8 +122,4 @@ export function checkLearnedRules(
     }
   }
   return out;
-}
-
-function platformWord(platform: string): string {
-  return platform === '*' ? '多个平台' : '这个平台';
 }
