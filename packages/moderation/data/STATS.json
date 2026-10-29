@@ -2,10 +2,16 @@
   "source": "https://github.com/konsheng/Sensitive-lexicon",
   "ref": "main@2026-08-17",
   "categories": {
+    "insult": {
+      "files": ["(INSULT_RE over the other files)", "yuanjie 低俗辱骂"],
+      "raw": 4129,
+      "kept": 72,
+      "default": true
+    },
     "porn": {
       "files": ["色情类型.txt", "色情词库.txt"],
       "raw": 1233,
-      "kept": 478,
+      "kept": 439,
       "default": true
     },
     "violence": {
@@ -29,7 +35,7 @@
     "other": {
       "files": ["补充词库.txt", "其他词库.txt", "COVID-19词库.txt"],
       "raw": 1298,
-      "kept": 1063,
+      "kept": 1061,
       "default": true
     },
     "ad": {
@@ -41,8 +47,9 @@
     "livelihood": {
       "files": ["民生词库.txt"],
       "raw": 571,
-      "kept": 313,
+      "kept": 312,
       "default": false
     }
-  }
+  },
+  "insult_extra": "https://github.com/yuanjie-ai/ChineseSensitiveVocabulary (MIT)"
 }
