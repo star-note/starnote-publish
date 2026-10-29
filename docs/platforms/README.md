@@ -1,0 +1,38 @@
+# 平台调研：国内平台
+
+这里每个平台一份开发资料，写的是平台的开放能力、编辑器、发布字段、规则、风控，以及和浏览器插件逐项对照的结果。这些内容给开发看。面向用户的「发布指南」在 starnote-docs 的 `official-guides/` 下。
+
+- 调研日期：2026-10-29。
+- 资料来源：官方文档、公开资料，以及开源插件源码（Wechatsync v2、MultiPost、COSE、zhihu_obsidian、xiaohongshu-mcp）。
+- 文中的写法：
+  - 「待实测」：要登录后在真实页面上核实。
+  - ⚠️：只有第三方说法。
+
+**底线**：辰记在每个平台能填的字段，不能少于填得最全的插件。
+
+| 平台 | 官方 MCP | 个人可用的官方发布 API | Webhook | 编辑器 / 正文格式 | 辰记现状 | 对标对象 |
+|---|---|---|---|---|---|---|
+| [微信公众号](wechat.md) | 无 | 只能存草稿（个人号能不能调待实测）；发布接口 2025-07 起只对认证企业开放 | 有（发布结果事件，需要认证且配置服务器） | ProseMirror，只接受 HTML，图片必须转存到 mmbiz | 桌面端适配器，存进草稿箱 | MultiPost（封面会做三种比例裁剪） |
+| [知乎](zhihu.md) | 无 | 无（开放平台只能发圈子想法） | 无 | Draft.js，正文用 HTML | 桌面端发布台 | zhihu_obsidian |
+| [掘金](juejin.md) | 无 | 无 | 无 | ByteMD（Markdown） | 桌面端发布台 | 所有插件都不填分类、标签、摘要 |
+| [CSDN](csdn.md) | 无 | 无 | 无 | Markdown 或 CKEditor；接口要网关签名 | 桌面端发布台 | MultiPost |
+| [小红书](xiaohongshu.md) | 无（有第三方 MCP） | 无 | 无 | tiptap / ProseMirror；接口要 x-s 签名 | 无 | xiaohongshu-mcp |
+| [头条号](toutiao.md) | 无 | 无 | 无 | ProseMirror，正文用 HTML；接口要 a_bogus 签名 | 无 | MultiPost、code-box |
+| [百家号](baijiahao.md) | 无 | **有**（app_id + app_token：标题、正文、封面、原创） | 无 | UEditor，正文用 HTML | 无 | MultiPost |
+| [B 站专栏 / 图文](bilibili.md) | 无 | 无（开放平台只能投视频） | 无 | 旧版 UEditor 用 HTML，新版图文用 opus JSON；新接口要 wbi 签名 | 无 | MultiPost |
+| [微博](weibo.md) | 无 | 只有 `statuses/share`（发带链接的短微博，需要自己申请应用） | 无 | ProseMirror（头条文章），正文用 HTML | 分享页 | MultiPost |
+| [语雀](yuque.md) | **有**（yuque-mcp-server） | **有**（OpenAPI v2；个人 Token 可能需要超级会员 ⚠️） | 无 | Lake；接口也接受 Markdown 和 HTML | 无 | Wechatsync（知识库写死），辰记要让用户选知识库 |
+
+## 统一做法
+
+1. **默认走发布台**。用的是用户自己的登录态：辰记把所有字段填好，「发布」由用户自己点。辰记不自动点发布，也不批量发。
+2. **签名一律不复刻**。头条的 `a_bogus`、小红书的 `x-s`、B 站的 wbi、CSDN 的 `x-ca-*`，统一在平台页面内发请求，由页面自己的 JS 加签；做不到的平台就只做页面填表（DOM）。
+3. **能走官方通道就走官方**：
+   - 语雀：用户自己的 Token。
+   - 百家号：用户自己的 app_token。
+   - 认证企业公众号：AppID + 辰记服务器出口 IP。
+4. **控制发布节奏**：
+   - 站点脚本里的 `pacing` 是产品自己定的保守值：请求之间隔 0.8–4.5 秒，两篇至少隔 30 分钟，每天最多 5 篇。
+   - 平台的上限在不同来源里说法不一，以平台页面实际提示为准，不要写死。
+5. **验证码、滑块交给用户**。遇到 `challenge` 时，把平台页面原样交给用户处理，不做任何绕过。
+6. **外链**。头条、百家号、B 站、小红书对外链很敏感，渲染时默认把链接改成纯文字，并提醒用户。
