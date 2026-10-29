@@ -25,14 +25,57 @@
 
 **博客园是国内少数几个个人账号就能用官方接口发文的平台**，可以和 DEV、Hashnode 一样做成「填令牌，一键发布」。
 
-## MetaWeblog 发文（⚠️ 按公开资料整理，要等开通博客后实测）
+## Open API（`https://api.cnblogs.com`，文档 `https://api.cnblogs.com/help`）
 
-| 方法 | 作用 | 要点 |
+**认证方式**
+- Client Credentials：`POST https://api.cnblogs.com/token`，参数 `client_id`、`client_secret`、`grant_type=client_credentials`。
+- Authorization Code：先请求 `https://oauth.cnblogs.com/connect/authorize` 拿授权码，再用 `/connect/token` 换取令牌。
+- 调用接口时带 `Authorization: Bearer <token>`。
+- 令牌页上写明「个人访问令牌可用于 Open API」，⚠️ 实际用法应该也是 Bearer，帮助页里没写，待实测。
+
+**接口分组**：Users、Blogs、BlogPosts、BlogPostComments、Bookmarks、KbArticles、NewsItems、NewsComments、Statuses（闪存）、Question（博问）、Edu（班级）、ZzkDocuments（搜索）。
+
+**和博客文章有关的接口只能读，不能发布或编辑**：
+
+| 接口 | 作用 |
+|---|---|
+| `GET /api/users` | 当前用户 |
+| `GET /api/blogs/{blogApp}` | 博客信息：`blogId`、标题、`postCount` |
+| `GET /api/blogs/{blogApp}/posts?pageIndex=` | 个人随笔列表，**带 `ViewCount`、`CommentCount`、`DiggCount`** |
+| `GET /api/blogposts/{id}/body` | 正文 |
+| `GET /api/blogposts/@sitehome?pageIndex=&pageSize=` | 首页博文列表，可用来判断文章有没有上首页 |
+| `GET/POST /api/blogs/{blogApp}/posts/{postId}/comments` | 读评论、发评论 |
+
+Open API 里还有发「闪存」（`POST /api/statuses`）的接口。闪存是博客园的短动态，可以作为「分享到博客园」的短文渠道。
+
+**结论**：
+- **发文用 MetaWeblog**。
+- **数据用 Open API**：`fetchStats` 读随笔列表里的阅读、评论、推荐数，来源标 `source: 'official-api'`。
+
+## MetaWeblog 发文（`https://rpc.cnblogs.com/metaweblog/{blogApp}`，页面上有方法说明）
+
+用户名填登录名，密码填个人访问令牌（⚠️ 过去用的是博客密码，现在改成令牌，待实测）。
+
+| 方法 | 参数 | 返回 |
 |---|---|---|
-| `blogger.getUsersBlogs` | 校验令牌，取 `blogid` | 绑定时调用 |
-| `metaWeblog.newPost` / `editPost` | 新建 / 修改文章 | `title`；`description` 是正文；`categories` 里放 `[Markdown]` 表示正文是 Markdown，放 `[随笔分类]xxx` 表示个人分类；`mt_keywords` 是标签；`publish` 传 false 就是存草稿 |
-| `metaWeblog.newMediaObject` | 上传图片 | 返回博客园图床地址，正文里的图片要先转存 |
-| `metaWeblog.getCategories` | 取个人分类 | 给表单的下拉框用 |
+| `blogger.getUsersBlogs` | appKey, username, password | `BlogInfo[]`（含 `blogid`） |
+| `metaWeblog.newPost` | blogid, username, password, `Post`, publish | 新文章的 `postid` |
+| `metaWeblog.editPost` | postid, username, password, `Post`, publish | — |
+| `metaWeblog.getPost` / `getRecentPosts` | postid / blogid + numberOfPosts | `Post` / `Post[]` |
+| `blogger.deletePost` | appKey, postid, username, password, publish | true |
+| `metaWeblog.getCategories` | blogid, username, password | `CategoryInfo[]` |
+| `wp.newCategory` | blog_id, username, password, `WpCategory` | 新分类的 id |
+| `metaWeblog.newMediaObject` | blogid, username, password, `FileData` | `UrlData`（图片地址） |
+
+`Post` 结构体的字段：
+- 发布时必填：`title`、`description`（正文）、`dateCreated`。
+- 选填：`categories`、`mt_keywords`（标签）、`mt_excerpt`（摘要）、`wp_slug`、`mt_allow_comments`、`mt_text_more`、`link`、`permalink`、`postid`、`enclosure`、`source`、`userid`。
+
+`categories` 里的特殊写法（⚠️ 公开资料，待实测）：
+- `[Markdown]` 表示正文是 Markdown；
+- `[随笔分类]xxx` 表示个人分类；
+- `[发布至博客园首页]` 表示投首页；
+- `[网站分类]xxx` 表示网站分类。
 
 ## 发布规则
 
