@@ -51,7 +51,9 @@
 | 赞赏 | 选填 | `can_reward`、`appreciate.tagline` | | 固定 false |
 | 商业推广标记 | 选填 | `commercial_report_info`、`commercialReportInfo.isReport` | | 固定 0 |
 | 投稿到问题 | 选填 | `POST /api/v4/creators/article_publish/check/question` | | 没有 |
-| 定时发布 / 可见范围 | — | 未查到 | | — |
+| 定时发布 | 选填 | 字段名待实测（页面上有开关，见「实测记录」） | | 没有 |
+| 内容来源 | 新闻类必填 | 字段名待实测 | | 没有 |
+| 可见范围 | — | 页面上没有 | | — |
 
 ## 发布规则
 
@@ -107,7 +109,70 @@
 
 ## 实测记录
 
-（登录后补充）
+### 2026-10-29：写文章页（账号已登录，桌面宽度 1440）
+
+**编辑器**
+- 地址仍是 `zhuanlan.zhihu.com/write`。第一次输入内容后，地址变成 `/p/{id}/edit`。
+- 正文仍是 Draft.js（`.public-DraftEditor-content`），页面上没有 ProseMirror。
+- 标题框是 `textarea`，占位文字「请输入标题（最多 100 个字）」，没有设置 `maxLength`。
+- 底部状态栏提示「Markdown 语法输入中」，说明编辑器能直接识别 Markdown 语法。
+
+**工具栏**（1440 宽时全部显示）
+- 撤销 / 重做 / 清除格式
+- 标题、加粗、斜体、列表
+- 目录、引用、分割线、代码块、注释
+- 图片、视频、链接、**公式、表格**、附件
+- 导入、草稿备份、更多、创作助手
+
+窄屏时，公式、表格、链接、附件会收进「更多」。所以表格和公式都是原生支持的。
+
+![知乎编辑器工具栏（1440 宽）](shots/zhihu/toolbar.jpg)
+
+**发布设置**
+- 在正文下方。标题和正文为空时只显示「封面」和「定时发布」，有内容后才显示全部：
+
+| 设置 | 形式 | 说明 |
+|---|---|---|
+| 添加封面 | 上传 | 支持 JPEG、JPG、PNG |
+| 投稿至问题 | 下拉（默认「未选择」） | |
+| 创作声明 | 下拉 | 选项来自 `GET /api/articles/{id}/disclaimers`，取值见下 |
+| 文章话题 | 已选标签 +「添加话题」 | **页面会根据正文自动推荐一个话题，并自动调用 `POST /api/articles/{id}/topics` 绑定**，用户可以删掉 |
+| 定时发布 | 开关 | **有这个功能**（之前调研写的是「未查到」） |
+| 内容来源 | 「添加来源」 | 新闻类内容要按自媒体投稿规范标注信息来源 |
+
+![知乎发布设置（有内容后）](shots/zhihu/publish-settings.jpg)
+
+![创作声明选项](shots/zhihu/disclaimer-options.jpg)
+
+创作声明的取值（`type` 对应页面上显示的文字）：
+
+| type | 显示 |
+|---|---|
+| `spoiler` | 包含剧透 |
+| `medical_advice` | 包含医疗建议 |
+| `fictional_creation` | 虚构创作 |
+| `contain_finance` | 包含理财内容 |
+| `ai_creation` | 包含 AI 辅助创作 作者对内容负责 |
+| （不传） | 无声明 |
+
+**发布设置里没有的几项**：专栏、评论权限、赞赏、目录开关都不在这个区域。它们可能在点「发布」后弹出的确认框里，也可能在「更多」菜单里，待确认。辰记不替用户点发布，这一步要让用户自己点一次「发布」，看弹窗再记下来。
+
+**页面自己发的请求**（和站点脚本一致）
+1. `POST /api/account/prod/token/refresh`
+2. `POST /api/articles/drafts`：输入第一个字时建草稿
+3. `GET /api/articles/{id}/disclaimers`
+4. `PATCH /api/articles/{id}/draft`：自动保存，会调用多次
+5. `POST /api/articles/{id}/topics`：自动推荐的话题
+
+**cookie**
+- 页面脚本能读到 `_xsrf`、`d_c0`、`SESSIONID`、`JOID`、`osd`、`BEC`、`_zap`。
+- `z_c0` 是 httpOnly，脚本读不到。属于正常情况，桌面端从 Electron session 里读取。
+
+**辰记要改的**
+- 表单加三项：创作声明（用上表的 `type`，默认建议 `ai_creation` 是否勾选让用户决定）、定时发布、内容来源。
+- 话题：知乎会自动推荐。辰记填好正文后先读一次已推荐的话题，再加上用户的关键词；不要把推荐的话题覆盖掉。
+- 投稿至问题：用户粘贴问题链接。
+- 表格、公式：渲染时保留成知乎原生格式，不要降级成图片。
 
 ## 来源
 
