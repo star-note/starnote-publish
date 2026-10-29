@@ -124,13 +124,37 @@ MCP、发布 API、Webhook、OAuth、RSS 导入都**没有**。下面用到的�
 |---|---|
 | 当前用户 | `user_api/v1/user/get`、`user/get_info_pack` |
 | CSRF | `user_api/v1/sys/token` |
-| 分类 | `tag_api/v1/query_category_list`（**站点脚本里写的是 `query_category_briefs`，要核对** 两个接口能否通用） |
+| 分类 | 编辑器用 `tag_api/v1/query_category_list`；数据中心用 `query_category_briefs`（站点脚本里用的也是它）。两个接口都还在 |
 | 标签 | `tag_api/v1/query_tag_list` |
 | 自己的专栏 | `content_api/v1/column/self_center_list` |
 | 话题 | `tag_api/v1/theme/list_by_hot` |
 | 建草稿 / 改草稿 | `content_api/v1/article_draft/create`、`/update` |
 | 自动摘要 | `content_api/v1/article_draft/abstract?draft_id={id}` |
 | 文字纠错 | `content_api/v1/article/text_correction` |
+
+**风控实测**
+
+页面加载了字节的安全 SDK（`window.bdms`）。它**只给部分接口加签名**，比如给 `user/get_info_pack`、`growth_api/v1/get_cur_point` 加上 `msToken` 和 `a_bogus`，`get_info_pack` 还会带 `verifyFp` / `fp`。
+
+发文用到的接口不带签名，只带 `aid`、`uuid`、`spider` 三个参数，包括 `article_draft/create`、`update`、`content_api/v1/author_center/*`、`article/list_by_user` 和 `tag_api/*`。CSRF 照旧用 `x-secsdk-csrf-token`。
+
+结论：辰记在掘金页面内用页面自己的请求通道发请求，签不签名由页面决定，辰记不用管。登录态 cookie `sessionid` 是 httpOnly，页面脚本读不到，属于正常情况。
+
+**官方通道**：没有。创作者中心的「帮助中心」里也没有开放平台的入口。
+
+**发布后的数据**
+
+入口：创作者中心 → 数据中心 → 内容数据（`/creator/data/content/article/entirety`）。
+
+| 页面上的数据 | 接口 | 说明 |
+|---|---|---|
+| 昨日汇总：总文章数、展现、阅读、点赞、评论、收藏，各项都和前一天比 | `content_api/v1/author_center/data/card` | |
+| 单篇列表：每篇的展现、阅读、点赞、评论、收藏 | `content_api/v1/article/list_by_user` | 字段 ⚠️ 公开资料里是 `article_info.view_count` / `digg_count` / `comment_count` / `collect_count`，要等有文章后实测 |
+| 单篇趋势 | 「单篇分析」页签，接口待实测 | |
+
+文章详情 `content_api/v1/article/detail` 不登录也能读阅读、点赞、评论数 ⚠️，可以作为 `source: 'public'` 的兜底来源。
+
+辰记的做法：给掘金适配器实现 `fetchStats`。桌面端每 6 小时用登录态读一次 `list_by_user`，没有登录态时退回公开的文章详情。只读，不翻页狂刷；每次采集跟发文共用同一套节奏限制。
 
 **辰记要改的**
 - `titleMax` 从 100 改成 80。
