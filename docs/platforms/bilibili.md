@@ -108,7 +108,83 @@
 
 ## 实测记录
 
-（登录后补充）
+### 2026-10-29：专栏投稿（老账号，注册约 2015 天）
+
+**入口和每日上限**
+- 「专栏投稿」入口是 `/platform/upload/text`。页面本身是外壳，草稿箱放在 iframe `member.bilibili.com/york/read-draft` 里。
+- 页面上写明的规则：
+  - 图片只支持 .jpg / .png / .webp / .gif / .heif，静态图不超过 20M，gif 不超过 8M。
+  - **账号要 LV1 以上才能发专栏。LV1–3 每天 1 篇，LV4–6 每天 5 篇。**
+
+![专栏投稿规则](shots/bilibili/limits.jpg)
+
+**编辑器**
+- 点「新的创作」会跳到 `/platform/upload/text/new-edit`，编辑器在 iframe `member.bilibili.com/york/read-editor` 里。
+- **新版专栏编辑器用的是 tiptap / ProseMirror**（`.tiptap.ProseMirror.eva3-editor`），已经不是 UEditor。
+  - 存草稿走 opus 接口：`x/dynamic/feed/create/opus_init_check?editor_version=&w_rid=&wts=`，**带 wbi 签名**。
+  - 正文会存成 opus 结构，所以辰记要在页面内往编辑器里填内容，由页面自己完成转换和签名。
+- 标题框是 `textarea`，占位文字「请输入标题（建议30字以内）」，`maxLength` 为 **50**。
+- 正文最多 100000 字。左侧会根据标题样式自动生成目录。
+- 工具栏：撤销、重做、格式刷、清除格式、标题、字号、加粗、斜体、下划线、删除线、文字颜色、背景色、对齐、有序 / 无序列表、图片、链接、分割线、引用、表情、「+」插入（置顶视频等）。
+
+![B 站专栏编辑器](shots/bilibili/editor.jpg)
+
+**发布设置**（在正文下方）
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| 可见范围 | 所有人可见 | 也可以选「仅自己可见」，选了就不支持分享和商业推广 |
+| 自定义封面 | 关 | 不设置时，会自动截取正文开头的文字生成封面 |
+| 评论开关 | **开** | 关掉后用户不能评论 |
+| 精选评论 | 关 | 开了以后，只有你筛选过的评论才会显示 |
+| 定时发布 | 关 | **只能选当前时间之后 2 小时到 7 天内**，按北京时间 |
+| 创作声明 | 不勾 | 「声明此文章为原创，未经授权禁止转载」 |
+| AI 辅助创作声明 | 不勾 | 勾了以后，图片上会标注「使用人工智能合成技术」 |
+| 话题 | — | 添加话题 |
+| 文集 | — | 选择文集 |
+
+底部只有两个按钮：保存为草稿、发布。
+
+**旧版专栏里的「分类」和「标签」都没有了。** MultiPost 等插件填的 `tid`、`tags` 还是旧接口的字段，新版已经不用了。
+
+![B 站发布设置](shots/bilibili/publish-settings.jpg)
+
+**风控**
+- 能读到的 cookie 有：`bili_jct`（CSRF）、`DedeUserID`、`buvid3`、`buvid4`、`buvid_fp`、`_uuid`、`b_nut`、`bili_ticket`、`sid`。`SESSDATA` 是 httpOnly，读不到。
+- 页面会拉风控配置 `x/web-frontend/risk/config`。
+- 大部分接口都带 `x-bili-device-req-json` 和 `x-bili-locale-json`。
+- opus 相关的接口要 wbi 签名（`w_rid`、`wts`）。
+
+**发布后的数据**
+
+数据中心 `/platform/data-up/`，iframe 是 `york/data-center-web`。**每天中午 12 点（北京时间）更新前一天的数据**，第一次发稿后，从第二天开始才有数据。
+
+| 页面 | 接口 |
+|---|---|
+| 核心数据概览：播放、空间访客、净增粉丝、点赞、收藏、硬币、评论、弹幕、分享 | `member.bilibili.com/x/web/data/v2/overview/stat/num?period=&tab=&tmid=` |
+| 收益数据（充电） | `x/web/data/v3/overview/elec/num`、`elec/graph` |
+| 专栏数据 | 「专栏数据」页签，接口待实测 |
+| 账号诊断、稿件分析 | `x/web/data/account_diagnose/*`、`archive_diagnose/*` |
+
+公开数据可以作为兜底：⚠️ 专栏 / opus 的公开详情接口应该能读到阅读、点赞、评论、收藏、硬币、分享，待实测。
+
+**变现**（收益管理）
+- 侧栏入口有：收益中心、**创作激励**、UP动画、**充电计划**、悬赏带货、任务广场、花火平台（商单）、模板激励。
+- 创作激励（`/platform/allowance/excitation/pc`）只有「视频激励」和「素材激励」两种，**专栏没有激励**。加入条件：
+  - 权益等级 LV3（这个号未达标）；
+  - 创作信用分（页面显示 80 分，标为未达标）。
+- 专栏能拿到的收益：
+  - 充电：读者给 UP 主充电；
+  - 悬赏带货、花火商单：有合作时才有；
+  - 活动和任务奖励。
+- 「创作权益」里还有版权保护计划，会自动监测站外搬运并帮你维权。
+
+**对辰记的影响**
+- 适配器按新版编辑器来做：在 `york/read-editor` 这个 iframe 里填内容，表单字段按上表。不要再填旧版的分类和标签。
+- 标题按 50 字截断，超过 30 字时提示「建议 30 字以内」。
+- 定时发布要校验在 2 小时到 7 天之间。
+- 先看账号等级。LV0 不能发；LV1–3 每天 1 篇，要提醒用户。
+- 内容用了辰记 AI 写作时，「AI 辅助创作声明」建议默认勾上。
 
 ## 来源
 
