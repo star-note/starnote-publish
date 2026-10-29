@@ -104,7 +104,55 @@
 
 ## 实测记录
 
-（登录后补充）
+### 2026-10-29：头条文章编辑器（新号，没认证）
+
+**编辑器**（`card.weibo.com/article/v5/editor`）
+- 编辑器是 tiptap / ProseMirror（`.tiptap.ProseMirror.wb-editor`）。
+- 左边是草稿箱，**最多存 30 篇**；另有「发布历史」。要先点「写文章」，编辑区才能用。点了就会调用 `draft/create`，生成一篇「未命名」草稿，地址变成 `#/draft/{id}`。
+- 标题是 `textarea`，**最多 32 字**。下面是「导语（选填）」，**最多 44 字**。
+- 工具栏：正文 / 标题、字号、文字颜色、背景色、加粗、斜体、下划线、删除线、对齐、缩进、行距、列表、图片、视频、链接，以及更多。
+- 底部按钮：保存草稿、预览、**下一步**。「下一步」之后才是最终发布，还没看到下一步里有什么。
+
+![微博头条文章编辑器](shots/weibo/editor.jpg)
+
+**发布设置**（在正文下方）
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| 设置封面 | — | 20MB 以内的 JPG、GIF、PNG，建议 16:9 |
+| 专栏设置 | — | 加入专栏 |
+| 仅粉丝阅读全文（`follow_to_read`） | **勾选** | 非粉丝只能读到 50%，可以帮助涨粉。**没认证的用户每天只有 1 篇能用这个功能** |
+| 设置推荐文章（`article_recommend`） | — | 在文末推荐其他文章 |
+
+![微博发布设置](shots/weibo/publish-settings.jpg)
+
+**草稿字段**（来自 `draft/load` 的返回；新建草稿时的默认值）
+- 文章本体：`title`、`summary`（导语）、`content`、`cover`、`writer`、`free_content`
+- 定时发布：`publish_at` / `publish_local_at` / `timestamp`
+- `is_markdown`：⚠️ 可能可以直接用 Markdown 导入，待实测
+- AI 声明：`is_aigc_used`、`is_ai_plugins`
+- 关注后阅读：`follow_to_read: 1`，`follow_to_read_detail.daily_limit: 1`
+- 赞赏：`isreward: 0`，另有赞赏申请说明的链接
+- 付费阅读：`pay_setting`、`is_article_free`、`money`、`is_single_pay_new`、`is_vclub_single_pay`
+- 其他：`article_recommend`、`status`、`action`
+
+**页面调用的接口**
+- 都在 `card.weibo.com/article/v5/aj/editor/` 下：`draft/list?uid=&allow_pay=&_rid=`、`draft/create`、`draft/load`。另外 `aj/face` 是表情。
+- 能读到的 cookie 只有 `SUBP`、`ALF` 等几个，`SUB` 是 httpOnly，页面脚本读不到。
+
+**发布后的数据和变现**（创作者中心 `me.weibo.com`）
+- 菜单：
+  - 数据中心：数据总览、博文数据、视频数据、粉丝数据、主页数据
+  - 广告中心：跳到 `tui.weibo.com`
+  - **收益中心**：收益总览、**广告共享计划**、**创作激励**、**微博赞赏**
+- 首页显示近 7 日阅读、互动、涨粉，以及昨日收益、全年收益。
+- 首页用到的接口：`me.weibo.com/api/proxy/native/dataview`、`dataprofit`、`creatorinspire`、`menu`。
+- 各项收益的开通条件还没看。⚠️ 广告共享计划和赞赏一般要求认证或达到一定粉丝数，待查。
+
+**对辰记的影响**
+- 用户没认证时，「仅粉丝阅读全文」每天只能用 1 篇。辰记沿用默认勾选，但要提示这个限制。
+- 标题按 32 字截断，导语按 44 字截断；封面裁成 16:9。
+- 发布流程分两步：编辑页点「下一步」后，再在下一步页面点发布。辰记把编辑页填好后，交给用户自己点「下一步」和发布。
 
 ## 来源
 
