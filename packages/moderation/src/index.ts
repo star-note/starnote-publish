@@ -10,7 +10,7 @@
 import { CATEGORY_DATA } from './words.generated';
 
 export type CategoryId =
-  'porn' | 'violence' | 'politics' | 'corruption' | 'other' | 'ad' | 'livelihood';
+  'insult' | 'porn' | 'violence' | 'politics' | 'corruption' | 'other' | 'ad' | 'livelihood';
 
 export interface CategoryInfo {
   id: CategoryId;

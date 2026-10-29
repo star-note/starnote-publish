@@ -152,3 +152,16 @@ describe('bundled lexicon', () => {
     expect(maskText(prose).hits).toEqual([]);
   });
 });
+
+describe('insults and everyday slang (2026-10-29)', () => {
+  it('has an insult category, on by default', () => {
+    const insult = CATEGORIES.find((c) => c.id === 'insult');
+    expect(insult?.default).toBe(true);
+    expect(builtinWords('insult')).toEqual(expect.arrayContaining(['傻逼', '操你妈']));
+  });
+
+  it('masks insults but leaves everyday exclamations alone', () => {
+    expect(maskText('你这个傻逼').text).toBe('你这个**');
+    for (const w of ['卧槽', '我草', '我操', '牛逼', 'tmd']) expect(maskText(`${w}，这也太快了`).hits, w).toEqual([]);
+  });
+});
