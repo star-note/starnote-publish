@@ -55,6 +55,19 @@
 - **没有给作者的收益分成**，注册表里 `monetization: []` 也是这么记的。
 - 博客园的价值在于技术圈的影响力和搜索引擎收录，属于「技术同步」类平台。
 
+## 决定（2026-10-29）
+
+博客园**只走个人访问令牌**，不做登录态发布台。具体做法：
+
+- **绑定**：用户在 `account.cnblogs.com/settings/tokens` 自己创建令牌，把令牌和博客地址名填进辰记。辰记调 `blogger.getUsersBlogs` 校验，并拿到 `blogid`。
+- **发布**：
+  - 参照 DEV、Hashnode、WordPress 的做法，SDK 在浏览器端渲染请求体（Markdown 正文、标题、标签、分类），通过 `POST /notes/{id}/publish/cnblogs` 交给 starnote-api。
+  - starnote-api 加上凭据，调用 MetaWeblog（XML-RPC），代码放在 `relay_platforms.py` 一类的模块里。
+  - 桌面端也可以直接在本机调用。
+- **正文**：用 Markdown 发，`categories` 里带 `[Markdown]`。图片先用 `newMediaObject` 转存到博客园，或者保留辰记的公网地址（⚠️ 外链图片能不能正常显示，待实测）。
+- **表单**：标题、标签（`mt_keywords`）、个人分类（`getCategories`）、是否发布（不发布就是存草稿），以及「发布到首页」（待实测字段）。
+- **数据**：文章页上的阅读数和评论数，优先用 Open API 读取，读不到就从公开页面上取。
+
 ## 实测记录
 
 ### 2026-10-29
