@@ -153,6 +153,22 @@ const en: CoreMessages = {
     mergedTables: (n) =>
       `${plural(n, 'table')} with merged cells can’t be turned into images yet and stayed tables; they may look misaligned`,
   },
+  pipeline: {
+    rasterized: (c) =>
+      `Turned what the platform can’t display into images, so readers see what you wrote: ${[
+        c.math ? plural(c.math, 'formula', 'formulas') : '',
+        c.table ? plural(c.table, 'table') : '',
+        c.code ? plural(c.code, 'code block') : '',
+      ]
+        .filter(Boolean)
+        .join(', ')}`,
+    linksTextified: (n) =>
+      `${plural(n, 'outbound link')} turned into plain text, so the platform doesn’t throttle the post as traffic diversion`,
+    noQrcode:
+      'This platform forbids QR codes that lead elsewhere: the image watermark keeps the text and drops the QR code',
+    imagesOptimized: (n, saved) =>
+      `${plural(n, 'image')} compressed and resized to the platform’s limits${saved ? `, ${saved} smaller in total` : ''}: faster uploads, no size failures`,
+  },
   mask: {
     applied: (n) => `${plural(n, 'sensitive word')} masked automatically (replaced with **)`,
   },

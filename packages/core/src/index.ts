@@ -294,6 +294,28 @@ export {
   type DegradeResult,
 } from './render-steps';
 export {
+  applyRasters,
+  baseKey,
+  CONTENT_PROFILES,
+  contentProfileOf,
+  DEFAULT_PROFILE,
+  extractRasters,
+  IMAGE_MAX_EDGE,
+  IMAGE_TARGET_BYTES,
+  imagesReport,
+  planImage,
+  RASTER_SCHEME,
+  renderForPlatform,
+  watermarkPolicy,
+  type BodyFormat,
+  type ContentProfile,
+  type ImageFacts,
+  type ImagePlan,
+  type PipelineOptions,
+  type PipelineResult,
+  type RasterJob,
+} from './pipeline';
+export {
   absoluteImageUrl,
   asSessionPage,
   bundledScript,

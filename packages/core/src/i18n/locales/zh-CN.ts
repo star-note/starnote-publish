@@ -152,6 +152,20 @@ const zhCN = {
     mergedTables: (n: number) =>
       `${n} 个表格有合并单元格，暂时不能转成图片，已按表格保留，显示可能错位`,
   },
+  pipeline: {
+    rasterized: (c: { math: number; table: number; code: number }) =>
+      `平台显示不了的内容已转成图片，保证读者看到的和你写的一样：${[
+        c.math ? `${c.math} 个公式` : '',
+        c.table ? `${c.table} 个表格` : '',
+        c.code ? `${c.code} 段代码` : '',
+      ]
+        .filter(Boolean)
+        .join('、')}`,
+    linksTextified: (n: number) => `${n} 个外链改成纯文字，避免平台判定为导流而限流`,
+    noQrcode: '这个平台禁止导流二维码：图片水印只保留文字，不放二维码',
+    imagesOptimized: (n: number, saved: string) =>
+      `${n} 张图片按平台要求压缩、缩放${saved ? `，共节省 ${saved}` : ''}，上传更快、不会因超限失败`,
+  },
   mask: {
     applied: (n: number) => `已自动打码 ${n} 处（敏感词替换为 **）`,
   },
