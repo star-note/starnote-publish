@@ -215,7 +215,9 @@ export function createWechatMpAdapter(
         ctx.emit({ type: 'report', items: report });
 
         const authorMax = script.limits?.authorMax ?? 16;
-        const author = form.author ? truncateText(form.author, authorMax).value : '';
+        // 作者：表单填的，否则用公众号名称（账号的显示名）
+        const authorRaw = form.author || run.account.displayName || '';
+        const author = authorRaw ? truncateText(authorRaw, authorMax).value : '';
         const sourceUrl =
           form.source_url ??
           // SPEC-r12 §5.3: 「阅读原文」 is clicked by readers: the tracking short link when given
@@ -247,7 +249,23 @@ export function createWechatMpAdapter(
           });
         const editUrl = fillTemplate(script.urls.edit!, { id, token: wx.token });
 
-        report.push({ kind: 'handoff.pending', text: t.handoff, level: 'notice' });
+        const moved = [...images.map.keys()].length;
+        report.push(
+          {
+            kind: 'fields.prefilled',
+            text: t.filled([
+              t.filledTitle,
+              ...(author ? [t.filledAuthor(author)] : []),
+              ...(r.digest ? [t.filledDigest] : []),
+              t.filledBody(moved),
+              ...(cover ? [t.filledCover] : []),
+              ...(sourceUrl ? [t.filledSource] : []),
+            ]),
+            level: 'info',
+          },
+          { kind: 'declarations.user', text: t.chooseDeclarations, level: 'notice' },
+          { kind: 'handoff.pending', text: t.handoff, level: 'notice' }
+        );
         // 发布台（或单个窗口）里打开图文编辑页，不再填写：正文已经由接口存好，由你点「发表」。
         await handOffEditor(ctx, run, LABEL, { editorUrl: editUrl });
         ctx.emit({ type: 'progress', percent: 100, text: t.saved });

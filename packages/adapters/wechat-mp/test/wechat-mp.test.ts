@@ -184,6 +184,17 @@ describe('wechat-mp adapter (个人号桌面端路线)', () => {
     // 不发表、不群发
     expect(calls.some((c) => /masssend|freepublish|publish/.test(c.url))).toBe(false);
     expect(items['image.rehosted']!.text).toContain('公众号素材库');
+    // 我们帮你做了什么：填好的项；声明类由用户自己选，只提醒
+    expect(items['fields.prefilled']!.text).toContain('作者「陆德俊」');
+    expect(items['fields.prefilled']!.text).toContain('正文（1 张图已转存到公众号）');
+    expect(items['declarations.user']!.text).toContain('创作来源');
+  });
+
+  it('fills the author with the account name when the form leaves it empty', async () => {
+    const { sessionFetch, calls } = routes();
+    await run(sessionFetch, {});
+    const save = calls.find((c) => c.url.includes('operate_appmsg'))!;
+    expect((save.init.urlencoded as Record<string, string>).author0).toBe('我的号');
   });
 
   it('stops before uploading when the 后台 login expired, asking to scan again', async () => {

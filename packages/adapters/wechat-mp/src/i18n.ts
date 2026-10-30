@@ -33,6 +33,15 @@ const zhCN = {
   saving: '存进公众号后台',
   noId: '公众号后台没有返回图文 id',
   saved: '已存进公众号后台',
+  filled: (items: string[]) => `已在公众号草稿里填好${items.join('、')}，发表前检查即可`,
+  filledTitle: '标题',
+  filledAuthor: (name: string) => `作者「${name}」`,
+  filledDigest: '摘要',
+  filledBody: (images: number) => (images ? `正文（${images} 张图已转存到公众号）` : '正文'),
+  filledCover: '封面',
+  filledSource: '阅读原文',
+  chooseDeclarations:
+    '原创、创作来源、合集请在页面下方自己选：按规定，AI 生成的内容发布时需要在「创作来源」里声明',
 };
 
 export const msg = defineMessages<typeof zhCN>({
@@ -69,6 +78,15 @@ export const msg = defineMessages<typeof zhCN>({
     saving: '存進公眾號後台',
     noId: '公眾號後台沒有回傳圖文 id',
     saved: '已存進公眾號後台',
+    filled: (items) => `已在公眾號草稿裡填好${items.join('、')}，發表前檢查即可`,
+    filledTitle: '標題',
+    filledAuthor: (name) => `作者「${name}」`,
+    filledDigest: '摘要',
+    filledBody: (images) => (images ? `內文（${images} 張圖已轉存到公眾號）` : '內文'),
+    filledCover: '封面',
+    filledSource: '閱讀原文',
+    chooseDeclarations:
+      '原創、創作來源、合集請在頁面下方自己選：依規定，AI 生成的內容發布時需要在「創作來源」裡聲明',
   },
   en: {
     form: {
@@ -105,5 +123,16 @@ export const msg = defineMessages<typeof zhCN>({
     saving: 'Saving into the Official Account admin',
     noId: 'The Official Account admin returned no article id',
     saved: 'Saved into the Official Account admin',
+    filled: (items) =>
+      `Filled in ${items.join(', ')} in the Official Account draft: check before publishing`,
+    filledTitle: 'the title',
+    filledAuthor: (name) => `the author “${name}”`,
+    filledDigest: 'the summary',
+    filledBody: (images) =>
+      images ? `the body (${images} images moved to the Official Account)` : 'the body',
+    filledCover: 'the cover',
+    filledSource: '“Read more”',
+    chooseDeclarations:
+      'Pick originality, content source and collection yourself at the bottom of the page: by regulation, AI-generated content must be declared under “创作来源”',
   },
 });
