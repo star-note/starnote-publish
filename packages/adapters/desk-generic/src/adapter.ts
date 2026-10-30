@@ -181,7 +181,11 @@ export function createGenericDeskAdapter(
       });
       report.push(...handoffReport(res, name, lang));
       if (markdown)
-        report.push({ kind: 'format.markdown', text: t.markdownBody(name), level: 'info' });
+        report.push({
+          kind: 'format.markdown',
+          text: fills ? t.markdownFilled(name) : t.markdownBody(name),
+          level: 'info',
+        });
       if (script.selectors.editor) {
         // 我们做了什么（SPEC-r15）：填好的项；平台自己的选项（分类、原创、AI 声明…）由用户选，只提醒
         report.push({ kind: 'fields.prefilled', text: t.filled(name), level: 'info' });

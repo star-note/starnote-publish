@@ -48,7 +48,10 @@ describe('通用模式 adapters', () => {
     );
     expect(filled).toEqual([
       'xueqiu',
+      'eastmoney',
+      'sspai',
       'dongchedi',
+      'douban',
       'toutiao',
       'bilibili',
       'weibo-article',
@@ -56,6 +59,8 @@ describe('通用模式 adapters', () => {
       'qq-om',
       'douyin-article',
       'xiaohongshu-article',
+      'tencent-cloud',
+      '51cto',
     ]);
     const account: AccountRef = {
       id: 'x1',
@@ -133,6 +138,38 @@ describe('通用模式 adapters', () => {
     expect(kinds).not.toContain('fields.prefilled');
   });
 
+  it('fills the Markdown editor on 51CTO', async () => {
+    const account: AccountRef = {
+      id: 'c1',
+      platform: '51cto',
+      externalUid: '',
+      displayName: '我',
+      store: 'desktop',
+    };
+    const { sessionFetch } = mockSession({});
+    const desk: HandoffRequest[] = [];
+    const r = await createPublisher({
+      adapters: [createGenericDeskAdapter('51cto')],
+      runtime: 'electron',
+      sessionFetch,
+      handoff: async (req) => {
+        desk.push(req);
+        return { state: 'queued' };
+      },
+    }).publish({
+      noteId: 'n',
+      doc,
+      platforms: ['51cto'],
+      common: { title: '标题' },
+      perPlatform: { '51cto': {} },
+      accounts: { '51cto': account },
+    });
+    expect(desk[0]!.prefill).toEqual({ title: '标题', text: expect.stringContaining('## 小标题') });
+    const items = Object.fromEntries(r.results['51cto']!.report!.map((i) => [i.kind, i.text]));
+    expect(items['format.markdown']).toBe('正文按 Markdown 填进了51CTO的 Markdown 编辑器');
+    expect(items['fields.prefilled']).toBeDefined();
+  });
+
   it('renders HTML for the rich editor with absolute image URLs, and plain text as the fallback', () => {
     const r = renderGeneric(doc, { title: '标题' }, 'https://starnote.app');
     expect(r.title).toBe('标题');
@@ -144,15 +181,15 @@ describe('通用模式 adapters', () => {
   it('hands the author entry page to the 发布台 with the title and body, and never calls the platform', async () => {
     const account: AccountRef = {
       id: 'a1',
-      platform: 'sspai',
+      platform: 'huxiu',
       externalUid: '',
-      displayName: '少数派',
+      displayName: '虎嗅',
       store: 'desktop',
     };
     const { sessionFetch, calls } = mockSession({});
     const desk: HandoffRequest[] = [];
     const r = await createPublisher({
-      adapters: [createGenericDeskAdapter('sspai', { assetBase: 'https://starnote.app' })],
+      adapters: [createGenericDeskAdapter('huxiu', { assetBase: 'https://starnote.app' })],
       runtime: 'electron',
       sessionFetch,
       handoff: async (req) => {
@@ -162,20 +199,20 @@ describe('通用模式 adapters', () => {
     }).publish({
       noteId: 'n',
       doc,
-      platforms: ['sspai'],
+      platforms: ['huxiu'],
       common: { title: '标题' },
-      perPlatform: { sspai: {} },
-      accounts: { sspai: account },
+      perPlatform: { huxiu: {} },
+      accounts: { huxiu: account },
     });
     expect(calls).toHaveLength(0);
     expect(desk[0]).toMatchObject({
-      platform: 'sspai',
-      editorUrl: 'https://sspai.com/',
-      label: '少数派',
+      platform: 'huxiu',
+      editorUrl: 'https://www.huxiu.com/contribute/',
+      label: '虎嗅',
     });
     expect(desk[0]!.prefill).toMatchObject({ title: '标题' });
     expect(desk[0]!.prefill!.html).toContain('<h2');
-    const result = r.results.sspai!;
+    const result = r.results.huxiu!;
     expect(result).toMatchObject({ ok: true, state: 'handoff' });
     expect(result.report!.find((i) => i.kind === 'handoff.pending')!.text).toContain('我已发布');
   });

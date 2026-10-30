@@ -392,9 +392,9 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     '雪球 社区公约 / 专栏协议 https://xueqiu.com/law/column'
   ),
   eastmoney: cn(
-    { finance: true, noContact: true, noQrcode: true },
+    { finance: true, noContact: true, noQrcode: true, title: { min: 1, max: 64 } },
     { note: CN_TOGGLE_UNVERIFIED },
-    '东方财富 股吧管理规定 https://guba.eastmoney.com/gltl.aspx ；财富号公告 https://mp.eastmoney.com/collect/pc_writer/treaty.html'
+    '东方财富 股吧管理规定 https://guba.eastmoney.com/gltl.aspx ；财富号公告 https://mp.eastmoney.com/collect/pc_writer/treaty.html ；长文页提示标题 1～64 字（2026-10-30）'
   ),
   huxiu: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '虎嗅 投稿须知 https://www.huxiu.com/contribute/'),
   woshipm: cn(

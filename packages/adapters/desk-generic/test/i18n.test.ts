@@ -7,7 +7,7 @@ describe('发布台通用模式 i18n (SPEC-r14 B5)', () => {
   it('names the platform in the language', () => {
     const adapter = createGenericDeskAdapter('sspai');
     expect(runtimeNote(adapter.runtimes![0]!, 'en')).toBe(
-      'Generic mode: the Publish Desk opens Sspai; copy the title and body into it and publish yourself'
+      'The Publish Desk opens the Sspai editor with the title and body filled in; you pick the platform’s options and publish'
     );
     expect(bindingInstructions(adapter.binding, 'zh-TW')![0]).toBe(
       '在辰記桌面版點「在桌面版登入少數派」'

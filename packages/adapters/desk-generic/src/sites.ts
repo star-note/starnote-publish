@@ -34,7 +34,7 @@ import xiaohongshu_article from './sites/xiaohongshu-article.signed.json';
 import baijiahao from './sites/baijiahao.signed.json';
 import netease from './sites/netease.signed.json';
 import jianshu from './sites/jianshu.signed.json';
-// 技术社区（Markdown 编辑器，正文按 Markdown 复制）
+// 技术社区（多是 Markdown 编辑器，正文按 Markdown 复制；腾讯云默认是富文本）
 import segmentfault from './sites/segmentfault.signed.json';
 import oschina from './sites/oschina.signed.json';
 import tencent_cloud from './sites/tencent-cloud.signed.json';
@@ -43,7 +43,7 @@ import cto51 from './sites/51cto.signed.json';
 /**
  * SPEC-r13 §6 的国内平台和 SPEC-r14 A2 的海外平台：还没有用真实账号核实编辑器，走通用模式（复制粘贴）。
  * 国内大平台（`CN_DESK_KEYS`，2026-10 调研）和垂类里站点脚本有核对过的标题、正文选择器的，发布台自动填好；其余走通用模式。
- * 技术社区（`TECH_DESK_KEYS`）是 Markdown 编辑器，站点脚本 `flags.body: 'markdown'`，正文按 Markdown 复制。
+ * 技术社区（`TECH_DESK_KEYS`）多是 Markdown 编辑器，站点脚本 `flags.body: 'markdown'`，正文按 Markdown 复制；腾讯云写作页默认是富文本，自动填好。
  */
 export const GENERIC_DESK_KEYS = [
   'xueqiu',
@@ -141,7 +141,7 @@ export const CN_DESK_KEYS = [
   'jianshu',
 ] as const satisfies readonly GenericDeskKey[];
 
-/** 技术社区：Markdown 编辑器，发布台复制的正文是 Markdown（站点脚本 `flags.body: 'markdown'`）。 */
+/** 技术社区：Markdown 编辑器的（站点脚本 `flags.body: 'markdown'`）发布台复制 Markdown；腾讯云是富文本，自动填好。 */
 export const TECH_DESK_KEYS = [
   'segmentfault',
   'oschina',

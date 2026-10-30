@@ -14,12 +14,7 @@
   },
   "session": {
     "loginUrl": "https://xueqiu.com/",
-    "allowedHosts": [
-      "xueqiu.com",
-      "open.weixin.qq.com",
-      "graph.qq.com",
-      "api.weibo.com"
-    ],
+    "allowedHosts": ["xueqiu.com", "open.weixin.qq.com", "graph.qq.com", "api.weibo.com"],
     "success": {
       "manual": true
     },
