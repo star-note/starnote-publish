@@ -45,6 +45,8 @@ export interface StatsCredential {
   api_key?: string;
   /** Mastodon: the instance host. */
   instance?: string;
+  /** 博客园: the blog's address name (`www.cnblogs.com/{blog_app}`); the personal access token goes in `access_token`. */
+  blog_app?: string;
 }
 
 export type StatsContext = Pick<PublishContext, 'fetch' | 'signal' | 'runtime' | 'page'> & {
