@@ -13,6 +13,7 @@ const devto = await load('devto');
 const hashnode = await load('hashnode');
 const ghost = await load('ghost');
 const wordpress = await load('wordpress');
+const cnblogs = await load('cnblogs');
 // SPEC-r14 A1
 const a1 = {
   convertkit: await load('convertkit'),
@@ -90,6 +91,9 @@ const golden = {
   ghost: entry(ghost.ghostRelayBody(g, gForm)),
   wordpress: entry(wordpress.wordpressRelayBody(w, wForm)),
 };
+// 博客园: one personal category, so the API test covers creating it
+const cForm = cnblogs.cnblogsAdapter.schema.parse({ categories: ['前端'] });
+golden.cnblogs = entry(cnblogs.cnblogsRelayBody(cnblogs.renderCnblogs(doc, cForm, common, content), cForm));
 // SPEC-r14 A1: each platform's default form
 const cap = (k) => k[0].toUpperCase() + k.slice(1);
 for (const [key, mod] of Object.entries(a1)) {
