@@ -1,14 +1,19 @@
 {
   "platform": "oschina",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "minCore": "0.1.0",
   "issuedAt": "2026-10-30T00:00:00.000Z",
   "urls": {
     "home": "https://my.oschina.net/",
     "write": "https://my.oschina.net/",
-    "verify": "https://my.oschina.net/"
+    "verify": "https://my.oschina.net/",
+    "writeNext": "blog/ai-write",
+    "writeBaseMatch": "^https://my\\.oschina\\.net/u/\\d+/?$"
   },
-  "selectors": {},
+  "selectors": {
+    "title": "input[placeholder=\"请输入文章标题\"]",
+    "editor": ".aie-content[contenteditable=\"true\"]"
+  },
   "session": {
     "loginUrl": "https://www.oschina.net/home/login",
     "allowedHosts": [
@@ -24,12 +29,14 @@
     },
     "fetchPage": "https://my.oschina.net/robots.txt"
   },
-  "flags": {
-    "generic": true
-  },
+  "flags": {},
   "unverified": [
-    "2026-10-30 用已登录的账号看过：写作页是 my.oschina.net/u/<用户 ID>/blog/ai-write（智写平台），地址带用户 ID，从个人空间进入；默认是富文本编辑器，正文按 HTML 复制，发布台走通用模式",
-    "session.allowedHosts：只列了平台主域名和常见第三方登录",
-    "published：未知，由用户点「我已发布」"
-  ]
+    "2026-10-30 用已登录的账号核对过（只读页面结构，未输入内容）：写作页 my.oschina.net/u/<用户 ID>/blog/ai-write（智写平台），发布台先打开 my.oschina.net/，等页面跳到个人空间后接 blog/ai-write；默认是富文本编辑器（AiEditor）；发布后的链接未知，由用户点「我已发布」"
+  ],
+  "waits": {
+    "editor": {
+      "selector": ".aie-content[contenteditable=\"true\"]",
+      "timeoutMs": 20000
+    }
+  }
 }
