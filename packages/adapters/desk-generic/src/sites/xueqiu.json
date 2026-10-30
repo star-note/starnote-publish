@@ -1,6 +1,6 @@
 {
   "platform": "xueqiu",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minCore": "0.1.0",
   "issuedAt": "2026-10-30T00:00:00.000Z",
   "urls": {
@@ -24,12 +24,15 @@
   "unverified": [
     "2026-10-30 核对过雪球长文写作页（mp.xueqiu.com/writeV2）的标题、正文选择器；页面未登录也能打开，没有用已登录的账号核实",
     "session.allowedHosts：只列了平台主域名和常见第三方登录",
-    "published：未知，由用户点「我已发布」"
+    "2026-10-30 published.urlMatch 按平台公开文章地址格式写的，发布后页面怎么跳、列表里能不能按标题认出链接，要等第一次真发文时核对"
   ],
   "waits": {
     "editor": {
       "selector": ".ProseMirror[contenteditable=\"true\"]",
       "timeoutMs": 20000
     }
+  },
+  "published": {
+    "urlMatch": "^https://xueqiu\\.com/\\d+/(\\d+)"
   }
 }

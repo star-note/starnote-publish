@@ -1,6 +1,6 @@
 {
   "platform": "woshipm",
-  "version": "0.1.1",
+  "version": "0.2.1",
   "minCore": "0.1.0",
   "issuedAt": "2026-10-30T00:00:00.000Z",
   "urls": {
@@ -8,7 +8,10 @@
     "write": "https://www.woshipm.com/writing",
     "verify": "https://www.woshipm.com/"
   },
-  "selectors": {},
+  "selectors": {
+    "title": "input#post_title",
+    "editor": "iframe#post_content_ifr"
+  },
   "session": {
     "loginUrl": "https://www.woshipm.com/tougao",
     "allowedHosts": ["woshipm.com", "open.weixin.qq.com", "graph.qq.com", "api.weibo.com"],
@@ -17,12 +20,18 @@
     },
     "fetchPage": "https://www.woshipm.com/robots.txt"
   },
-  "flags": {
-    "generic": true
-  },
+  "flags": {},
   "unverified": [
-    "2026-10-30 用已登录的账号核对过写作页地址；正文是 iframe 里的 TinyMCE，发布台走通用模式（复制后手动粘贴）",
-    "session.allowedHosts：只列了平台主域名和常见第三方登录",
-    "published：未知，由用户点「我已发布」"
-  ]
+    "2026-10-30 用已登录的账号核对过写作页地址和标题、正文选择器（只读页面结构，未输入内容）：正文是 iframe 里的 TinyMCE（点进 iframe 聚焦后粘贴）；发布后的链接未知，由用户点「我已发布」",
+    "2026-10-30 published.urlMatch 按平台公开文章地址格式写的，发布后页面怎么跳、列表里能不能按标题认出链接，要等第一次真发文时核对"
+  ],
+  "waits": {
+    "editor": {
+      "selector": "iframe#post_content_ifr",
+      "timeoutMs": 20000
+    }
+  },
+  "published": {
+    "urlMatch": "^https?://www\\.woshipm\\.com/[a-z-]+/(\\d+)\\.html"
+  }
 }
