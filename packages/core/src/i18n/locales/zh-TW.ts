@@ -138,6 +138,20 @@ const zhTW: CoreMessages = {
     videos: (n) => `${n} 個影片改成連結`,
     mergedTables: (n) => `${n} 個表格有合併儲存格，暫時無法轉成圖片，已依表格保留，顯示可能錯位`,
   },
+  pipeline: {
+    rasterized: (c) =>
+      `平台無法顯示的內容已轉成圖片，讓讀者看到的和你寫的一樣：${[
+        c.math ? `${c.math} 個公式` : '',
+        c.table ? `${c.table} 個表格` : '',
+        c.code ? `${c.code} 段程式碼` : '',
+      ]
+        .filter(Boolean)
+        .join('、')}`,
+    linksTextified: (n) => `${n} 個外部連結改成純文字，避免平台判定為導流而限流`,
+    noQrcode: '這個平台禁止導流 QR Code：圖片浮水印只保留文字，不放 QR Code',
+    imagesOptimized: (n, saved) =>
+      `${n} 張圖片依平台要求壓縮、縮放${saved ? `，共節省 ${saved}` : ''}，上傳更快、不會因超過限制而失敗`,
+  },
   mask: {
     applied: (n) => `已自動遮蔽 ${n} 處（敏感詞替換為 **）`,
   },
