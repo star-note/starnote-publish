@@ -37,10 +37,14 @@ const SIMPLE: Record<string, string> = {
   juejin: 'juejin',
   csdn: 'csdn',
   xiaohongshu: 'xiaohongshu',
+  // 长文、头条文章、抖音文章是同一品牌的另一个发布对象，用同一个图形。
+  'xiaohongshu-article': 'xiaohongshu',
   weibo: 'sinaweibo',
+  'weibo-article': 'sinaweibo',
   bilibili: 'bilibili',
   // 抖音与 TikTok 同一图形（字节跳动同一品牌标识）。
   douyin: 'tiktok',
+  'douyin-article': 'tiktok',
   kuaishou: 'kuaishou',
   // simple-icons 的 githubpages 是文字标，小尺寸不可读；用 GitHub 图形。
   'github-pages': 'github',

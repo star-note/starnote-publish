@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { mockSession } from '../../../core/test/session-helpers';
 import { createGenericDeskElectronAdapters } from '../src/electron';
 import {
+  CN_DESK_KEYS,
   createGenericDeskAdapter,
   GENERIC_DESK_KEYS,
   genericDeskBinding,
@@ -23,11 +24,12 @@ const doc = convert({
 });
 
 describe('通用模式 adapters', () => {
-  it('covers the eleven domestic vertical platforms and the eleven overseas ones (SPEC-r14 A2), all in the registry', () => {
-    expect(GENERIC_DESK_KEYS).toHaveLength(22);
+  it('covers 11 vertical and 10 big domestic platforms and 11 overseas ones (SPEC-r14 A2), all in the registry', () => {
+    expect(GENERIC_DESK_KEYS).toHaveLength(32);
+    expect(CN_DESK_KEYS).toHaveLength(10);
     expect(createGenericDeskElectronAdapters().map((a) => a.key)).toEqual([...GENERIC_DESK_KEYS]);
     const regions = GENERIC_DESK_KEYS.map((key) => platformMeta(key)?.region);
-    expect(regions.filter((r) => r === 'cn')).toHaveLength(11);
+    expect(regions.filter((r) => r === 'cn')).toHaveLength(21);
     expect(regions.filter((r) => r === 'global')).toHaveLength(11);
   });
 
@@ -36,6 +38,60 @@ describe('通用模式 adapters', () => {
     expect(b).toMatchObject({ kind: 'cookie', store: 'desktop' });
     expect(b.desktopSession!.success).toEqual({ manual: true });
     expect(b.instructions!.join('\n')).toContain('已登录');
+  });
+
+  it('fills the write page on the big domestic platforms whose selectors were checked', async () => {
+    const filled = CN_DESK_KEYS.filter((k) =>
+      createGenericDeskAdapter(k).runtimes[0]!.note!.includes('自动填好')
+    );
+    expect(filled).toEqual([
+      'toutiao',
+      'bilibili',
+      'weibo-article',
+      'sohu',
+      'qq-om',
+      'douyin-article',
+      'xiaohongshu-article',
+    ]);
+    const account: AccountRef = {
+      id: 'x1',
+      platform: 'xiaohongshu-article',
+      externalUid: '',
+      displayName: '我',
+      store: 'desktop',
+    };
+    const { sessionFetch, calls } = mockSession({});
+    const desk: HandoffRequest[] = [];
+    const r = await createPublisher({
+      adapters: [createGenericDeskAdapter('xiaohongshu-article')],
+      runtime: 'electron',
+      sessionFetch,
+      handoff: async (req) => {
+        desk.push(req);
+        return { state: 'queued' };
+      },
+    }).publish({
+      noteId: 'n',
+      doc,
+      platforms: ['xiaohongshu-article'],
+      common: { title: '长'.repeat(70) },
+      perPlatform: { 'xiaohongshu-article': {} },
+      accounts: { 'xiaohongshu-article': account },
+    });
+    expect(calls).toHaveLength(0);
+    expect(desk[0]).toMatchObject({
+      editorUrl: 'https://creator.xiaohongshu.com/publish/publish?from=menu&target=article',
+    });
+    // 标题按平台上限（64）截短
+    expect([...desk[0]!.prefill!.title!]).toHaveLength(64);
+    const items = Object.fromEntries(
+      r.results['xiaohongshu-article']!.report!.map((i) => [i.kind, i.text])
+    );
+    expect(items['title.truncated']).toBe('标题超过 64 字，已截短');
+    expect(items['fields.prefilled']).toBe('已在小红书长文的写作页里填好标题和正文');
+    expect(items['declarations.user']).toContain('AI 声明');
+    expect(items['platform.hint']).toContain('新的创作');
+    expect(items['handoff.pending']).toContain('我已发布');
   });
 
   it('renders HTML for the rich editor with absolute image URLs, and plain text as the fallback', () => {

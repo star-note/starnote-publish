@@ -1,0 +1,33 @@
+{
+  "platform": "jianshu",
+  "version": "0.2.0",
+  "minCore": "0.1.0",
+  "issuedAt": "2026-10-30T00:00:00.000Z",
+  "urls": {
+    "home": "https://www.jianshu.com/",
+    "write": "https://www.jianshu.com/writer#/",
+    "verify": "https://www.jianshu.com/"
+  },
+  "selectors": {},
+  "session": {
+    "loginUrl": "https://www.jianshu.com/sign_in",
+    "allowedHosts": [
+      "jianshu.com",
+      "jianshu.io",
+      "open.weixin.qq.com",
+      "graph.qq.com",
+      "api.weibo.com"
+    ],
+    "success": {
+      "manual": true
+    },
+    "fetchPage": "https://www.jianshu.com/robots.txt"
+  },
+  "flags": {
+    "generic": true
+  },
+  "unverified": [
+    "写作页打开的是文集里已有的文章：不自动填，以免覆盖；由用户点「新建文章」后复制粘贴",
+    "published：未知，由用户点「我已发布」"
+  ]
+}

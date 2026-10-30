@@ -30,8 +30,10 @@ export type PlatformKey =
   | 'juejin'
   | 'csdn'
   | 'xiaohongshu'
+  | 'xiaohongshu-article'
   | 'yuque'
   | 'weibo'
+  | 'weibo-article'
   | 'toutiao'
   | 'baijiahao'
   | 'netease'
@@ -41,6 +43,7 @@ export type PlatformKey =
   | 'yidian'
   | 'bilibili'
   | 'douyin'
+  | 'douyin-article'
   | 'kuaishou'
   | 'wechat-channels'
   | 'jianshu'
@@ -565,6 +568,21 @@ const ENTRIES: readonly PlatformEntry[] = [
     phase: 'P6',
   },
   {
+    // 长文笔记是另一个编辑器、另一套规则（标题 64 字、正文 1 万字），单独作为发布对象（桌面端发布台）
+    key: 'xiaohongshu-article',
+    label: '小红书长文',
+    short: '红',
+    color: '#ff2442',
+    region: 'cn',
+    mobileFirst: true,
+    homepage: 'https://creator.xiaohongshu.com/publish/publish?from=menu&target=article',
+    contentTypes: ARTICLE,
+    runtimes: [desktop()],
+    binding: COOKIE,
+    monetization: ['brand-deals', 'affiliate'],
+    phase: 'P4',
+  },
+  {
     key: 'yuque',
     label: '语雀',
     short: '雀',
@@ -585,18 +603,30 @@ const ENTRIES: readonly PlatformEntry[] = [
     region: 'cn',
     mobileFirst: true,
     homepage: 'https://weibo.com/',
-    contentTypes: ['article', 'short-text'],
+    contentTypes: ['short-text'],
     runtimes: [
-      api('server', { kinds: ['short-text'], needs: ['token', 'app-review'] }),
-      desktop({ kinds: ['article'] }),
-      handoff('share-intent', 'https://service.weibo.com/share/share.php', {
-        kinds: ['short-text'],
-      }),
+      api('server', needs('token', 'app-review')),
+      handoff('share-intent', 'https://service.weibo.com/share/share.php'),
     ],
     binding: OAUTH,
     monetization: ['ad-share', 'brand-deals'],
     phase: 'P2',
     stage: 'implemented',
+  },
+  {
+    // 头条文章：登录态 + 桌面端发布台（微博短文走开放平台，见上）
+    key: 'weibo-article',
+    label: '微博头条文章',
+    short: '博',
+    color: '#e6162d',
+    region: 'cn',
+    mobileFirst: true,
+    homepage: 'https://card.weibo.com/article/v5/editor',
+    contentTypes: ARTICLE,
+    runtimes: [desktop()],
+    binding: COOKIE,
+    monetization: ['ad-share', 'brand-deals'],
+    phase: 'P4',
   },
   {
     ...cnDesktop(
@@ -677,6 +707,21 @@ const ENTRIES: readonly PlatformEntry[] = [
     binding: OAUTH,
     monetization: ['creator-fund', 'affiliate', 'brand-deals'],
     phase: 'P6',
+  },
+  {
+    // 抖音文章：创作者中心的图文长文（标题 30 字），登录态 + 桌面端发布台
+    key: 'douyin-article',
+    label: '抖音文章',
+    short: '抖',
+    color: '#fe2c55',
+    region: 'cn',
+    mobileFirst: true,
+    homepage: 'https://creator.douyin.com/creator-micro/content/post/article',
+    contentTypes: ARTICLE,
+    runtimes: [desktop()],
+    binding: COOKIE,
+    monetization: ['creator-fund', 'brand-deals'],
+    phase: 'P4',
   },
   {
     key: 'kuaishou',

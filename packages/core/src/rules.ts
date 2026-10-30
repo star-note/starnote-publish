@@ -441,6 +441,20 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     },
     '小红书社区规范（站外导流：联系方式、二维码、外链）；小红书 AI 内容标识公告（2025-09）'
   ),
+  'xiaohongshu-article': cn(
+    {
+      title: { max: 64 },
+      body: { max: 10000 },
+      externalLinks: 'forbidden',
+      noContact: true,
+      noQrcode: true,
+    },
+    {
+      method: 'platform-toggle',
+      note: '小红书发布页「添加内容类型声明」选择「内容含 AI 合成」；未声明的疑似 AI 内容会被平台标注或限流。',
+    },
+    '小红书社区规范（站外导流：联系方式、二维码、外链）；小红书 AI 内容标识公告（2025-09）'
+  ),
   yuque: cn(
     { title: { max: 100 } },
     { method: 'footer', note: '语雀以文档为主，未见 AI 声明开关（待核实），用文末声明。' },
@@ -459,10 +473,18 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     },
     '微博社区公约；微博关于 AI 生成内容标识的公告（2025-09）'
   ),
+  'weibo-article': cn(
+    { title: { max: 32 }, summary: { max: 44 } },
+    {
+      method: 'platform-toggle',
+      note: '微博公告：AI 生成合成内容在发布时「选择内容声明 → 内容由 AI 生成」；另设「未添加 AI 标识」投诉类别。',
+    },
+    '微博社区公约；微博关于 AI 生成内容标识的公告（2025-09）'
+  ),
   toutiao: cn(
-    { title: { min: 5, max: 30 }, noContact: true, noQrcode: true },
+    { title: { min: 2, max: 30 }, noContact: true, noQrcode: true },
     { note: CN_TOGGLE_UNVERIFIED },
-    '今日头条 头条号创作规范（标题 5–30 字）'
+    '今日头条 头条号创作规范；发文页提示标题 2～30 字（2026-10-30）'
   ),
   baijiahao: cn(
     { title: { min: 8, max: 30 }, noContact: true, noQrcode: true },
@@ -475,12 +497,12 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     '网易号运营规范'
   ),
   sohu: cn(
-    { title: { min: 5, max: 30 }, noContact: true, noQrcode: true },
+    { title: { min: 5, max: 72 }, noContact: true, noQrcode: true },
     { note: CN_TOGGLE_UNVERIFIED },
     '搜狐号内容规范'
   ),
   'qq-om': cn(
-    { title: { min: 5, max: 30 }, noContact: true, noQrcode: true },
+    { title: { min: 5, max: 64 }, noContact: true, noQrcode: true },
     { note: CN_TOGGLE_UNVERIFIED },
     '腾讯内容开放平台（企鹅号）内容规范'
   ),
@@ -495,7 +517,7 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     '一点号内容规范'
   ),
   bilibili: cn(
-    { title: { max: 40 }, tags: { max: 10, format: 'plain' }, noContact: true, noQrcode: true },
+    { title: { max: 50 }, tags: { max: 10, format: 'plain' }, noContact: true, noQrcode: true },
     {
       method: 'platform-toggle',
       note: 'B 站投稿页可勾选「作者声明：使用 AI 合成技术」；未标注的 AI 内容可能被限流 / 下架。',
@@ -508,6 +530,20 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
       body: { max: 1000 },
       tags: { max: 5, format: 'hash' },
       images: { max: 35 },
+      noContact: true,
+      noQrcode: true,
+    },
+    {
+      method: 'platform-toggle',
+      note: '抖音发布页「添加声明 → 内容由 AI 生成」；未标注可能被取消营利、限流。',
+    },
+    '抖音社区自律公约；抖音关于人工智能生成内容的平台规范（2023-05 起，2025-09 更新）'
+  ),
+  'douyin-article': cn(
+    {
+      title: { max: 30 },
+      summary: { max: 30 },
+      body: { max: 8000 },
       noContact: true,
       noQrcode: true,
     },

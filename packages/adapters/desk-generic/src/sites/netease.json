@@ -1,0 +1,35 @@
+{
+  "platform": "netease",
+  "version": "0.2.0",
+  "minCore": "0.1.0",
+  "issuedAt": "2026-10-30T00:00:00.000Z",
+  "urls": {
+    "home": "https://mp.163.com/",
+    "write": "https://mp.163.com/",
+    "verify": "https://mp.163.com/"
+  },
+  "selectors": {},
+  "session": {
+    "loginUrl": "https://mp.163.com/",
+    "allowedHosts": [
+      "163.com",
+      "126.net",
+      "netease.com",
+      "open.weixin.qq.com",
+      "graph.qq.com",
+      "api.weibo.com"
+    ],
+    "success": {
+      "manual": true
+    },
+    "fetchPage": "https://mp.163.com/robots.txt"
+  },
+  "flags": {
+    "generic": true
+  },
+  "unverified": [
+    "urls.write：账号还在审核，没看到写作页，先打开后台首页",
+    "网易号有面向第三方平台的 OAuth 发文接口，接入后改走接口",
+    "published：未知，由用户点「我已发布」"
+  ]
+}
