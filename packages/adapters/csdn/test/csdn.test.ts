@@ -73,7 +73,7 @@ async function run(sessionFetch: any, form: Record<string, unknown> = {}, page: 
     noteId: 'n',
     doc,
     platforms: ['csdn'],
-    common: { title: 'Docker 时区排查' },
+    common: { title: 'Docker 时区排查', tags: ['#Docker', '运维', 'Docker'] },
     perPlatform: { csdn: form },
     accounts: { csdn: account },
   });
@@ -129,7 +129,20 @@ describe('csdn adapter (hand-off)', () => {
     expect(content.html).toBeUndefined();
     const kinds = result.report!.map((i) => i.kind);
     expect(kinds).toEqual(expect.arrayContaining(['image.rehosted', 'handoff.pending']));
-    expect(result.report!.find((i) => i.kind === 'handoff.pending')!.text).toContain('原创');
+    // 我们做了什么：填好的项；标签给建议；声明类由用户自己选，只提醒（表单里选了就带上）
+    const items = Object.fromEntries(result.report!.map((i) => [i.kind, i.text]));
+    expect(items['fields.prefilled']).toContain('（2 张图已转存到 CSDN）');
+    expect(items['tags.manual']).toContain('Docker、运维');
+    expect(items['tags.manual']).toContain('最多 7 个');
+    expect(items['declarations.user']).toContain('你在表单里选的是「原创」');
+  });
+
+  it('presets no article type: the user picks it in CSDN', async () => {
+    const { sessionFetch } = routes();
+    const { result } = await run(sessionFetch, {});
+    const text = result.report!.find((i) => i.kind === 'declarations.user')!.text;
+    expect(text).toContain('创作声明');
+    expect(text).not.toContain('你在表单里选的是');
   });
 
   it('keeps the original link when an upload fails, and says so', async () => {

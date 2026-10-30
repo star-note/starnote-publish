@@ -155,14 +155,24 @@ export function createCsdnAdapter(opts: CsdnAdapterOptions = {}): Adapter<typeof
         prefill: { title: r.title, text: withImages(r, map) },
       });
       report.push(...handoffReport(res, name, lang));
-      const type = CSDN_ARTICLE_TYPES[form.article_type];
+      // 我们做了什么（SPEC-r15）：填好的项；标签、文章类型、创作声明只能在 CSDN 的发布弹窗里选，给出建议和提醒
+      report.push({ kind: 'fields.prefilled', text: t.filled(map.size), level: 'info' });
+      const tagsMax = script.limits?.tagsMax ?? 7;
+      const tags = [...new Set((common.tags ?? []).map((x) => x.replace(/^#/, '').trim()))]
+        .filter(Boolean)
+        .slice(0, tagsMax);
+      report.push({ kind: 'tags.manual', text: t.pickTags(tags, tagsMax), level: 'notice' });
       report.push({
-        kind: 'handoff.pending',
-        text: t.finish(
-          lang ? handoffFilledText(lang) : HANDOFF_FILLED_TEXT,
-          type,
+        kind: 'declarations.user',
+        text: t.chooseDeclarations(
+          form.article_type ? CSDN_ARTICLE_TYPES[form.article_type] : '',
           form.article_type === 'repost' && form.original_url ? form.original_url : ''
         ),
+        level: 'notice',
+      });
+      report.push({
+        kind: 'handoff.pending',
+        text: t.finish(lang ? handoffFilledText(lang) : HANDOFF_FILLED_TEXT),
         level: 'notice',
       });
       ctx.emit({ type: 'progress', percent: 100, text: t.waitingPublish });

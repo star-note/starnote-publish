@@ -11,11 +11,10 @@ export const csdnSchemaFor = byLang((lang) => {
   const t = msg(lang).form;
   return z
     .object({
-      /** CSDN 必选的文章类型；交接模式下由你在 CSDN 的发布弹窗里选，这里用来提醒。 */
-      article_type: z
-        .enum(['original', 'repost', 'translated'])
-        .default('original')
-        .describe(t.articleType),
+      /**
+       * CSDN 必选的文章类型。声明类由用户自己选（SPEC-r15）：不预设，交接时在 CSDN 的发布弹窗里选；这里选了的话只用来提醒。
+       */
+      article_type: z.enum(['original', 'repost', 'translated']).optional().describe(t.articleType),
       /** 转载必须填原文链接。 */
       original_url: z
         .string()
