@@ -9,6 +9,7 @@ export {
   CN_DESK_KEYS,
   GENERIC_DESK_KEYS,
   GENERIC_SITE_SCRIPTS,
+  TECH_DESK_KEYS,
   type GenericDeskKey,
 } from './sites';
 export { msg as genericDeskMessages } from './i18n';

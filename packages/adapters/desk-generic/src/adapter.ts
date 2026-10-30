@@ -38,6 +38,8 @@ export interface GenericRendered {
   title: string;
   html: string;
   text: string;
+  /** For the platforms whose editor is Markdown (site script `flags.body: 'markdown'`). */
+  markdown: string;
   report: ReportItem[];
 }
 
@@ -88,7 +90,7 @@ export function renderGeneric(
     if (map.size) json = rewriteImageSrcs(json, map);
   }
   const out = convert(json);
-  return { title: cut.value, html: out.html, text: out.text, report };
+  return { title: cut.value, html: out.html, text: out.text, markdown: out.markdown, report };
 }
 
 export function genericDeskBinding(key: GenericDeskKey): BindingSpec {
@@ -119,7 +121,10 @@ export function createGenericDeskAdapter(
 ): Adapter<typeof genericDeskSchema> {
   const label = labelOf(key);
   const signed = GENERIC_SITE_SCRIPTS[key];
-  const fills = Boolean(bundledScript(signed).selectors.editor);
+  const bundled = bundledScript(signed);
+  const fills = Boolean(bundled.selectors.editor);
+  // 技术社区的编辑器是 Markdown：预览和复制的正文都用 Markdown
+  const markdown = bundled.flags?.body === 'markdown';
   const note = (l?: SdkLang) =>
     fills
       ? msg(l).runtimeNoteFill(localizedLabel(key, label, l))
@@ -144,9 +149,9 @@ export function createGenericDeskAdapter(
     preview: ((doc, _form, common = {}, _content, popts) => {
       const r = renderGeneric(doc, common, opts.assetBase, popts?.lang, titleMax);
       return {
-        format: 'html',
+        format: markdown ? 'markdown' : 'html',
         title: r.title,
-        body: r.html,
+        body: markdown ? r.markdown : r.html,
         report: r.report,
       } satisfies AdapterPreview;
     }) as NonNullable<Adapter<typeof genericDeskSchema>['preview']>,
@@ -170,9 +175,13 @@ export function createGenericDeskAdapter(
       ctx.emit({ type: 'progress', percent: 60, text: t.opening(name) });
       const res = await handOffEditor(ctx, run, label, {
         editorUrl,
-        prefill: { title: r.title, html: r.html, text: r.text },
+        prefill: markdown
+          ? { title: r.title, text: r.markdown }
+          : { title: r.title, html: r.html, text: r.text },
       });
       report.push(...handoffReport(res, name, lang));
+      if (markdown)
+        report.push({ kind: 'format.markdown', text: t.markdownBody(name), level: 'info' });
       if (script.selectors.editor) {
         // 我们做了什么（SPEC-r15）：填好的项；平台自己的选项（分类、原创、AI 声明…）由用户选，只提醒
         report.push({ kind: 'fields.prefilled', text: t.filled(name), level: 'info' });

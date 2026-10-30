@@ -34,10 +34,16 @@ import xiaohongshu_article from './sites/xiaohongshu-article.signed.json';
 import baijiahao from './sites/baijiahao.signed.json';
 import netease from './sites/netease.signed.json';
 import jianshu from './sites/jianshu.signed.json';
+// 技术社区（Markdown 编辑器，正文按 Markdown 复制）
+import segmentfault from './sites/segmentfault.signed.json';
+import oschina from './sites/oschina.signed.json';
+import tencent_cloud from './sites/tencent-cloud.signed.json';
+import cto51 from './sites/51cto.signed.json';
 
 /**
  * SPEC-r13 §6 的国内平台和 SPEC-r14 A2 的海外平台：还没有用真实账号核实编辑器，走通用模式（复制粘贴）。
- * 国内大平台（`CN_DESK_KEYS`，2026-10 调研）：站点脚本里有核对过的标题、正文选择器的，发布台自动填好；其余走通用模式。
+ * 国内大平台（`CN_DESK_KEYS`，2026-10 调研）和垂类里站点脚本有核对过的标题、正文选择器的，发布台自动填好；其余走通用模式。
+ * 技术社区（`TECH_DESK_KEYS`）是 Markdown 编辑器，站点脚本 `flags.body: 'markdown'`，正文按 Markdown 复制。
  */
 export const GENERIC_DESK_KEYS = [
   'xueqiu',
@@ -74,6 +80,11 @@ export const GENERIC_DESK_KEYS = [
   'baijiahao',
   'netease',
   'jianshu',
+  // 技术社区
+  'segmentfault',
+  'oschina',
+  'tencent-cloud',
+  '51cto',
 ] as const;
 export type GenericDeskKey = (typeof GENERIC_DESK_KEYS)[number];
 
@@ -110,6 +121,10 @@ export const GENERIC_SITE_SCRIPTS: Record<GenericDeskKey, SignedSiteScript> = {
   baijiahao: baijiahao as SignedSiteScript,
   netease: netease as SignedSiteScript,
   jianshu: jianshu as SignedSiteScript,
+  segmentfault: segmentfault as SignedSiteScript,
+  oschina: oschina as SignedSiteScript,
+  'tencent-cloud': tencent_cloud as SignedSiteScript,
+  '51cto': cto51 as SignedSiteScript,
 };
 
 /** 国内大平台（2026-10 调研）：头条号、B 站专栏、微博头条文章、搜狐号、企鹅号、抖音文章、小红书长文自动填；百家号、网易号、简书走通用模式。 */
@@ -124,4 +139,12 @@ export const CN_DESK_KEYS = [
   'baijiahao',
   'netease',
   'jianshu',
+] as const satisfies readonly GenericDeskKey[];
+
+/** 技术社区：Markdown 编辑器，发布台复制的正文是 Markdown（站点脚本 `flags.body: 'markdown'`）。 */
+export const TECH_DESK_KEYS = [
+  'segmentfault',
+  'oschina',
+  'tencent-cloud',
+  '51cto',
 ] as const satisfies readonly GenericDeskKey[];

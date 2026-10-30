@@ -1,29 +1,40 @@
 {
   "platform": "xueqiu",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minCore": "0.1.0",
-  "issuedAt": "2026-10-28T00:00:00.000Z",
+  "issuedAt": "2026-10-30T00:00:00.000Z",
   "urls": {
     "home": "https://xueqiu.com/",
-    "write": "https://xueqiu.com/",
+    "write": "https://mp.xueqiu.com/writeV2/",
     "verify": "https://xueqiu.com/"
   },
-  "selectors": {},
+  "selectors": {
+    "title": "textarea[placeholder=\"请输入标题\"]",
+    "editor": ".ProseMirror[contenteditable=\"true\"]"
+  },
   "session": {
     "loginUrl": "https://xueqiu.com/",
-    "allowedHosts": ["xueqiu.com", "open.weixin.qq.com", "graph.qq.com", "api.weibo.com"],
+    "allowedHosts": [
+      "xueqiu.com",
+      "open.weixin.qq.com",
+      "graph.qq.com",
+      "api.weibo.com"
+    ],
     "success": {
       "manual": true
     },
     "fetchPage": "https://xueqiu.com/robots.txt"
   },
-  "flags": {
-    "generic": true
-  },
+  "flags": {},
   "unverified": [
-    "urls.write：只是作者入口页，没有登录核实写作页地址",
+    "2026-10-30 核对过雪球长文写作页（mp.xueqiu.com/writeV2）的标题、正文选择器；页面未登录也能打开，没有用已登录的账号核实",
     "session.allowedHosts：只列了平台主域名和常见第三方登录",
-    "selectors：未知，发布台走通用模式（复制后手动粘贴）",
     "published：未知，由用户点「我已发布」"
-  ]
+  ],
+  "waits": {
+    "editor": {
+      "selector": ".ProseMirror[contenteditable=\"true\"]",
+      "timeoutMs": 20000
+    }
+  }
 }

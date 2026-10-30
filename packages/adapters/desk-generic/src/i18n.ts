@@ -20,6 +20,7 @@ const zhCN = {
   runtimeNoteFill: (platform: string) =>
     `发布台打开${platform}的写作页，自动填好标题和正文，由你选好平台选项后点发布`,
   filled: (platform: string) => `已在${platform}的写作页里填好标题和正文`,
+  markdownBody: (platform: string) => `正文按 Markdown 复制，粘贴到${platform}的 Markdown 编辑器里`,
   chooseDeclarations: (platform: string) =>
     `${platform}的分类、原创、AI 声明等选项请在页面上自己选`,
   stepsFilled: (platform: string) =>
@@ -53,6 +54,7 @@ export const msg = defineMessages<typeof zhCN>({
     runtimeNoteFill: (platform) =>
       `發布台開啟${platform}的寫作頁，自動填好標題和內文，由你選好平台選項後按發布`,
     filled: (platform) => `已在${platform}的寫作頁裡填好標題和內文`,
+    markdownBody: (platform) => `內文按 Markdown 複製，貼到${platform}的 Markdown 編輯器裡`,
     chooseDeclarations: (platform) => `${platform}的分類、原創、AI 聲明等選項請在頁面上自己選`,
     stepsFilled: (platform) =>
       `檢查後在${platform}裡按發布，再按格子頂欄的「我已發布」並把文章連結貼回辰記`,
@@ -82,6 +84,8 @@ export const msg = defineMessages<typeof zhCN>({
     runtimeNoteFill: (platform) =>
       `The Publish Desk opens the ${platform} editor with the title and body filled in; you pick the platform’s options and publish`,
     filled: (platform) => `Filled in the title and body in the ${platform} editor`,
+    markdownBody: (platform) =>
+      `The body is copied as Markdown; paste it into the ${platform} Markdown editor`,
     chooseDeclarations: (platform) =>
       `Pick ${platform}’s options (category, original, AI statement…) yourself on the page`,
     stepsFilled: (platform) =>

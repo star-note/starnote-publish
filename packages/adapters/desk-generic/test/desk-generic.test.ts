@@ -6,6 +6,7 @@ import { mockSession } from '../../../core/test/session-helpers';
 import { createGenericDeskElectronAdapters } from '../src/electron';
 import {
   CN_DESK_KEYS,
+  TECH_DESK_KEYS,
   createGenericDeskAdapter,
   GENERIC_DESK_KEYS,
   genericDeskBinding,
@@ -24,12 +25,13 @@ const doc = convert({
 });
 
 describe('通用模式 adapters', () => {
-  it('covers 11 vertical and 10 big domestic platforms and 11 overseas ones (SPEC-r14 A2), all in the registry', () => {
-    expect(GENERIC_DESK_KEYS).toHaveLength(32);
+  it('covers 11 vertical, 10 big domestic, 4 tech and 11 overseas platforms (SPEC-r14 A2), all in the registry', () => {
+    expect(GENERIC_DESK_KEYS).toHaveLength(36);
     expect(CN_DESK_KEYS).toHaveLength(10);
+    expect(TECH_DESK_KEYS).toHaveLength(4);
     expect(createGenericDeskElectronAdapters().map((a) => a.key)).toEqual([...GENERIC_DESK_KEYS]);
     const regions = GENERIC_DESK_KEYS.map((key) => platformMeta(key)?.region);
-    expect(regions.filter((r) => r === 'cn')).toHaveLength(21);
+    expect(regions.filter((r) => r === 'cn')).toHaveLength(25);
     expect(regions.filter((r) => r === 'global')).toHaveLength(11);
   });
 
@@ -40,11 +42,13 @@ describe('通用模式 adapters', () => {
     expect(b.instructions!.join('\n')).toContain('已登录');
   });
 
-  it('fills the write page on the big domestic platforms whose selectors were checked', async () => {
-    const filled = CN_DESK_KEYS.filter((k) =>
+  it('fills the write page on the platforms whose selectors were checked', async () => {
+    const filled = GENERIC_DESK_KEYS.filter((k) =>
       createGenericDeskAdapter(k).runtimes[0]!.note!.includes('自动填好')
     );
     expect(filled).toEqual([
+      'xueqiu',
+      'dongchedi',
       'toutiao',
       'bilibili',
       'weibo-article',
@@ -92,6 +96,41 @@ describe('通用模式 adapters', () => {
     expect(items['declarations.user']).toContain('AI 声明');
     expect(items['platform.hint']).toContain('新的创作');
     expect(items['handoff.pending']).toContain('我已发布');
+  });
+
+  it('copies the body as Markdown for the tech communities', async () => {
+    const account: AccountRef = {
+      id: 's1',
+      platform: 'segmentfault',
+      externalUid: '',
+      displayName: '我',
+      store: 'desktop',
+    };
+    const { sessionFetch } = mockSession({});
+    const desk: HandoffRequest[] = [];
+    const adapter = createGenericDeskAdapter('segmentfault');
+    expect(adapter.runtimes[0]!.note).toContain('通用模式');
+    const r = await createPublisher({
+      adapters: [adapter],
+      runtime: 'electron',
+      sessionFetch,
+      handoff: async (req) => {
+        desk.push(req);
+        return { state: 'queued' };
+      },
+    }).publish({
+      noteId: 'n',
+      doc,
+      platforms: ['segmentfault'],
+      common: { title: '标题' },
+      perPlatform: { segmentfault: {} },
+      accounts: { segmentfault: account },
+    });
+    expect(desk[0]!.editorUrl).toBe('https://segmentfault.com/write');
+    expect(desk[0]!.prefill).toEqual({ title: '标题', text: expect.stringContaining('## 小标题') });
+    const kinds = r.results.segmentfault!.report!.map((i) => i.kind);
+    expect(kinds).toContain('format.markdown');
+    expect(kinds).not.toContain('fields.prefilled');
   });
 
   it('renders HTML for the rich editor with absolute image URLs, and plain text as the fallback', () => {

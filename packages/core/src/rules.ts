@@ -409,9 +409,9 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
   ),
   zsxq: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '知识星球 网页版长文（星主 / 成员发帖）'),
   dongchedi: cn(
-    {},
+    { title: { min: 2, max: 30 } },
     { note: CN_TOGGLE_UNVERIFIED },
-    '懂车帝 创作者运营规范 https://dongchedi.com/public/protocol/opsspecs'
+    '懂车帝 创作者运营规范 https://dongchedi.com/public/protocol/opsspecs ；懂车号发文页提示标题 2～30 个汉字（2026-10-30）'
   ),
   hupu: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '虎扑 用户协议 https://www.hupu.com/policies/terms'),
   douban: cn(

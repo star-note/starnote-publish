@@ -118,8 +118,9 @@ describe('SPEC-r13 §4b: 通用模式 site scripts', () => {
       const script = await verifySiteScript(signed, { platform: key });
       expect(script.platform).toBe(key);
       expect(platformMeta(key), key).toBeDefined();
-      expect(script.selectors).toEqual({});
-      expect(script.flags?.generic).toBe(true);
+      // 核对过写作页的（雪球、懂车帝，2026-10-30）自动填，其余走通用模式
+      if (script.selectors.editor) expect(script.selectors.title).toBeTruthy();
+      else expect(script.flags?.generic).toBe(true);
       const s = script.session!;
       expect(s.success).toEqual({ manual: true });
       expect(s.check).toBeUndefined();
