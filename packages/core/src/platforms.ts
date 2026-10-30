@@ -764,11 +764,12 @@ const ENTRIES: readonly PlatformEntry[] = [
     region: 'cn',
     homepage: 'https://www.cnblogs.com/',
     contentTypes: ARTICLE,
-    // MetaWeblog API
-    runtimes: [api('server', needs('token'))],
+    // MetaWeblog with a personal access token, sent by 辰记's API (@starnote/publish-cnblogs)
+    runtimes: RELAY,
     binding: TOKEN,
     monetization: [],
     phase: 'P2',
+    stage: 'implemented',
   },
   cnDesktop('segmentfault', 'SegmentFault 思否', '思', '#009a61', 'https://segmentfault.com/', [
     'creator-fund',

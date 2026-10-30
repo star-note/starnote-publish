@@ -101,6 +101,19 @@ importers:
         specifier: ^4.1.0
         version: 4.6.5
 
+  packages/adapters/cnblogs:
+    dependencies:
+      '@starnote/publish-core':
+        specifier: workspace:*
+        version: link:../../core
+      '@starnote/publish-kit':
+        specifier: workspace:*
+        version: link:../kit
+    devDependencies:
+      zod:
+        specifier: ^4.1.0
+        version: 4.6.5
+
   packages/adapters/convertkit:
     dependencies:
       '@starnote/publish-core':

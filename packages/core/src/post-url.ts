@@ -153,6 +153,15 @@ const RULES: Record<string, Rule> = {
       return ok(m[1]!, `https://${host}/article/details/${m[1]}`);
     return null;
   },
+  cnblogs(u, host) {
+    // `www.cnblogs.com/{blogApp}/p/{postid}`（MetaWeblog 返回的 postid），或旧的 `/p/{slug}.html`、`/archive/…`：用链接
+    if (host !== 'cnblogs.com') return null;
+    const m = /^\/([A-Za-z0-9_-]+)\/p\/(\d+)(?:\.html)?\/?$/.exec(u.pathname);
+    if (m) return ok(m[2]!, `https://www.cnblogs.com/${m[1]}/p/${m[2]}`);
+    return /^\/[A-Za-z0-9_-]+\/(p|archive)\/\S+/.test(u.pathname)
+      ? asUrl(plainUrl(u, []).replace(/^http:/, 'https:'))
+      : null;
+  },
   wechat(u, host) {
     if (host !== 'mp.weixin.qq.com') return null;
     const m = /^\/s\/([A-Za-z0-9_-]{6,})\/?$/.exec(u.pathname);
