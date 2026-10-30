@@ -413,7 +413,11 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     { note: CN_TOGGLE_UNVERIFIED },
     '懂车帝 创作者运营规范 https://dongchedi.com/public/protocol/opsspecs ；懂车号发文页提示标题 2～30 个汉字（2026-10-30）'
   ),
-  hupu: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '虎扑 用户协议 https://www.hupu.com/policies/terms'),
+  hupu: cn(
+    { title: { min: 4, max: 40 } },
+    { note: CN_TOGGLE_UNVERIFIED },
+    '虎扑 用户协议 https://www.hupu.com/policies/terms ；发帖页提示标题 4～40 字（2026-10-30）'
+  ),
   douban: cn(
     {},
     { note: CN_TOGGLE_UNVERIFIED },
@@ -424,7 +428,11 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     { note: CN_TOGGLE_UNVERIFIED },
     '豆瓣阅读 作者帮助中心 https://read.douban.com/helpcenter/works_management/'
   ),
-  mafengwo: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '马蜂窝 游记发布（网页编辑器待核实）'),
+  mafengwo: cn(
+    {},
+    { note: CN_TOGGLE_UNVERIFIED },
+    '马蜂窝 游记发布（写游记要先选「新版游记」，2026-10-30）'
+  ),
   xiaohongshu: cn(
     {
       title: { max: 20 },

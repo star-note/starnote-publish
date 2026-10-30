@@ -1,6 +1,6 @@
 {
   "platform": "oschina",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minCore": "0.1.0",
   "issuedAt": "2026-10-30T00:00:00.000Z",
   "urls": {
@@ -25,13 +25,11 @@
     "fetchPage": "https://my.oschina.net/robots.txt"
   },
   "flags": {
-    "generic": true,
-    "body": "markdown"
+    "generic": true
   },
   "unverified": [
-    "urls.write：只是作者入口页，没有登录核实写作页地址",
+    "2026-10-30 用已登录的账号看过：写作页是 my.oschina.net/u/<用户 ID>/blog/ai-write（智写平台），地址带用户 ID，从个人空间进入；默认是富文本编辑器，正文按 HTML 复制，发布台走通用模式",
     "session.allowedHosts：只列了平台主域名和常见第三方登录",
-    "selectors：未知，发布台走通用模式；正文按 Markdown 复制（平台是 Markdown 编辑器）",
     "published：未知，由用户点「我已发布」"
   ]
 }

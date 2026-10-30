@@ -51,6 +51,7 @@ describe('通用模式 adapters', () => {
       'eastmoney',
       'sspai',
       'dongchedi',
+      'hupu',
       'douban',
       'toutiao',
       'bilibili',
