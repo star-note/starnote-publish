@@ -1,14 +1,17 @@
 {
   "platform": "sspai",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minCore": "0.1.0",
-  "issuedAt": "2026-10-28T00:00:00.000Z",
+  "issuedAt": "2026-10-30T00:00:00.000Z",
   "urls": {
     "home": "https://sspai.com/",
-    "write": "https://sspai.com/",
+    "write": "https://sspai.com/write",
     "verify": "https://sspai.com/"
   },
-  "selectors": {},
+  "selectors": {
+    "title": "textarea[placeholder^=\"请输入标题\"]",
+    "editor": ".ck-editor__editable[contenteditable=\"true\"]"
+  },
   "session": {
     "loginUrl": "https://sspai.com/",
     "allowedHosts": ["sspai.com", "open.weixin.qq.com", "graph.qq.com", "api.weibo.com"],
@@ -17,13 +20,14 @@
     },
     "fetchPage": "https://sspai.com/robots.txt"
   },
-  "flags": {
-    "generic": true
-  },
+  "flags": {},
   "unverified": [
-    "urls.write：只是作者入口页，没有登录核实写作页地址",
-    "session.allowedHosts：只列了平台主域名和常见第三方登录",
-    "selectors：未知，发布台走通用模式（复制后手动粘贴）",
-    "published：未知，由用户点「我已发布」"
-  ]
+    "2026-10-30 用已登录的账号核对过写作页地址和标题、正文选择器（只读页面结构，未输入内容）；发布后的链接未知，由用户点「我已发布」"
+  ],
+  "waits": {
+    "editor": {
+      "selector": ".ck-editor__editable[contenteditable=\"true\"]",
+      "timeoutMs": 20000
+    }
+  }
 }

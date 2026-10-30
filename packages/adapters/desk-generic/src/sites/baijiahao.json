@@ -1,0 +1,35 @@
+{
+  "platform": "baijiahao",
+  "version": "0.2.0",
+  "minCore": "0.1.0",
+  "issuedAt": "2026-10-30T00:00:00.000Z",
+  "urls": {
+    "home": "https://baijiahao.baidu.com/",
+    "write": "https://baijiahao.baidu.com/builder/rc/edit?type=news",
+    "verify": "https://baijiahao.baidu.com/"
+  },
+  "selectors": {},
+  "session": {
+    "loginUrl": "https://baijiahao.baidu.com/builder/theme/bjh/login",
+    "allowedHosts": [
+      "baidu.com",
+      "bdstatic.com",
+      "bdimg.com",
+      "open.weixin.qq.com",
+      "graph.qq.com",
+      "api.weibo.com"
+    ],
+    "success": {
+      "manual": true
+    },
+    "fetchPage": "https://baijiahao.baidu.com/robots.txt"
+  },
+  "flags": {
+    "generic": true
+  },
+  "unverified": [
+    "selectors：正文是 iframe 里的 UEditor，标题是哈希类名的 contenteditable，走通用模式（复制后手动粘贴）",
+    "百家号有官方「内容开放接口」（app_id + app_token），之后改走接口",
+    "published：未知，由用户点「我已发布」"
+  ]
+}

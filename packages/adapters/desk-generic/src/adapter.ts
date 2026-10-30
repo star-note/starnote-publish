@@ -8,6 +8,7 @@ import {
   localizedLabel,
   openSessionRun,
   platformMeta,
+  platformRules,
   PlatformSessionError,
   rewriteImageSrcs,
   truncateText,
@@ -37,6 +38,8 @@ export interface GenericRendered {
   title: string;
   html: string;
   text: string;
+  /** For the platforms whose editor is Markdown (site script `flags.body: 'markdown'`). */
+  markdown: string;
   report: ReportItem[];
 }
 
@@ -51,15 +54,17 @@ export function renderGeneric(
   common: CommonFormShape,
   assetBase?: string,
   /** SPEC-r14 B5: language of the report. Default `zh-CN`. */
-  lang?: SdkLang
+  lang?: SdkLang,
+  /** The platform's title limit (its rules), default 100. */
+  titleMax = 100
 ): GenericRendered {
   const report: ReportItem[] = [];
   const rawTitle = (common.title || doc.title || '').trim();
-  const cut = truncateText(rawTitle, 100);
+  const cut = truncateText(rawTitle, titleMax);
   if (cut.truncated)
     report.push({
       kind: 'title.truncated',
-      text: msg(lang).titleTruncated,
+      text: msg(lang).titleTruncated(titleMax),
       level: 'notice',
       samples: [rawTitle],
     });
@@ -85,7 +90,7 @@ export function renderGeneric(
     if (map.size) json = rewriteImageSrcs(json, map);
   }
   const out = convert(json);
-  return { title: cut.value, html: out.html, text: out.text, report };
+  return { title: cut.value, html: out.html, text: out.text, markdown: out.markdown, report };
 }
 
 export function genericDeskBinding(key: GenericDeskKey): BindingSpec {
@@ -104,7 +109,11 @@ export function genericDeskBinding(key: GenericDeskKey): BindingSpec {
 
 /**
  * SPEC-r13 §4b 通用模式: the 发布台 opens the platform's author entry page in the account's own window; the tile offers
- * 「复制标题」「复制正文」 and 「我已发布」. Nothing is typed into the page and nothing is clicked for the user.
+ * 「复制标题」「复制正文」 and 「我已发布」. Nothing is clicked for the user.
+ *
+ * When the site script has checked selectors (国内大平台, 2026-10), the 发布台 opens the write page itself and fills the
+ * title (`insertText`) and the body (pasted HTML) like a person would; the user picks the platform's own options
+ * (分类、原创、AI 声明…) and clicks 发布.
  */
 export function createGenericDeskAdapter(
   key: GenericDeskKey,
@@ -112,6 +121,15 @@ export function createGenericDeskAdapter(
 ): Adapter<typeof genericDeskSchema> {
   const label = labelOf(key);
   const signed = GENERIC_SITE_SCRIPTS[key];
+  const bundled = bundledScript(signed);
+  const fills = Boolean(bundled.selectors.editor);
+  // 技术社区的编辑器是 Markdown：预览和复制的正文都用 Markdown
+  const markdown = bundled.flags?.body === 'markdown';
+  const note = (l?: SdkLang) =>
+    fills
+      ? msg(l).runtimeNoteFill(localizedLabel(key, label, l))
+      : msg(l).runtimeNote(localizedLabel(key, label, l));
+  const titleMax = platformRules(key)?.title?.max ?? 100;
   return defineAdapter({
     key,
     label,
@@ -120,23 +138,20 @@ export function createGenericDeskAdapter(
         runtime: 'electron',
         mode: 'automation',
         needs: ['session'],
-        note: msg('zh-CN').runtimeNote(label),
-        notes: {
-          'zh-TW': msg('zh-TW').runtimeNote(localizedLabel(key, label, 'zh-TW')),
-          en: msg('en').runtimeNote(localizedLabel(key, label, 'en')),
-        },
+        note: note(),
+        notes: { 'zh-TW': note('zh-TW'), en: note('en') },
       },
     ],
     contentTypes: ['article'],
     binding: genericDeskBinding(key),
-    capabilities: { supportsUpdate: false, needsLogin: true },
+    capabilities: { supportsUpdate: false, needsLogin: true, titleMax },
     schema: genericDeskSchema,
     preview: ((doc, _form, common = {}, _content, popts) => {
-      const r = renderGeneric(doc, common, opts.assetBase, popts?.lang);
+      const r = renderGeneric(doc, common, opts.assetBase, popts?.lang, titleMax);
       return {
-        format: 'html',
+        format: markdown ? 'markdown' : 'html',
         title: r.title,
-        body: r.html,
+        body: markdown ? r.markdown : r.html,
         report: r.report,
       } satisfies AdapterPreview;
     }) as NonNullable<Adapter<typeof genericDeskSchema>['preview']>,
@@ -155,15 +170,38 @@ export function createGenericDeskAdapter(
           ...L,
         });
       if (!editorUrl) throw new PlatformSessionError('help', t.noEntry(name), { ...L });
-      const r = renderGeneric(doc, common, opts.assetBase, lang);
+      const r = renderGeneric(doc, common, opts.assetBase, lang, titleMax);
       const report: ReportItem[] = [...r.report];
       ctx.emit({ type: 'progress', percent: 60, text: t.opening(name) });
       const res = await handOffEditor(ctx, run, label, {
         editorUrl,
-        prefill: { title: r.title, html: r.html, text: r.text },
+        prefill: markdown
+          ? { title: r.title, text: r.markdown }
+          : { title: r.title, html: r.html, text: r.text },
       });
       report.push(...handoffReport(res, name, lang));
-      report.push({ kind: 'handoff.pending', text: t.steps(name), level: 'notice' });
+      if (markdown)
+        report.push({
+          kind: 'format.markdown',
+          text: fills ? t.markdownFilled(name) : t.markdownBody(name),
+          level: 'info',
+        });
+      if (script.selectors.editor) {
+        // 我们做了什么（SPEC-r15）：填好的项；平台自己的选项（分类、原创、AI 声明…）由用户选，只提醒
+        report.push({ kind: 'fields.prefilled', text: t.filled(name), level: 'info' });
+        report.push({
+          kind: 'declarations.user',
+          text: t.chooseDeclarations(name),
+          level: 'notice',
+        });
+      }
+      const hint = t.hints[key];
+      if (hint) report.push({ kind: 'platform.hint', text: hint, level: 'notice' });
+      report.push({
+        kind: 'handoff.pending',
+        text: script.selectors.editor ? t.stepsFilled(name) : t.steps(name),
+        level: 'notice',
+      });
       ctx.emit({ type: 'progress', percent: 100, text: t.waiting(name) });
       return { url: editorUrl, state: 'handoff', report };
     },

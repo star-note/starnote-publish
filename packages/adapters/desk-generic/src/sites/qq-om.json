@@ -1,0 +1,33 @@
+{
+  "platform": "qq-om",
+  "version": "0.2.0",
+  "minCore": "0.1.0",
+  "issuedAt": "2026-10-30T00:00:00.000Z",
+  "urls": {
+    "home": "https://om.qq.com/",
+    "write": "https://om.qq.com/main/creation/article",
+    "verify": "https://om.qq.com/"
+  },
+  "selectors": {
+    "title": "[data-placeholder^=\"请输入标题\"]",
+    "editor": ".ProseMirror.ExEditor-basic"
+  },
+  "session": {
+    "loginUrl": "https://om.qq.com/userAuth/index",
+    "allowedHosts": ["qq.com", "gtimg.com", "gtimg.cn", "idqqimg.com", "qpic.cn"],
+    "success": {
+      "manual": true
+    },
+    "fetchPage": "https://om.qq.com/robots.txt"
+  },
+  "waits": {
+    "editor": {
+      "selector": ".ProseMirror.ExEditor-basic",
+      "timeoutMs": 20000
+    }
+  },
+  "flags": {},
+  "unverified": [
+    "2026-10-30 用已登录的账号核对过写作页地址和标题、正文选择器（只读页面结构，未输入内容）；发布后的链接未知，由用户点「我已发布」"
+  ]
+}

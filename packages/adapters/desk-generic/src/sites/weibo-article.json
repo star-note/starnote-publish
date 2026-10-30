@@ -1,0 +1,43 @@
+{
+  "platform": "weibo-article",
+  "version": "0.2.0",
+  "minCore": "0.1.0",
+  "issuedAt": "2026-10-30T00:00:00.000Z",
+  "urls": {
+    "home": "https://card.weibo.com/article/v5/editor",
+    "write": "https://card.weibo.com/article/v5/editor",
+    "verify": "https://card.weibo.com/article/v5/editor"
+  },
+  "selectors": {
+    "title": "textarea[placeholder=\"请输入标题\"]",
+    "editor": ".ProseMirror.wb-editor"
+  },
+  "session": {
+    "loginUrl": "https://passport.weibo.com/sso/signin",
+    "allowedHosts": [
+      "weibo.com",
+      "weibo.cn",
+      "sina.com.cn",
+      "sinaimg.cn",
+      "sinajs.cn",
+      "open.weixin.qq.com",
+      "graph.qq.com",
+      "api.weibo.com"
+    ],
+    "success": {
+      "manual": true
+    },
+    "fetchPage": "https://card.weibo.com/robots.txt"
+  },
+  "waits": {
+    "editor": {
+      "selector": ".ProseMirror.wb-editor",
+      "timeoutMs": 20000
+    }
+  },
+  "flags": {},
+  "unverified": [
+    "2026-10-30 用已登录的账号核对过写作页地址和标题、正文选择器（只读页面结构，未输入内容）；发布后的链接未知，由用户点「我已发布」",
+    "打开编辑器时微博会自动新建一篇空草稿"
+  ]
+}

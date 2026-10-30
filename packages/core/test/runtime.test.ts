@@ -122,14 +122,27 @@ describe('planRuntime', () => {
     ]);
   });
 
-  it('honours per-runtime content kinds (微博: short text on the server, articles on the desktop)', () => {
+  it('honours per-runtime content kinds (short text on the server, articles on the desktop)', () => {
+    // 微博 is now two targets (`weibo` short text, `weibo-article` on the desk): a synthetic entry keeps the case
     const weibo = platformMeta('weibo')!;
+    const mixed = {
+      ...weibo,
+      contentTypes: ['article', 'short-text'],
+      runtimes: [
+        { ...weibo.runtimes[0]!, kinds: ['short-text'] },
+        { runtime: 'electron', mode: 'automation', needs: ['session'], kinds: ['article'] },
+      ],
+    } as typeof weibo;
     expect(
-      kinds(weibo, { runtime: 'web', serverRelay: true }, { contentKind: 'short-text' })[0]
+      kinds(mixed, { runtime: 'web', serverRelay: true }, { contentKind: 'short-text' })[0]
     ).toBe('server');
-    expect(kinds(weibo, { runtime: 'web', serverRelay: true }, { contentKind: 'article' })[0]).toBe(
+    expect(kinds(mixed, { runtime: 'web', serverRelay: true }, { contentKind: 'article' })[0]).toBe(
       'download-desktop'
     );
+    // the article target itself goes to the desktop
+    expect(
+      kinds(platformMeta('weibo-article')!, { runtime: 'web', serverRelay: true }, {})[0]
+    ).toBe('download-desktop');
   });
 
   it('plans many platforms at once', () => {

@@ -392,9 +392,9 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     '雪球 社区公约 / 专栏协议 https://xueqiu.com/law/column'
   ),
   eastmoney: cn(
-    { finance: true, noContact: true, noQrcode: true },
+    { finance: true, noContact: true, noQrcode: true, title: { min: 1, max: 64 } },
     { note: CN_TOGGLE_UNVERIFIED },
-    '东方财富 股吧管理规定 https://guba.eastmoney.com/gltl.aspx ；财富号公告 https://mp.eastmoney.com/collect/pc_writer/treaty.html'
+    '东方财富 股吧管理规定 https://guba.eastmoney.com/gltl.aspx ；财富号公告 https://mp.eastmoney.com/collect/pc_writer/treaty.html ；长文页提示标题 1～64 字（2026-10-30）'
   ),
   huxiu: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '虎嗅 投稿须知 https://www.huxiu.com/contribute/'),
   woshipm: cn(
@@ -409,11 +409,15 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
   ),
   zsxq: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '知识星球 网页版长文（星主 / 成员发帖）'),
   dongchedi: cn(
-    {},
+    { title: { min: 2, max: 30 } },
     { note: CN_TOGGLE_UNVERIFIED },
-    '懂车帝 创作者运营规范 https://dongchedi.com/public/protocol/opsspecs'
+    '懂车帝 创作者运营规范 https://dongchedi.com/public/protocol/opsspecs ；懂车号发文页提示标题 2～30 个汉字（2026-10-30）'
   ),
-  hupu: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '虎扑 用户协议 https://www.hupu.com/policies/terms'),
+  hupu: cn(
+    { title: { min: 4, max: 40 } },
+    { note: CN_TOGGLE_UNVERIFIED },
+    '虎扑 用户协议 https://www.hupu.com/policies/terms ；发帖页提示标题 4～40 字（2026-10-30）'
+  ),
   douban: cn(
     {},
     { note: CN_TOGGLE_UNVERIFIED },
@@ -424,13 +428,31 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     { note: CN_TOGGLE_UNVERIFIED },
     '豆瓣阅读 作者帮助中心 https://read.douban.com/helpcenter/works_management/'
   ),
-  mafengwo: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '马蜂窝 游记发布（网页编辑器待核实）'),
+  mafengwo: cn(
+    {},
+    { note: CN_TOGGLE_UNVERIFIED },
+    '马蜂窝 游记发布（写游记要先选「新版游记」，2026-10-30）'
+  ),
   xiaohongshu: cn(
     {
       title: { max: 20 },
       body: { max: 1000 },
       tags: { max: 10, format: 'hash' },
       images: { min: 1, max: 18, ratios: ['3:4', '1:1', '4:3'] },
+      externalLinks: 'forbidden',
+      noContact: true,
+      noQrcode: true,
+    },
+    {
+      method: 'platform-toggle',
+      note: '小红书发布页「添加内容类型声明」选择「内容含 AI 合成」；未声明的疑似 AI 内容会被平台标注或限流。',
+    },
+    '小红书社区规范（站外导流：联系方式、二维码、外链）；小红书 AI 内容标识公告（2025-09）'
+  ),
+  'xiaohongshu-article': cn(
+    {
+      title: { max: 64 },
+      body: { max: 10000 },
       externalLinks: 'forbidden',
       noContact: true,
       noQrcode: true,
@@ -459,10 +481,18 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     },
     '微博社区公约；微博关于 AI 生成内容标识的公告（2025-09）'
   ),
+  'weibo-article': cn(
+    { title: { max: 32 }, summary: { max: 44 } },
+    {
+      method: 'platform-toggle',
+      note: '微博公告：AI 生成合成内容在发布时「选择内容声明 → 内容由 AI 生成」；另设「未添加 AI 标识」投诉类别。',
+    },
+    '微博社区公约；微博关于 AI 生成内容标识的公告（2025-09）'
+  ),
   toutiao: cn(
-    { title: { min: 5, max: 30 }, noContact: true, noQrcode: true },
+    { title: { min: 2, max: 30 }, noContact: true, noQrcode: true },
     { note: CN_TOGGLE_UNVERIFIED },
-    '今日头条 头条号创作规范（标题 5–30 字）'
+    '今日头条 头条号创作规范；发文页提示标题 2～30 字（2026-10-30）'
   ),
   baijiahao: cn(
     { title: { min: 8, max: 30 }, noContact: true, noQrcode: true },
@@ -475,12 +505,12 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     '网易号运营规范'
   ),
   sohu: cn(
-    { title: { min: 5, max: 30 }, noContact: true, noQrcode: true },
+    { title: { min: 5, max: 72 }, noContact: true, noQrcode: true },
     { note: CN_TOGGLE_UNVERIFIED },
     '搜狐号内容规范'
   ),
   'qq-om': cn(
-    { title: { min: 5, max: 30 }, noContact: true, noQrcode: true },
+    { title: { min: 5, max: 64 }, noContact: true, noQrcode: true },
     { note: CN_TOGGLE_UNVERIFIED },
     '腾讯内容开放平台（企鹅号）内容规范'
   ),
@@ -495,7 +525,7 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     '一点号内容规范'
   ),
   bilibili: cn(
-    { title: { max: 40 }, tags: { max: 10, format: 'plain' }, noContact: true, noQrcode: true },
+    { title: { max: 50 }, tags: { max: 10, format: 'plain' }, noContact: true, noQrcode: true },
     {
       method: 'platform-toggle',
       note: 'B 站投稿页可勾选「作者声明：使用 AI 合成技术」；未标注的 AI 内容可能被限流 / 下架。',
@@ -508,6 +538,20 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
       body: { max: 1000 },
       tags: { max: 5, format: 'hash' },
       images: { max: 35 },
+      noContact: true,
+      noQrcode: true,
+    },
+    {
+      method: 'platform-toggle',
+      note: '抖音发布页「添加声明 → 内容由 AI 生成」；未标注可能被取消营利、限流。',
+    },
+    '抖音社区自律公约；抖音关于人工智能生成内容的平台规范（2023-05 起，2025-09 更新）'
+  ),
+  'douyin-article': cn(
+    {
+      title: { max: 30 },
+      summary: { max: 30 },
+      body: { max: 8000 },
       noContact: true,
       noQrcode: true,
     },
