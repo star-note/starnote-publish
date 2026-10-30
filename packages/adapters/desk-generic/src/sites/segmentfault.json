@@ -1,6 +1,6 @@
 {
   "platform": "segmentfault",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minCore": "0.1.0",
   "issuedAt": "2026-10-30T00:00:00.000Z",
   "urls": {
@@ -32,6 +32,9 @@
     "urls.write：未登录时跳到登录页，没有用已登录的账号核实写作页",
     "session.allowedHosts：只列了平台主域名和常见第三方登录",
     "selectors：未知，发布台走通用模式；正文按 Markdown 复制（平台是 Markdown 编辑器）",
-    "published：未知，由用户点「我已发布」"
-  ]
+    "2026-10-30 published.urlMatch 按平台公开文章地址格式写的，发布后页面怎么跳、列表里能不能按标题认出链接，要等第一次真发文时核对"
+  ],
+  "published": {
+    "urlMatch": "^https://segmentfault\\.com/a/(\\d+)"
+  }
 }

@@ -1,6 +1,6 @@
 {
   "platform": "51cto",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minCore": "0.1.0",
   "issuedAt": "2026-10-30T00:00:00.000Z",
   "urls": {
@@ -24,12 +24,16 @@
     "body": "markdown"
   },
   "unverified": [
-    "2026-10-30 用已登录的账号核对过写作页地址和标题、正文选择器（只读页面结构，未输入内容）：写作页默认是 Markdown 编辑器（正文是 textarea），正文按 Markdown 填入；发布后的链接未知，由用户点「我已发布」"
+    "2026-10-30 用已登录的账号核对过写作页地址和标题、正文选择器（只读页面结构，未输入内容）：写作页默认是 Markdown 编辑器（正文是 textarea），正文按 Markdown 填入；发布后的链接未知，由用户点「我已发布」",
+    "2026-10-30 published.urlMatch 按平台公开文章地址格式写的，发布后页面怎么跳、列表里能不能按标题认出链接，要等第一次真发文时核对"
   ],
   "waits": {
     "editor": {
       "selector": "textarea[placeholder=\"请输入正文\"]",
       "timeoutMs": 20000
     }
+  },
+  "published": {
+    "urlMatch": "^https://blog\\.51cto\\.com/u_\\d+/(\\d+)"
   }
 }
