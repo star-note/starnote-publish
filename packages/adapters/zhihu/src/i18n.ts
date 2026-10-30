@@ -30,6 +30,14 @@ const zhCN = {
   notAccepted: (why: string) =>
     `知乎没有接受自动发布（${why}）：文章已写入编辑器，请在编辑器里点「发布」`,
   published: '已发布',
+  draftFallback: '知乎草稿接口暂时不可用，改为打开编辑器预填标题和正文',
+  filled: (items: string[]) => `已在知乎草稿里填好${items.join('、')}`,
+  filledTitle: '标题',
+  filledBody: (images: number) => (images ? `正文（${images} 张图已转存到知乎）` : '正文'),
+  filledCover: '题图',
+  filledTopics: (topics: string[]) => `话题「${topics.join('」「')}」`,
+  chooseDeclarations: '创作声明（含「包含 AI 辅助创作」）、投稿至问题、定时发布请在页面下方自己选',
+  draftReady: '草稿已在发布台打开，检查后点「发布」即可',
 };
 
 export const msg = defineMessages<typeof zhCN>({
@@ -63,6 +71,15 @@ export const msg = defineMessages<typeof zhCN>({
     notAccepted: (why) =>
       `知乎沒有接受自動發布（${why}）：文章已寫入編輯器，請在編輯器裡按「發布」`,
     published: '已發布',
+    draftFallback: '知乎草稿介面暫時無法使用，改為開啟編輯器預填標題和內文',
+    filled: (items) => `已在知乎草稿裡填好${items.join('、')}`,
+    filledTitle: '標題',
+    filledBody: (images) => (images ? `內文（${images} 張圖已轉存到知乎）` : '內文'),
+    filledCover: '題圖',
+    filledTopics: (topics) => `話題「${topics.join('」「')}」`,
+    chooseDeclarations:
+      '創作聲明（含「包含 AI 輔助創作」）、投稿至問題、定時發布請在頁面下方自己選',
+    draftReady: '草稿已在發布台開啟，檢查後按「發布」即可',
   },
   en: {
     form: { topicsMax: 'At most 3 topics', topics: 'Topics', mode: 'How to publish' },
@@ -95,5 +112,15 @@ export const msg = defineMessages<typeof zhCN>({
     notAccepted: (why) =>
       `Zhihu didn’t accept automatic publishing (${why}): the article is in the editor, click “Publish” there`,
     published: 'Published',
+    draftFallback:
+      'Zhihu’s draft API is unavailable right now: the editor opens with the title and body filled in',
+    filled: (items) => `Filled in ${items.join(', ')} in the Zhihu draft`,
+    filledTitle: 'the title',
+    filledBody: (images) => (images ? `the body (${images} images moved to Zhihu)` : 'the body'),
+    filledCover: 'the title image',
+    filledTopics: (topics) => `the topics “${topics.join('”, “')}”`,
+    chooseDeclarations:
+      'Pick the creation statement (including “AI-assisted”), the question to submit to and scheduling yourself at the bottom of the page',
+    draftReady: 'The draft is open in the publishing desk: check it and click “发布”',
   },
 });
