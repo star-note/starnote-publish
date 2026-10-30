@@ -1,6 +1,6 @@
 {
   "platform": "huxiu",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "minCore": "0.1.0",
   "issuedAt": "2026-10-30T00:00:00.000Z",
   "urls": {
@@ -8,7 +8,11 @@
     "write": "https://www.huxiu.com/contribute/",
     "verify": "https://www.huxiu.com/"
   },
-  "selectors": {},
+  "selectors": {
+    "openEditor": ".js-add-ok >> .js-pc-tg-type-tab[data-type=\"js-article-tg\"]",
+    "title": "input#title",
+    "editor": "iframe#ueditor_0"
+  },
   "session": {
     "loginUrl": "https://www.huxiu.com/contribute/",
     "allowedHosts": ["huxiu.com", "open.weixin.qq.com", "graph.qq.com", "api.weibo.com"],
@@ -17,12 +21,14 @@
     },
     "fetchPage": "https://www.huxiu.com/robots.txt"
   },
-  "flags": {
-    "generic": true
-  },
+  "flags": {},
   "unverified": [
-    "2026-10-30 用已登录的账号看过投稿页：文章投稿要先点「文章投稿」页签，正文是 iframe 里的 UEditor，发布台走通用模式（复制后手动粘贴）",
-    "session.allowedHosts：只列了平台主域名和常见第三方登录",
-    "published：未知，由用户点「我已发布」"
-  ]
+    "2026-10-30 用已登录的账号核对过（只读页面结构，未输入内容）：投稿页先弹「投稿提示」，关掉后切到「文章投稿」页签，标题是 input#title，正文是 iframe 里的 UEditor（点进 iframe 聚焦后粘贴）；发布后的链接未知，由用户点「我已发布」"
+  ],
+  "waits": {
+    "editor": {
+      "selector": "iframe#ueditor_0",
+      "timeoutMs": 20000
+    }
+  }
 }

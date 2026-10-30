@@ -49,6 +49,8 @@ describe('通用模式 adapters', () => {
     expect(filled).toEqual([
       'xueqiu',
       'eastmoney',
+      'huxiu',
+      'woshipm',
       'sspai',
       'dongchedi',
       'hupu',
@@ -60,6 +62,7 @@ describe('通用模式 adapters', () => {
       'qq-om',
       'douyin-article',
       'xiaohongshu-article',
+      'oschina',
       'tencent-cloud',
       '51cto',
     ]);
@@ -182,15 +185,15 @@ describe('通用模式 adapters', () => {
   it('hands the author entry page to the 发布台 with the title and body, and never calls the platform', async () => {
     const account: AccountRef = {
       id: 'a1',
-      platform: 'huxiu',
+      platform: 'mafengwo',
       externalUid: '',
-      displayName: '虎嗅',
+      displayName: '马蜂窝',
       store: 'desktop',
     };
     const { sessionFetch, calls } = mockSession({});
     const desk: HandoffRequest[] = [];
     const r = await createPublisher({
-      adapters: [createGenericDeskAdapter('huxiu', { assetBase: 'https://starnote.app' })],
+      adapters: [createGenericDeskAdapter('mafengwo', { assetBase: 'https://starnote.app' })],
       runtime: 'electron',
       sessionFetch,
       handoff: async (req) => {
@@ -200,20 +203,20 @@ describe('通用模式 adapters', () => {
     }).publish({
       noteId: 'n',
       doc,
-      platforms: ['huxiu'],
+      platforms: ['mafengwo'],
       common: { title: '标题' },
-      perPlatform: { huxiu: {} },
-      accounts: { huxiu: account },
+      perPlatform: { mafengwo: {} },
+      accounts: { mafengwo: account },
     });
     expect(calls).toHaveLength(0);
     expect(desk[0]).toMatchObject({
-      platform: 'huxiu',
-      editorUrl: 'https://www.huxiu.com/contribute/',
-      label: '虎嗅',
+      platform: 'mafengwo',
+      editorUrl: 'https://www.mafengwo.cn/note/create_index.php',
+      label: '马蜂窝',
     });
     expect(desk[0]!.prefill).toMatchObject({ title: '标题' });
     expect(desk[0]!.prefill!.html).toContain('<h2');
-    const result = r.results.huxiu!;
+    const result = r.results.mafengwo!;
     expect(result).toMatchObject({ ok: true, state: 'handoff' });
     expect(result.report!.find((i) => i.kind === 'handoff.pending')!.text).toContain('我已发布');
   });

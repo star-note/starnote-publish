@@ -396,7 +396,11 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     { note: CN_TOGGLE_UNVERIFIED },
     '东方财富 股吧管理规定 https://guba.eastmoney.com/gltl.aspx ；财富号公告 https://mp.eastmoney.com/collect/pc_writer/treaty.html ；长文页提示标题 1～64 字（2026-10-30）'
   ),
-  huxiu: cn({}, { note: CN_TOGGLE_UNVERIFIED }, '虎嗅 投稿须知 https://www.huxiu.com/contribute/'),
+  huxiu: cn(
+    { title: { min: 1, max: 60 } },
+    { note: CN_TOGGLE_UNVERIFIED },
+    '虎嗅 投稿须知 https://www.huxiu.com/contribute/ ；文章投稿页提示标题 1～60 字（2026-10-30）'
+  ),
   woshipm: cn(
     { firstPublish: true },
     { note: CN_TOGGLE_UNVERIFIED },
