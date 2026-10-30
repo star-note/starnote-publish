@@ -40,6 +40,15 @@ const zhCN = {
   submitting: '提交发布',
   reviewPending: '掘金会先审核，审核通过后文章才对外可见',
   submitted: '已提交，等待掘金审核',
+  draftFallback:
+    '掘金草稿接口暂时不可用，改为打开编辑器预填标题和正文，分类、标签、摘要请在发布弹窗里选',
+  filledCategory: (name: string) => `分类「${name}」`,
+  filledTag: (name: string) => `标签「${name}」`,
+  filledBrief: (n: number) => `${n} 字摘要`,
+  filledCover: '封面',
+  fieldsPrefilled: (items: string[]) =>
+    `已在掘金草稿里填好${items.join('、')}，发布弹窗里直接能用，不合适可以改`,
+  draftReady: '草稿已在发布台打开，检查后点「发布」即可',
 };
 
 export const msg = defineMessages<typeof zhCN>({
@@ -83,6 +92,15 @@ export const msg = defineMessages<typeof zhCN>({
     submitting: '送出發布',
     reviewPending: '掘金會先審核，審核通過後文章才會公開',
     submitted: '已送出，等待掘金審核',
+    draftFallback:
+      '掘金草稿介面暫時無法使用，改為開啟編輯器預填標題和內文，分類、標籤、摘要請在發布彈出視窗裡選',
+    filledCategory: (name) => `分類「${name}」`,
+    filledTag: (name) => `標籤「${name}」`,
+    filledBrief: (n) => `${n} 字摘要`,
+    filledCover: '封面',
+    fieldsPrefilled: (items) =>
+      `已在掘金草稿裡填好${items.join('、')}，發布彈出視窗裡直接能用，不合適可以改`,
+    draftReady: '草稿已在發布台開啟，檢查後點「發布」即可',
   },
   en: {
     form: {
@@ -126,5 +144,14 @@ export const msg = defineMessages<typeof zhCN>({
     submitting: 'Submitting',
     reviewPending: 'Juejin reviews it first; the article is public once approved',
     submitted: 'Submitted; waiting for Juejin’s review',
+    draftFallback:
+      'Juejin’s draft API is unavailable right now: the editor opens with the title and body, pick the category, tags and summary in the publish dialog',
+    filledCategory: (name) => `the category “${name}”`,
+    filledTag: (name) => `the tag “${name}”`,
+    filledBrief: (n) => `a ${n}-character summary`,
+    filledCover: 'the cover',
+    fieldsPrefilled: (items) =>
+      `Filled in ${items.join(', ')} in the Juejin draft: the publish dialog is ready to use, change anything you like`,
+    draftReady: 'The draft is open in the publishing desk: check it and click “发布”',
   },
 });

@@ -22,7 +22,7 @@ describe('掘金 i18n (SPEC-r14 B5)', () => {
       undefined,
       'zh-TW'
     );
-    expect(tw.report.map((r) => r.text)).toContain('標題超過 100 字，已截短');
+    expect(tw.report.map((r) => r.text)).toContain('標題超過 80 字，已截短');
   });
 
   it('validation messages follow the language', () => {

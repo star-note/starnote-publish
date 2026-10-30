@@ -24,11 +24,18 @@ const zhCN = {
   imagesNotUploaded: (n: number) =>
     `${n} 张图片没有预先上传，已保留原图链接；CSDN 编辑器粘贴时会尝试转存`,
   openingEditor: '打开 CSDN 编辑器',
-  /** `type`: CSDN's own (Chinese) option name. */
-  finish: (filled: string, type: string, originalUrl: string) =>
-    `${filled}：在 CSDN 编辑器里点「发布文章」，文章类型选「${type}」${
-      originalUrl ? `并填写原文链接 ${originalUrl}` : ''
-    }，再选标签和分类专栏`,
+  filled: (images: number) =>
+    `已在 CSDN 编辑器里填好标题、正文${images ? `（${images} 张图已转存到 CSDN）` : ''}`,
+  pickTags: (tags: string[], max: number) =>
+    tags.length
+      ? `标签是 CSDN 发布必填项（最多 ${max} 个），按笔记标签建议：${tags.join('、')}`
+      : `标签是 CSDN 发布必填项（最多 ${max} 个），请在发布弹窗里选`,
+  /** `type`: CSDN's own (Chinese) option name, or '' when the user didn't pick one here. */
+  chooseDeclarations: (type: string, originalUrl: string) =>
+    `文章类型（原创 / 转载 / 翻译）和创作声明请在发布弹窗里自己选${
+      type ? `，你在表单里选的是「${type}」` : ''
+    }${originalUrl ? `，转载记得填原文链接 ${originalUrl}` : ''}`,
+  finish: (filled: string) => `${filled}：点「发布文章」，在弹窗里选好后发布`,
   waitingPublish: '等你在 CSDN 编辑器里发布',
 };
 
@@ -57,10 +64,17 @@ export const msg = defineMessages<typeof zhCN>({
     imagesNotUploaded: (n) =>
       `${n} 張圖片沒有預先上傳，已保留原圖連結；貼到 CSDN 編輯器時會嘗試轉存`,
     openingEditor: '開啟 CSDN 編輯器',
-    finish: (filled, type, originalUrl) =>
-      `${filled}：在 CSDN 編輯器裡按「發布文章」，文章類型選「${type}」${
-        originalUrl ? `並填寫原文連結 ${originalUrl}` : ''
-      }，再選標籤和分類專欄`,
+    filled: (images) =>
+      `已在 CSDN 編輯器裡填好標題、內文${images ? `（${images} 張圖已轉存到 CSDN）` : ''}`,
+    pickTags: (tags, max) =>
+      tags.length
+        ? `標籤是 CSDN 發布必填項（最多 ${max} 個），依筆記標籤建議：${tags.join('、')}`
+        : `標籤是 CSDN 發布必填項（最多 ${max} 個），請在發布視窗裡選`,
+    chooseDeclarations: (type, originalUrl) =>
+      `文章類型（原創 / 轉載 / 翻譯）和創作聲明請在發布視窗裡自己選${
+        type ? `，你在表單裡選的是「${type}」` : ''
+      }${originalUrl ? `，轉載記得填原文連結 ${originalUrl}` : ''}`,
+    finish: (filled) => `${filled}：按「發布文章」，在視窗裡選好後發布`,
     waitingPublish: '等你在 CSDN 編輯器裡發布',
   },
   en: {
@@ -88,10 +102,20 @@ export const msg = defineMessages<typeof zhCN>({
     imagesNotUploaded: (n) =>
       `${n} ${n === 1 ? 'image wasn’t' : 'images weren’t'} uploaded in advance and keep their original links; CSDN’s editor tries to copy them when pasting`,
     openingEditor: 'Opening the CSDN editor',
-    finish: (filled, type, originalUrl) =>
-      `${filled}: in the CSDN editor click “发布文章” (Publish), choose “${type}” as the article type${
-        originalUrl ? ` and enter the original link ${originalUrl}` : ''
-      }, then pick the tags and column`,
+    filled: (images) =>
+      `Filled in the title and body in the CSDN editor${
+        images ? ` (${images} ${images === 1 ? 'image' : 'images'} moved to CSDN)` : ''
+      }`,
+    pickTags: (tags, max) =>
+      tags.length
+        ? `CSDN requires tags (up to ${max}). Suggested from the note’s tags: ${tags.join(', ')}`
+        : `CSDN requires tags (up to ${max}): pick them in the publish dialog`,
+    chooseDeclarations: (type, originalUrl) =>
+      `Pick the article type (原创 / 转载 / 翻译) and the creation statement yourself in the publish dialog${
+        type ? `. You chose “${type}” in the form` : ''
+      }${originalUrl ? `. For a repost, enter the original link ${originalUrl}` : ''}`,
+    finish: (filled) =>
+      `${filled}: click “发布文章” (Publish), make your choices in the dialog and publish`,
     waitingPublish: 'Waiting for you to publish in the CSDN editor',
   },
 });

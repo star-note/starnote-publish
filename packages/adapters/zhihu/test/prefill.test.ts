@@ -1,4 +1,7 @@
-/** 默认交接：图片走知乎接口转存，然后在发布台里预填知乎编辑器，由用户点发布。 */
+/**
+ * 交接：默认 `draft`（草稿接口填好标题、正文、题图、话题，再在发布台里打开草稿）；`prefill` 和草稿失败时的退路：
+ * 图片走知乎接口转存，然后在发布台里预填知乎编辑器。两条路都由用户点发布。
+ */
 import { convert, createPublisher, HANDOFF_FILLED_TEXT } from '@starnote/publish-core';
 import { describe, expect, it } from 'vitest';
 
@@ -22,15 +25,31 @@ const account: AccountRef = {
   displayName: 'me',
   store: 'desktop',
 };
-const routes = () =>
+const API = 'https://zhuanlan.zhihu.com/api';
+const routes = (over: Record<string, any> = {}) =>
   mockSession({
-    'POST https://zhuanlan.zhihu.com/api/uploaded_images': () => ({
+    [`POST ${API}/uploaded_images`]: () => ({
       body: { src: 'https://pic1.zhimg.com/v2-a.png' },
     }),
+    ...over,
+  });
+const draftRoutes = (over: Record<string, any> = {}) =>
+  routes({
+    [`POST ${API}/articles/drafts`]: () => ({ body: { id: 9001 } }),
+    [`PATCH ${API}/articles/9001/draft`]: () => ({ status: 204 }),
+    [`GET ${API}/autocomplete/topics`]: () => ({
+      body: [{ id: '19550517', name: '写作', type: 'topic' }],
+    }),
+    [`POST ${API}/articles/9001/topics`]: () => ({ body: {} }),
+    ...over,
   });
 
-async function run(extra: Record<string, unknown>) {
-  const { sessionFetch, calls } = routes();
+async function run(
+  extra: Record<string, unknown>,
+  form: Record<string, unknown> = { mode: 'prefill', topics: ['写作'] },
+  session = routes()
+) {
+  const { sessionFetch, calls } = session;
   const publisher = createPublisher({
     adapters: [createZhihuAdapter({ remoteScript: false })],
     runtime: 'electron',
@@ -42,17 +61,66 @@ async function run(extra: Record<string, unknown>) {
     doc,
     platforms: ['zhihu'],
     common: { title: '标题' },
-    perPlatform: { zhihu: { topics: ['写作'] } },
+    perPlatform: { zhihu: form },
     accounts: { zhihu: account },
   });
   return { result: r.results.zhihu!, calls };
 }
 
-describe('zhihu default: prefill + hand-off', () => {
-  it('defaults to prefill', () => {
-    expect(zhihuSchema.parse({}).mode).toBe('prefill');
+const desk = () => {
+  const reqs: HandoffRequest[] = [];
+  return {
+    reqs,
+    handoff: async (req: HandoffRequest) => {
+      reqs.push(req);
+      return { state: 'shown' as const };
+    },
+  };
+};
+
+describe('zhihu default: a filled draft opened in the 发布台', () => {
+  it('defaults to draft', () => {
+    expect(zhihuSchema.parse({}).mode).toBe('draft');
   });
 
+  it('writes title, body and topics into a draft, opens it, and leaves declarations to the user', async () => {
+    const d = desk();
+    const { result, calls } = await run(
+      { handoff: d.handoff },
+      { topics: ['写作'] },
+      draftRoutes()
+    );
+    expect(calls.map((c) => `${c.method} ${c.url.split('?')[0]}`)).toEqual([
+      `POST ${API}/articles/drafts`,
+      `POST ${API}/uploaded_images`,
+      `PATCH ${API}/articles/9001/draft`,
+      `GET ${API}/autocomplete/topics`,
+      `POST ${API}/articles/9001/topics`,
+    ]);
+    expect(calls.some((c) => c.url.includes('content/publish'))).toBe(false);
+    expect(d.reqs[0]).toMatchObject({ editorUrl: 'https://zhuanlan.zhihu.com/p/9001/edit' });
+    expect(d.reqs[0]!.prefill).toBeUndefined();
+    expect(result).toMatchObject({ ok: true, state: 'handoff', externalId: '9001' });
+    const items = Object.fromEntries(result.report!.map((i) => [i.kind, i.text]));
+    expect(items['fields.prefilled']).toContain('正文（1 张图已转存到知乎）');
+    expect(items['fields.prefilled']).toContain('话题「写作」');
+    expect(items['declarations.user']).toContain('创作声明');
+  });
+
+  it('falls back to the prefilled editor when the draft API fails', async () => {
+    const d = desk();
+    const { result } = await run(
+      { handoff: d.handoff },
+      { topics: ['写作'] },
+      draftRoutes({ [`POST ${API}/articles/drafts`]: () => ({ status: 500, body: {} }) })
+    );
+    expect(d.reqs.at(-1)).toMatchObject({ editorUrl: 'https://zhuanlan.zhihu.com/write' });
+    expect(result.report!.some((i) => i.kind === 'draft.fallback')).toBe(true);
+    expect(result).toMatchObject({ ok: true, state: 'handoff' });
+  });
+});
+
+describe('zhihu prefill: rehost images + prefilled editor', () => {
   it('rehosts images, then puts a prefilled editor on the 发布台; never creates or publishes by API', async () => {
     const desk: HandoffRequest[] = [];
     const { result, calls } = await run({

@@ -1,6 +1,6 @@
 {
   "platform": "juejin",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minCore": "0.1.0",
   "issuedAt": "2026-10-19T00:00:00.000Z",
   "urls": {
@@ -43,10 +43,7 @@
       "uid": "data.user_id",
       "nickname": "data.user_name",
       "avatar": "data.avatar_large",
-      "reloginStatus": [
-        401,
-        403
-      ]
+      "reloginStatus": [401, 403]
     },
     "fetchPage": "https://juejin.cn/robots.txt"
   },
@@ -217,23 +214,14 @@
   },
   "errors": {
     "relogin": {
-      "status": [
-        401,
-        403
-      ],
+      "status": [401, 403],
       "codePath": "err_no",
-      "codes": [
-        403
-      ]
+      "codes": [403]
     },
     "rateLimit": {
-      "status": [
-        429
-      ],
+      "status": [429],
       "codePath": "err_no",
-      "codes": [
-        429
-      ]
+      "codes": [429]
     },
     "challenge": {
       "textMatch": "verifycenter|captcha|安全验证",
@@ -241,7 +229,7 @@
     }
   },
   "limits": {
-    "titleMax": 100,
+    "titleMax": 80,
     "summaryMin": 50,
     "summaryMax": 100,
     "tagsMax": 3
@@ -265,9 +253,7 @@
     "maxDelayMs": 4500,
     "minPostIntervalMin": 30,
     "dailyMax": 5,
-    "postRequests": [
-      "POST ^https://api\\.juejin\\.cn/content_api/v1/article_draft/create"
-    ],
+    "postRequests": ["POST ^https://api\\.juejin\\.cn/content_api/v1/article_draft/create"],
     "backoff": {
       "baseMs": 3000,
       "maxMs": 60000,

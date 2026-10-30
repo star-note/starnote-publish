@@ -14,10 +14,12 @@ export const zhihuSchemaFor = byLang((lang) => {
       .default([])
       .describe(t.topics),
     /**
-     * `prefill` (default): open 知乎's editor, fill title and body, the user presses「发布」(发布台).
+     * `draft` (default, SPEC-r15): a 知乎 draft with title, body, cover and topics filled through the page's own
+     * draft API, opened in the 发布台; the user picks the 创作声明 and presses「发布」.
+     * `prefill`: open 知乎's blank editor, fill title and body, the user presses「发布」(also `draft`'s fallback).
      * `review` / `publish`: earlier API paths, kept as they were.
      */
-    mode: z.enum(['prefill', 'review', 'publish']).default('prefill').describe(t.mode),
+    mode: z.enum(['draft', 'prefill', 'review', 'publish']).default('draft').describe(t.mode),
   });
 });
 

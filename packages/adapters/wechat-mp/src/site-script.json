@@ -13,9 +13,7 @@
   "selectors": {},
   "session": {
     "loginUrl": "https://mp.weixin.qq.com/",
-    "allowedHosts": [
-      "mp.weixin.qq.com"
-    ],
+    "allowedHosts": ["mp.weixin.qq.com"],
     "success": {
       "urlMatch": "^https://mp\\.weixin\\.qq\\.com/cgi-bin/home\\?[^#]*\\btoken=\\d+",
       "cookies": [
@@ -153,30 +151,18 @@
   },
   "errors": {
     "relogin": {
-      "status": [
-        401,
-        403
-      ],
+      "status": [401, 403],
       "codePath": "base_resp.ret",
-      "codes": [
-        200003
-      ]
+      "codes": [200003]
     },
     "rateLimit": {
-      "status": [
-        429
-      ],
+      "status": [429],
       "codePath": "base_resp.ret",
-      "codes": [
-        200013
-      ]
+      "codes": [200013]
     },
     "challenge": {
       "codePath": "base_resp.ret",
-      "codes": [
-        -6,
-        -8
-      ]
+      "codes": [-6, -8]
     }
   },
   "limits": {
@@ -204,9 +190,7 @@
     "maxDelayMs": 3000,
     "minPostIntervalMin": 10,
     "dailyMax": 5,
-    "postRequests": [
-      "POST ^https://mp\\.weixin\\.qq\\.com/cgi-bin/operate_appmsg"
-    ],
+    "postRequests": ["POST ^https://mp\\.weixin\\.qq\\.com/cgi-bin/operate_appmsg"],
     "backoff": {
       "baseMs": 2000,
       "maxMs": 60000,
