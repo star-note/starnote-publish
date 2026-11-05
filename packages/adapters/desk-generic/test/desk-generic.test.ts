@@ -25,14 +25,14 @@ const doc = convert({
 });
 
 describe('通用模式 adapters', () => {
-  it('covers 11 vertical, 10 big domestic, 4 tech and 11 overseas platforms (SPEC-r14 A2), all in the registry', () => {
-    expect(GENERIC_DESK_KEYS).toHaveLength(36);
+  it('covers 10 vertical, 10 big domestic, 4 tech and 6 overseas platforms (SPEC-r14 A2), all in the registry', () => {
+    expect(GENERIC_DESK_KEYS).toHaveLength(30);
     expect(CN_DESK_KEYS).toHaveLength(10);
     expect(TECH_DESK_KEYS).toHaveLength(4);
     expect(createGenericDeskElectronAdapters().map((a) => a.key)).toEqual([...GENERIC_DESK_KEYS]);
     const regions = GENERIC_DESK_KEYS.map((key) => platformMeta(key)?.region);
-    expect(regions.filter((r) => r === 'cn')).toHaveLength(25);
-    expect(regions.filter((r) => r === 'global')).toHaveLength(11);
+    expect(regions.filter((r) => r === 'cn')).toHaveLength(24);
+    expect(regions.filter((r) => r === 'global')).toHaveLength(6);
   });
 
   it('binds by logging in on the desktop and confirming, without a session check', () => {
