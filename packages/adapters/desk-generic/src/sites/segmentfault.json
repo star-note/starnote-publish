@@ -29,6 +29,7 @@
     "body": "markdown"
   },
   "unverified": [
+    "2026-11-05 用户决定暂不登录核对，保持通用模式",
     "urls.write：未登录时跳到登录页，没有用已登录的账号核实写作页",
     "session.allowedHosts：只列了平台主域名和常见第三方登录",
     "selectors：未知，发布台走通用模式；正文按 Markdown 复制（平台是 Markdown 编辑器）",

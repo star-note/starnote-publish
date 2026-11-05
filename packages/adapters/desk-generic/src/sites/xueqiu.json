@@ -1,8 +1,8 @@
 {
   "platform": "xueqiu",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "minCore": "0.1.0",
-  "issuedAt": "2026-10-30T00:00:00.000Z",
+  "issuedAt": "2026-11-05T00:00:00.000Z",
   "urls": {
     "home": "https://xueqiu.com/",
     "write": "https://mp.xueqiu.com/writeV2/",
@@ -22,9 +22,9 @@
   },
   "flags": {},
   "unverified": [
-    "2026-10-30 核对过雪球长文写作页（mp.xueqiu.com/writeV2）的标题、正文选择器；页面未登录也能打开，没有用已登录的账号核实",
+    "2026-11-05 用已登录的账号核对过雪球长文写作页（mp.xueqiu.com/writeV2）的标题、正文选择器（只读页面结构，未输入内容）；页面上由用户选的是封面、分享范围、创作声明",
     "session.allowedHosts：只列了平台主域名和常见第三方登录",
-    "2026-10-30 published.urlMatch 按平台公开文章地址格式写的，发布后页面怎么跳、列表里能不能按标题认出链接，要等第一次真发文时核对"
+    "2026-11-05 published.listUrl 是创作后台的「内容管理」（mp.xueqiu.com/list）；账号还没有文章，列表里的文章链接格式和 urlMatch 能否对上，要等第一次真发文时核对"
   ],
   "waits": {
     "editor": {
@@ -33,6 +33,7 @@
     }
   },
   "published": {
-    "urlMatch": "^https://xueqiu\\.com/\\d+/(\\d+)"
+    "urlMatch": "^https://xueqiu\\.com/\\d+/(\\d+)",
+    "listUrl": "https://mp.xueqiu.com/list"
   }
 }
