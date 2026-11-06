@@ -10,8 +10,10 @@ import {
   createGenericDeskAdapter,
   GENERIC_DESK_KEYS,
   GENERIC_SITE_SCRIPTS,
+  asQuestion,
   genericDeskBinding,
   renderGeneric,
+  withQuery,
   withTitleInBody,
 } from '../src/index';
 
@@ -27,14 +29,14 @@ const doc = convert({
 });
 
 describe('通用模式 adapters', () => {
-  it('covers 10 vertical, 10 big domestic, 4 tech and 7 overseas platforms (SPEC-r14 A2), all in the registry', () => {
-    expect(GENERIC_DESK_KEYS).toHaveLength(31);
+  it('covers 10 vertical, 10 big domestic, 4 tech and 9 overseas platforms (SPEC-r14 A2), all in the registry', () => {
+    expect(GENERIC_DESK_KEYS).toHaveLength(33);
     expect(CN_DESK_KEYS).toHaveLength(10);
     expect(TECH_DESK_KEYS).toHaveLength(4);
     expect(createGenericDeskElectronAdapters().map((a) => a.key)).toEqual([...GENERIC_DESK_KEYS]);
     const regions = GENERIC_DESK_KEYS.map((key) => platformMeta(key)?.region);
     expect(regions.filter((r) => r === 'cn')).toHaveLength(24);
-    expect(regions.filter((r) => r === 'global')).toHaveLength(7);
+    expect(regions.filter((r) => r === 'global')).toHaveLength(9);
   });
 
   it('binds by logging in on the desktop and confirming, without a session check', () => {
@@ -58,6 +60,8 @@ describe('通用模式 adapters', () => {
       'hupu',
       'douban',
       'quora',
+      'quora-post',
+      'vocal',
       'toutiao',
       'bilibili',
       'weibo-article',
@@ -244,11 +248,62 @@ describe('editors without a title field (Quora posts)', () => {
     });
   });
 
-  it('opens Quora’s post dialog and fills the body only', async () => {
-    const script = await verifySiteScript(GENERIC_SITE_SCRIPTS.quora, { platform: 'quora' });
+  it('opens Quora’s post dialog and fills the body only (Quora 帖子)', async () => {
+    const script = await verifySiteScript(GENERIC_SITE_SCRIPTS['quora-post'], {
+      platform: 'quora-post',
+    });
     expect(script.flags?.titleInBody).toBe(true);
     expect(script.selectors.title).toBeUndefined();
     expect(script.selectors.editor).toBeTruthy();
     expect(script.selectors.openEditor).toContain('Add question');
+  });
+});
+
+describe('Quora: ask, then answer', () => {
+  it('turns the title into a question and looks it up on the search page', async () => {
+    expect(asQuestion('How do you deploy FastAPI')).toBe('How do you deploy FastAPI?');
+    expect(asQuestion('Why? ')).toBe('Why?');
+    expect(asQuestion('为什么？')).toBe('为什么？');
+    expect(asQuestion('')).toBe('');
+    expect(withQuery('https://www.quora.com/search', 'q', 'How do you deploy FastAPI?')).toBe(
+      'https://www.quora.com/search?q=How+do+you+deploy+FastAPI%3F'
+    );
+    expect(withQuery('https://www.quora.com/search', undefined, 'x')).toBe(
+      'https://www.quora.com/search'
+    );
+    const script = await verifySiteScript(GENERIC_SITE_SCRIPTS.quora, { platform: 'quora' });
+    expect(script.flags).toMatchObject({ question: true, writeQuery: 'q' });
+    expect(script.selectors.openEditor).toBe('text=Answer');
+    expect(script.selectors.title).toBeUndefined();
+  });
+
+  it('fills the answer only on a question page', async () => {
+    const script = await verifySiteScript(GENERIC_SITE_SCRIPTS.quora, { platform: 'quora' });
+    const on = new RegExp(script.urls.fillOn!);
+    expect(on.test('https://www.quora.com/How-do-you-deploy-FastAPI-in-production')).toBe(true);
+    expect(on.test('https://www.quora.com/unanswered/What-is-it-like-to-own-Tesla-shares')).toBe(
+      true
+    );
+    expect(on.test('https://www.quora.com/search?q=FastAPI')).toBe(false);
+    expect(on.test('https://www.quora.com/answer')).toBe(false);
+    expect(on.test('https://www.quora.com/profile/Lu-Dejun')).toBe(false);
+    expect(on.test('https://www.quora.com/How-do-you-deploy-FastAPI/answer/Lu-Dejun')).toBe(false);
+    const done = new RegExp(script.published!.urlMatch);
+    expect(done.test('https://www.quora.com/How-do-you-deploy-FastAPI/answer/Lu-Dejun')).toBe(true);
+  });
+});
+
+describe('Vocal', () => {
+  it('fills the title, the subtitle (summary) and the body', async () => {
+    const script = await verifySiteScript(GENERIC_SITE_SCRIPTS.vocal, { platform: 'vocal' });
+    expect(script.urls.write).toBe('https://vocal.media/stories/new');
+    expect(script.selectors).toMatchObject({
+      title: 'textarea[name="post-title"]',
+      subtitle: 'textarea[name="post-subtitle"]',
+    });
+    expect(script.selectors.editor).toContain('ProseMirror');
+    const done = new RegExp(script.published!.urlMatch);
+    expect(done.test('https://vocal.media/journal/how-i-deploy-fastapi')).toBe(true);
+    expect(done.test('https://vocal.media/stories/new')).toBe(false);
   });
 });

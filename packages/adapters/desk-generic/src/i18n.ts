@@ -26,12 +26,17 @@ const zhCN = {
     `${platform}的分类、原创、AI 声明等选项请在页面上自己选`,
   stepsFilled: (platform: string) =>
     `检查后在${platform}里点发布，再点格子顶栏的「我已发布」并把文章链接贴回辰记`,
+  questionHint: (platform: string) =>
+    `${platform}的标题是一个问题：英文站要用英文提问，以问号结尾。可以在发布面板里改`,
   /** Extra steps of one platform (keyed by registry key). */
   hints: {
     'xiaohongshu-article': '小红书长文要先点「新的创作」，编辑器出现后辰记再填入（最多等 3 分钟）',
     sohu: '搜狐号要实名认证后才能发布文章',
     'weibo-article': '打开编辑器时微博会自动新建一篇草稿',
-    quora: 'Quora 帖子没有单独的标题，辰记把标题加粗放在正文第一行',
+    quora:
+      '辰记用问题打开 Quora 搜索：点进现成的同类问题，或者自己点 Add question 提交新问题；到了问题页，辰记点 Answer 填好回答，由你点 Post',
+    'quora-post': 'Quora 帖子没有单独的标题，辰记把标题加粗放在正文第一行',
+    vocal: 'Vocal 要先确认邮箱才能发布；副标题填的是摘要',
   } as Partial<Record<string, string>>,
 };
 
@@ -61,12 +66,17 @@ export const msg = defineMessages<typeof zhCN>({
     chooseDeclarations: (platform) => `${platform}的分類、原創、AI 聲明等選項請在頁面上自己選`,
     stepsFilled: (platform) =>
       `檢查後在${platform}裡按發布，再按格子頂欄的「我已發布」並把文章連結貼回辰記`,
+    questionHint: (platform) =>
+      `${platform}的標題是一個問題：英文站要用英文提問，以問號結尾。可以在發布面板裡改`,
     hints: {
       'xiaohongshu-article':
         '小紅書長文要先按「新的創作」，編輯器出現後辰記再填入（最多等 3 分鐘）',
       sohu: '搜狐號要實名認證後才能發布文章',
       'weibo-article': '開啟編輯器時微博會自動新建一篇草稿',
-      quora: 'Quora 貼文沒有獨立的標題，辰記把標題加粗放在內文第一行',
+      quora:
+        '辰記用問題開啟 Quora 搜尋：點進現成的同類問題，或自己按 Add question 送出新問題；到了問題頁，辰記按 Answer 填好回答，由你按 Post',
+      'quora-post': 'Quora 貼文沒有獨立的標題，辰記把標題加粗放在內文第一行',
+      vocal: 'Vocal 要先確認電子郵件才能發布；副標題填的是摘要',
     },
   },
   en: {
@@ -96,12 +106,18 @@ export const msg = defineMessages<typeof zhCN>({
       `Pick ${platform}’s options (category, original, AI statement…) yourself on the page`,
     stepsFilled: (platform) =>
       `Check it and publish on ${platform}, then click “I’ve published” on the tile’s top bar and paste the post link back into StarNote`,
+    questionHint: (platform) =>
+      `On ${platform} the title is a question: ask it in English and end it with a question mark. You can edit it in the publish panel`,
     hints: {
       'xiaohongshu-article':
         'On Xiaohongshu long-form, click “新的创作” (New post) first: StarNote fills the editor once it appears (waits up to 3 minutes)',
       sohu: 'Sohu Hao publishes articles only after real-name verification',
       'weibo-article': 'Weibo creates a draft as soon as the editor opens',
-      quora: 'Quora posts have no separate title: StarNote puts the title in bold as the first line of the body',
+      quora:
+        'StarNote opens a Quora search for the question: open an existing question like it, or click Add question to submit a new one; on the question page StarNote clicks Answer and fills in the answer, and you click Post',
+      'quora-post':
+        'Quora posts have no separate title: StarNote puts the title in bold as the first line of the body',
+      vocal: 'Vocal publishes only after you confirm your email; the subtitle gets the summary',
     },
   },
 });

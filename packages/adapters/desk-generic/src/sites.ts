@@ -18,6 +18,8 @@ import postype from './sites/postype.signed.json';
 import vocus from './sites/vocus.signed.json';
 import kofi from './sites/kofi.signed.json';
 import quora from './sites/quora.signed.json';
+import quora_post from './sites/quora-post.signed.json';
+import vocal from './sites/vocal.signed.json';
 // 国内大平台（2026-10 调研）
 import toutiao from './sites/toutiao.signed.json';
 import bilibili from './sites/bilibili.signed.json';
@@ -59,6 +61,8 @@ export const GENERIC_DESK_KEYS = [
   'vocus',
   'kofi',
   'quora',
+  'quora-post',
+  'vocal',
   // 国内大平台
   'toutiao',
   'bilibili',
@@ -96,6 +100,8 @@ export const GENERIC_SITE_SCRIPTS: Record<GenericDeskKey, SignedSiteScript> = {
   vocus: vocus as SignedSiteScript,
   kofi: kofi as SignedSiteScript,
   quora: quora as SignedSiteScript,
+  'quora-post': quora_post as SignedSiteScript,
+  vocal: vocal as SignedSiteScript,
   toutiao: toutiao as SignedSiteScript,
   bilibili: bilibili as SignedSiteScript,
   'weibo-article': weibo_article as SignedSiteScript,

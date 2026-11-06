@@ -84,6 +84,7 @@ export type PlatformKey =
   | 'discord'
   | 'slack'
   | 'quora'
+  | 'quora-post'
   | 'vocal'
   | 'newsbreak'
   | 'patreon'
@@ -133,6 +134,8 @@ export const PLATFORM_LANGS: Partial<Record<PlatformKey, PlatformLang[]>> = {
   steady: ['de', 'en'],
   kofi: ['*'],
   quora: ['en'],
+  'quora-post': ['en'],
+  vocal: ['en'],
   // SPEC-r14 A1
   convertkit: ['en'],
   beehiiv: ['en'],
@@ -1177,18 +1180,6 @@ const ENTRIES: readonly PlatformEntry[] = [
     stage: 'implemented',
   },
   {
-    key: 'vocal',
-    label: 'Vocal',
-    short: 'V',
-    color: '#1d1d1b',
-    region: 'global',
-    homepage: 'https://vocal.media/',
-    contentTypes: ARTICLE,
-    runtimes: [desktop(), manual()],
-    binding: COOKIE,
-    monetization: ['membership-share', 'tips'],
-  },
-  {
     key: 'newsbreak',
     label: 'NewsBreak',
     short: 'N',
@@ -1566,6 +1557,26 @@ const ENTRIES: readonly PlatformEntry[] = [
     '#b92b27',
     'https://www.quora.com/',
     ['subscription', 'ad-share'],
+    'P2'
+  ),
+  // 发帖子（Create Post）单独作为发布对象，和 Quora（提问加回答）共用登录
+  globalDesktop(
+    'quora-post',
+    'Quora 帖子',
+    'Q',
+    '#b92b27',
+    'https://www.quora.com/',
+    ['subscription', 'ad-share'],
+    'P2'
+  ),
+  // 2026-11-06：用已登录账号核对过写作页（vocal.media/stories/new：标题、副标题、ProseMirror 正文）
+  globalDesktop(
+    'vocal',
+    'Vocal',
+    'V',
+    '#1d1d1b',
+    'https://vocal.media/',
+    ['membership-share', 'tips'],
     'P2'
   ),
 ];

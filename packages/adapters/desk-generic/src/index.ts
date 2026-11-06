@@ -3,6 +3,8 @@ export {
   genericDeskBinding,
   genericDeskSchema,
   renderGeneric,
+  asQuestion,
+  withQuery,
   withTitleInBody,
   type GenericRendered,
 } from './adapter';

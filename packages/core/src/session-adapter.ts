@@ -213,7 +213,7 @@ export async function rehostImages(
 export interface EditorHandoff {
   editorUrl: string;
   /** Title for `insertText`, body for the clipboard paste (`html` for rich editors, `text` for Markdown ones). */
-  prefill?: { title?: string; html?: string; text?: string };
+  prefill?: { title?: string; html?: string; text?: string; summary?: string };
 }
 
 export interface EditorHandoffResult {
