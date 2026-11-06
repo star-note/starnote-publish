@@ -25,6 +25,11 @@ const OVERSEAS_DESK = [
   'steady',
   'kofi',
 ];
+/**
+ * Still in the registry, but dropped from the 发布台 (2026-11-05): serial fiction (カクヨム, WebNovel, Wattpad),
+ * brunch (writers are approved first) and Steady (German-speaking memberships).
+ */
+const OFF_DESK = new Set(['kakuyomu', 'brunch', 'webnovel', 'wattpad', 'steady']);
 
 describe('SPEC-r14 A2: overseas platforms on the 发布台 (通用模式)', () => {
   it('registers the eleven as global desktop platforms with readers’ languages', () => {
@@ -60,7 +65,7 @@ describe('SPEC-r14 A2: overseas platforms on the 发布台 (通用模式)', () =
 
   it('ships a signed 通用模式 site script for each, verified with the bundled key', async () => {
     const dir = fileURLToPath(new URL('../../adapters/desk-generic/src/sites/', import.meta.url));
-    for (const key of OVERSEAS_DESK) {
+    for (const key of OVERSEAS_DESK.filter((k) => !OFF_DESK.has(k))) {
       const signed = JSON.parse(readFileSync(`${dir}${key}.signed.json`, 'utf8'));
       const script = await verifySiteScript(signed, { platform: key });
       expect(script.flags?.generic, key).toBe(true);

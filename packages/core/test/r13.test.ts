@@ -26,6 +26,8 @@ const VERTICAL = [
   'douban-read',
   'mafengwo',
 ];
+/** Still in the registry, but dropped from the 发布台 (2026-11-05): serial fiction, one 作品 in chapters. */
+const OFF_DESK = new Set(['douban-read']);
 
 describe('SPEC-r13 §1: domains', () => {
   it('every platform is general, focused on known domains, or a support link only', () => {
@@ -112,8 +114,8 @@ describe('SPEC-r13 §4b: 通用模式 site scripts', () => {
   const allowed = (url: string, hosts: string[]) =>
     url.startsWith('https://') && hosts.some((h) => host(url) === h || host(url).endsWith(`.${h}`));
 
-  it('one signed script per vertical platform, verified with the bundled key', async () => {
-    for (const key of VERTICAL) {
+  it('one signed script per vertical platform on the 发布台, verified with the bundled key', async () => {
+    for (const key of VERTICAL.filter((k) => !OFF_DESK.has(k))) {
       const signed = JSON.parse(readFileSync(`${dir}${key}.signed.json`, 'utf8'));
       const script = await verifySiteScript(signed, { platform: key });
       expect(script.platform).toBe(key);
