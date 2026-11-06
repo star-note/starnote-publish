@@ -1,15 +1,16 @@
 {
   "platform": "quora",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minCore": "0.1.0",
   "issuedAt": "2026-11-06T00:00:00.000Z",
   "urls": {
     "home": "https://www.quora.com/",
-    "write": "https://www.quora.com/answer",
-    "verify": "https://www.quora.com/"
+    "write": "https://www.quora.com/search",
+    "verify": "https://www.quora.com/",
+    "fillOn": "^https://www\\.quora\\.com/(?:unanswered/)?[A-Z0-9][A-Za-z0-9%-]*-[A-Za-z0-9%-]+/?(?:[?#].*)?$"
   },
   "selectors": {
-    "openEditor": "button[aria-label=\"Add question\"] >> [role=\"dialog\"] [role=\"tab\"]:nth-child(2)",
+    "openEditor": "text=Answer",
     "editor": "[role=\"dialog\"] [contenteditable=\"true\"]"
   },
   "session": {
@@ -21,14 +22,15 @@
     "fetchPage": "https://www.quora.com/robots.txt"
   },
   "flags": {
-    "titleInBody": true
+    "question": true,
+    "writeQuery": "q"
   },
   "unverified": [
-    "2026-11-06 用已登录的账号核对过（只读页面结构，未输入内容）：在 www.quora.com/answer 点顶部「Add question」打开弹窗，再切到「Create Post」页签，正文是弹窗里的可编辑区（占位文字 Say something...）；帖子没有标题框，标题加粗放在正文第一行（flags.titleInBody）",
-    "urls.write 用 /answer：新账号在首页会先看到选兴趣的引导页，/answer 页没有这一步，也有「Add question」按钮",
+    "2026-11-06 提问加回答：发布台用「问题」打开 Quora 搜索页（www.quora.com/search?q=…），用户点进现成问题，或自己点「Add question」提交新问题；页面到了问题页（urls.fillOn）后，点「Answer」（按钮文字，没有稳定属性），在弹窗的可编辑区填回答正文，由用户点 Post。回答编辑器在一个现成问题页上只读核对过（占位 Write your answer），新建问题后页面怎么跳没核对过",
+    "问题要以问号结尾（flags.question：没有就补上）；英文站要求英文",
     "账号的主要语言要是英文：没登录或主要语言是日文时，www.quora.com 会跳到 jp.quora.com",
     "session.allowedHosts：平台主域名和常见第三方登录（Google、Apple、Facebook）",
-    "2026-11-06 published.urlMatch 按个人主页帖子的公开地址格式写的（www.quora.com/profile/<名字>/<帖子>），发到 Space 的帖子在 <space>.quora.com 下；发布后页面怎么跳要等第一次真发文时核对"
+    "2026-11-06 published.urlMatch 按回答的公开地址格式写的（www.quora.com/<问题>/answer/<作者>），要等第一次真发文时核对"
   ],
   "waits": {
     "editor": {
@@ -37,6 +39,6 @@
     }
   },
   "published": {
-    "urlMatch": "^https://www\\.quora\\.com/profile/[^/]+/([^/?#]+)"
+    "urlMatch": "^https://www\\.quora\\.com/([^/?#]+/answers?/[^/?#]+)"
   }
 }

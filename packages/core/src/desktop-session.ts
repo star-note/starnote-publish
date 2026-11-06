@@ -259,7 +259,8 @@ export interface HandoffRequest {
   /** The editor to open (must be on the platform's allowlist). */
   editorUrl: string;
   /** Absent: open the page as is (e.g. a 公众号 图文 already saved by API). */
-  prefill?: { title?: string; html?: string; text?: string };
+  /** `summary` goes in the editor's subtitle field when the site script has one (`selectors.subtitle`, Vocal). */
+  prefill?: { title?: string; html?: string; text?: string; summary?: string };
   /** For the tile header: from the SDK's platform registry / logos. */
   label?: string;
 }

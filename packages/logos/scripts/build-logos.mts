@@ -65,6 +65,7 @@ const SIMPLE: Record<string, string> = {
   discord: 'discord',
   slack: 'slack',
   quora: 'quora',
+  'quora-post': 'quora',
   patreon: 'patreon',
   buymeacoffee: 'buymeacoffee',
   pinterest: 'pinterest',

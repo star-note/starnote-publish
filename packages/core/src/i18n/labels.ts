@@ -14,6 +14,7 @@ export const PLATFORM_LABELS: Readonly<Record<string, I18nText>> = {
   juejin: { en: 'Juejin' },
   xiaohongshu: { 'zh-TW': '小紅書', en: 'Xiaohongshu (RedNote)' },
   'xiaohongshu-article': { 'zh-TW': '小紅書長文', en: 'Xiaohongshu (RedNote) long-form' },
+  'quora-post': { 'zh-TW': 'Quora 貼文', en: 'Quora Post' },
   yuque: { 'zh-TW': '語雀', en: 'Yuque' },
   weibo: { en: 'Weibo' },
   'weibo-article': { 'zh-TW': '微博頭條文章', en: 'Weibo article' },

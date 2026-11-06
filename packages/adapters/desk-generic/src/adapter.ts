@@ -112,6 +112,21 @@ export function withTitleInBody(
   };
 }
 
+/** A Quora question ends with a question mark: add one when the title has none. */
+export function asQuestion(title: string): string {
+  const t = title.trim();
+  if (!t) return t;
+  return /[?？]$/.test(t) ? t : `${t}?`;
+}
+
+/** The write page with the title as one query parameter (a search page that looks the question up). */
+export function withQuery(url: string, param: string | undefined, value: string): string {
+  if (!param || !value) return url;
+  const u = new URL(url);
+  u.searchParams.set(param, value);
+  return u.href;
+}
+
 export function genericDeskBinding(key: GenericDeskKey): BindingSpec {
   const label = labelOf(key);
   const session = bundledScript(GENERIC_SITE_SCRIPTS[key]).session!;
@@ -146,6 +161,12 @@ export function createGenericDeskAdapter(
   const markdown = bundled.flags?.body === 'markdown';
   // 没有标题框的编辑器（Quora 帖子）：标题加粗放在正文第一行
   const titleInBody = bundled.flags?.titleInBody === true;
+  // 提问加回答（Quora）：标题就是问题；写作页是搜索页，问题放进 `flags.writeQuery` 这个查询参数
+  const question = bundled.flags?.question === true;
+  const writeQuery =
+    typeof bundled.flags?.writeQuery === 'string' ? bundled.flags.writeQuery : undefined;
+  // 有副标题框的编辑器（Vocal）：填摘要
+  const subtitle = Boolean(bundled.selectors.subtitle);
   const note = (l?: SdkLang) =>
     fills
       ? msg(l).runtimeNoteFill(localizedLabel(key, label, l))
@@ -191,16 +212,21 @@ export function createGenericDeskAdapter(
           ...L,
         });
       if (!editorUrl) throw new PlatformSessionError('help', t.noEntry(name), { ...L });
-      const r = renderGeneric(doc, common, opts.assetBase, lang, titleMax);
+      const rendered = renderGeneric(doc, common, opts.assetBase, lang, titleMax);
+      const r = question ? { ...rendered, title: asQuestion(rendered.title) } : rendered;
       const report: ReportItem[] = [...r.report];
+      if (question)
+        report.push({ kind: 'title.question', text: t.questionHint(name), level: 'notice' });
+      const summary = subtitle ? (common.summary ?? '').trim() : '';
       ctx.emit({ type: 'progress', percent: 60, text: t.opening(name) });
+      const prefill = titleInBody
+        ? withTitleInBody(r, markdown)
+        : markdown
+          ? { title: r.title, text: r.markdown }
+          : { title: r.title, html: r.html, text: r.text };
       const res = await handOffEditor(ctx, run, label, {
-        editorUrl,
-        prefill: titleInBody
-          ? withTitleInBody(r, markdown)
-          : markdown
-            ? { title: r.title, text: r.markdown }
-            : { title: r.title, html: r.html, text: r.text },
+        editorUrl: withQuery(editorUrl, writeQuery, r.title),
+        prefill: summary ? { ...prefill, summary } : prefill,
       });
       report.push(...handoffReport(res, name, lang));
       if (markdown)

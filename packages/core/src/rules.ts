@@ -794,6 +794,15 @@ const RAW_RULES: Partial<Record<PlatformKey, PlatformRules>> = {
     },
     'Quora Policies: AI-generated content'
   ),
+  'quora-post': intl(
+    {},
+    {
+      required: true,
+      method: 'footer',
+      note: 'Quora 要求披露 AI 生成的回答内容（待核实）。',
+    },
+    'Quora Policies: AI-generated content'
+  ),
   vocal: intl(
     {},
     {

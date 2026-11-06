@@ -111,6 +111,7 @@ export const PLATFORM_DOMAINS: Record<PlatformKey, PlatformDomains> = {
   discord: general(),
   slack: general(),
   quora: general(),
+  'quora-post': general(),
   vocal: focus('humanities'),
   newsbreak: general(),
   patreon: { general: false, focus: [], supportOnly: true },
