@@ -132,6 +132,7 @@ export const PLATFORM_LANGS: Partial<Record<PlatformKey, PlatformLang[]>> = {
   wattpad: ['*'],
   steady: ['de', 'en'],
   kofi: ['*'],
+  quora: ['en'],
   // SPEC-r14 A1
   convertkit: ['en'],
   beehiiv: ['en'],
@@ -1176,18 +1177,6 @@ const ENTRIES: readonly PlatformEntry[] = [
     stage: 'implemented',
   },
   {
-    key: 'quora',
-    label: 'Quora',
-    short: 'Q',
-    color: '#b92b27',
-    region: 'global',
-    homepage: 'https://www.quora.com/',
-    contentTypes: ARTICLE,
-    runtimes: [manual()],
-    binding: NONE,
-    monetization: ['subscription', 'ad-share'],
-  },
-  {
     key: 'vocal',
     label: 'Vocal',
     short: 'V',
@@ -1567,6 +1556,16 @@ const ENTRIES: readonly PlatformEntry[] = [
     '#13c3ff',
     'https://ko-fi.com/',
     ['tips', 'subscription'],
+    'P2'
+  ),
+  // 2026-11-06：用已登录账号核对过发帖弹窗（Add question → Create Post）；帖子没有单独的标题
+  globalDesktop(
+    'quora',
+    'Quora',
+    'Q',
+    '#b92b27',
+    'https://www.quora.com/',
+    ['subscription', 'ad-share'],
     'P2'
   ),
 ];

@@ -31,6 +31,7 @@ const zhCN = {
     'xiaohongshu-article': '小红书长文要先点「新的创作」，编辑器出现后辰记再填入（最多等 3 分钟）',
     sohu: '搜狐号要实名认证后才能发布文章',
     'weibo-article': '打开编辑器时微博会自动新建一篇草稿',
+    quora: 'Quora 帖子没有单独的标题，辰记把标题加粗放在正文第一行',
   } as Partial<Record<string, string>>,
 };
 
@@ -65,6 +66,7 @@ export const msg = defineMessages<typeof zhCN>({
         '小紅書長文要先按「新的創作」，編輯器出現後辰記再填入（最多等 3 分鐘）',
       sohu: '搜狐號要實名認證後才能發布文章',
       'weibo-article': '開啟編輯器時微博會自動新建一篇草稿',
+      quora: 'Quora 貼文沒有獨立的標題，辰記把標題加粗放在內文第一行',
     },
   },
   en: {
@@ -99,6 +101,7 @@ export const msg = defineMessages<typeof zhCN>({
         'On Xiaohongshu long-form, click “新的创作” (New post) first: StarNote fills the editor once it appears (waits up to 3 minutes)',
       sohu: 'Sohu Hao publishes articles only after real-name verification',
       'weibo-article': 'Weibo creates a draft as soon as the editor opens',
+      quora: 'Quora posts have no separate title: StarNote puts the title in bold as the first line of the body',
     },
   },
 });

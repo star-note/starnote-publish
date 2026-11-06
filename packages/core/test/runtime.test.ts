@@ -98,7 +98,7 @@ describe('planRuntime', () => {
       via: 'share-intent',
       href: 'https://x.com/intent/tweet',
     });
-    expect(kinds(platformMeta('quora')!, { runtime: 'web' })).toEqual(['copy']);
+    expect(kinds(platformMeta('newsbreak')!, { runtime: 'web' })).toEqual(['copy']);
     const medium = planRuntime(platformMeta('medium')!, { runtime: 'web' });
     expect(medium.guides.find((g) => g.kind === 'handoff')).toMatchObject({ via: 'import-url' });
     // an app deeplink is only offered on a phone

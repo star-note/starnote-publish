@@ -3,6 +3,7 @@ import {
   convert,
   defineAdapter,
   degradeTree,
+  escapeHtml,
   handOffEditor,
   handoffReport,
   localizedLabel,
@@ -93,6 +94,24 @@ export function renderGeneric(
   return { title: cut.value, html: out.html, text: out.text, markdown: out.markdown, report };
 }
 
+/**
+ * For editors without a title field (Quora posts): the title goes in bold as the body's first line. `title` stays in
+ * the prefill so the 发布台 can still recognise the post by it afterwards; with no title selector it is not typed.
+ */
+export function withTitleInBody(
+  r: Pick<GenericRendered, 'title' | 'html' | 'text' | 'markdown'>,
+  markdown: boolean
+): { title: string; html?: string; text: string } {
+  if (!r.title)
+    return markdown ? { title: '', text: r.markdown } : { title: '', html: r.html, text: r.text };
+  if (markdown) return { title: r.title, text: `**${r.title}**\n\n${r.markdown}` };
+  return {
+    title: r.title,
+    html: `<p><strong>${escapeHtml(r.title)}</strong></p>${r.html}`,
+    text: `${r.title}\n\n${r.text}`,
+  };
+}
+
 export function genericDeskBinding(key: GenericDeskKey): BindingSpec {
   const label = labelOf(key);
   const session = bundledScript(GENERIC_SITE_SCRIPTS[key]).session!;
@@ -125,6 +144,8 @@ export function createGenericDeskAdapter(
   const fills = Boolean(bundled.selectors.editor);
   // 技术社区的编辑器是 Markdown：预览和复制的正文都用 Markdown
   const markdown = bundled.flags?.body === 'markdown';
+  // 没有标题框的编辑器（Quora 帖子）：标题加粗放在正文第一行
+  const titleInBody = bundled.flags?.titleInBody === true;
   const note = (l?: SdkLang) =>
     fills
       ? msg(l).runtimeNoteFill(localizedLabel(key, label, l))
@@ -175,9 +196,11 @@ export function createGenericDeskAdapter(
       ctx.emit({ type: 'progress', percent: 60, text: t.opening(name) });
       const res = await handOffEditor(ctx, run, label, {
         editorUrl,
-        prefill: markdown
-          ? { title: r.title, text: r.markdown }
-          : { title: r.title, html: r.html, text: r.text },
+        prefill: titleInBody
+          ? withTitleInBody(r, markdown)
+          : markdown
+            ? { title: r.title, text: r.markdown }
+            : { title: r.title, html: r.html, text: r.text },
       });
       report.push(...handoffReport(res, name, lang));
       if (markdown)
