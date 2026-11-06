@@ -1,5 +1,5 @@
 /** SPEC-r13 §4b 通用模式：发布台打开作者入口页，由用户复制粘贴、自己点发布；我们不往页面里输入、不点按钮。 */
-import { convert, createPublisher, platformMeta } from '@starnote/publish-core';
+import { convert, createPublisher, platformMeta, verifySiteScript } from '@starnote/publish-core';
 import { describe, expect, it } from 'vitest';
 
 import { mockSession } from '../../../core/test/session-helpers';
@@ -9,8 +9,10 @@ import {
   TECH_DESK_KEYS,
   createGenericDeskAdapter,
   GENERIC_DESK_KEYS,
+  GENERIC_SITE_SCRIPTS,
   genericDeskBinding,
   renderGeneric,
+  withTitleInBody,
 } from '../src/index';
 
 import type { AccountRef, HandoffRequest } from '@starnote/publish-core';
@@ -25,14 +27,14 @@ const doc = convert({
 });
 
 describe('通用模式 adapters', () => {
-  it('covers 10 vertical, 10 big domestic, 4 tech and 6 overseas platforms (SPEC-r14 A2), all in the registry', () => {
-    expect(GENERIC_DESK_KEYS).toHaveLength(30);
+  it('covers 10 vertical, 10 big domestic, 4 tech and 7 overseas platforms (SPEC-r14 A2), all in the registry', () => {
+    expect(GENERIC_DESK_KEYS).toHaveLength(31);
     expect(CN_DESK_KEYS).toHaveLength(10);
     expect(TECH_DESK_KEYS).toHaveLength(4);
     expect(createGenericDeskElectronAdapters().map((a) => a.key)).toEqual([...GENERIC_DESK_KEYS]);
     const regions = GENERIC_DESK_KEYS.map((key) => platformMeta(key)?.region);
     expect(regions.filter((r) => r === 'cn')).toHaveLength(24);
-    expect(regions.filter((r) => r === 'global')).toHaveLength(6);
+    expect(regions.filter((r) => r === 'global')).toHaveLength(7);
   });
 
   it('binds by logging in on the desktop and confirming, without a session check', () => {
@@ -55,6 +57,7 @@ describe('通用模式 adapters', () => {
       'dongchedi',
       'hupu',
       'douban',
+      'quora',
       'toutiao',
       'bilibili',
       'weibo-article',
@@ -219,5 +222,33 @@ describe('通用模式 adapters', () => {
     const result = r.results.mafengwo!;
     expect(result).toMatchObject({ ok: true, state: 'handoff' });
     expect(result.report!.find((i) => i.kind === 'handoff.pending')!.text).toContain('我已发布');
+  });
+});
+
+describe('editors without a title field (Quora posts)', () => {
+  it('puts the title in bold as the first line of the body, and keeps it for recognising the post', () => {
+    const r = { title: 'A <b> title', html: '<p>Body</p>', text: 'Body', markdown: 'Body' };
+    expect(withTitleInBody(r, false)).toEqual({
+      title: 'A <b> title',
+      html: '<p><strong>A &lt;b&gt; title</strong></p><p>Body</p>',
+      text: 'A <b> title\n\nBody',
+    });
+    expect(withTitleInBody(r, true)).toEqual({
+      title: 'A <b> title',
+      text: '**A <b> title**\n\nBody',
+    });
+    expect(withTitleInBody({ ...r, title: '' }, false)).toEqual({
+      title: '',
+      html: '<p>Body</p>',
+      text: 'Body',
+    });
+  });
+
+  it('opens Quora’s post dialog and fills the body only', async () => {
+    const script = await verifySiteScript(GENERIC_SITE_SCRIPTS.quora, { platform: 'quora' });
+    expect(script.flags?.titleInBody).toBe(true);
+    expect(script.selectors.title).toBeUndefined();
+    expect(script.selectors.editor).toBeTruthy();
+    expect(script.selectors.openEditor).toContain('Add question');
   });
 });

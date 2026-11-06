@@ -3,6 +3,7 @@ export {
   genericDeskBinding,
   genericDeskSchema,
   renderGeneric,
+  withTitleInBody,
   type GenericRendered,
 } from './adapter';
 export {
