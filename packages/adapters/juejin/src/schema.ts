@@ -15,8 +15,8 @@ export const juejinSchemaFor = byLang((lang) => {
       /** 摘要（50–100 字；留空时用文章摘要补齐）。 */
       brief: z.string().trim().max(100, t.briefMax).optional().describe(t.brief),
       /**
-       * `draft` (default, SPEC-r15): a 掘金 draft with every field filled (category, tags and brief guessed when
-       * empty), opened in the 发布台; the user publishes. `prefill`: the blank editor with title and Markdown, the
+       * `draft` (default, SPEC-r15): a 掘金 draft with the brief, cover and the category / tags the user chose
+       * (never guessed; left empty when not chosen), opened in the 发布台; the user publishes. `prefill`: the blank editor with title and Markdown, the
        * user picks the fields in 掘金's dialog (also the fallback of `draft`). `review` / `publish`: earlier API
        * paths, kept as they were.
        */

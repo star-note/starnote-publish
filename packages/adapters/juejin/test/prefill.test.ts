@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { mockSession } from '../../../core/test/session-helpers';
 import { createJuejinAdapter, juejinSchema } from '../src/index';
 import { fetchJuejinStats } from '../src/adapter';
-import { guessJuejinCategory, tagKeywords } from '../src/fields';
+import { sameTag, tagKeywords } from '../src/fields';
 
 import type { AccountRef, HandoffRequest } from '@starnote/publish-core';
 
@@ -103,7 +103,8 @@ const draftRoutes = (over: Record<string, any> = {}) => ({
 
 async function publishDraft(
   sessionFetch: any,
-  common: Record<string, unknown> = { title: 'Vue 组件通信', tags: ['Vue'] }
+  common: Record<string, unknown> = { title: 'Vue 组件通信', tags: ['vue.js'] },
+  form: Record<string, unknown> = {}
 ) {
   const desk: HandoffRequest[] = [];
   const r = await createPublisher({
@@ -119,21 +120,23 @@ async function publishDraft(
     doc,
     platforms: ['juejin'],
     common,
-    perPlatform: { juejin: {} },
+    perPlatform: { juejin: form },
     accounts: { juejin: account },
   });
   return { result: r.results.juejin!, desk };
 }
 
 describe('juejin default: a filled draft opened in the 发布台', () => {
-  it('guesses category and tag, fills the brief, writes the draft and opens it', async () => {
+  it('never guesses the category: leaves it empty and asks the user to pick it', async () => {
     const { sessionFetch, calls } = mockSession(draftRoutes());
     const { result, desk } = await publishDraft(sessionFetch);
+    expect(calls.some((c) => c.url.includes('query_category_briefs'))).toBe(false);
     const update = calls.find((c) => c.url.includes('article_draft/update'))!;
     const body = update.init.json as Record<string, any>;
     expect(body).toMatchObject({
       id: '7300',
-      category_id: '6809637767543259144',
+      category_id: '0',
+      // the note's own tag, found by its exact name in 掘金's tag library
       tag_ids: ['6809640407484334093'],
     });
     expect([...body.brief_content].length).toBeGreaterThanOrEqual(50);
@@ -142,8 +145,41 @@ describe('juejin default: a filled draft opened in the 发布台', () => {
     expect(desk[0]!.prefill).toBeUndefined();
     expect(result).toMatchObject({ ok: true, state: 'handoff', externalId: '7300' });
     const filled = result.report!.find((i) => i.kind === 'fields.prefilled')!.text;
-    expect(filled).toContain('分类「前端」');
+    expect(filled).not.toContain('分类');
     expect(filled).toContain('标签「Vue.js」');
+    expect(result.report!.find((i) => i.kind === 'category.missing')).toMatchObject({
+      level: 'notice',
+      text: expect.stringContaining('请在掘金的发布弹窗里选分类'),
+    });
+    expect(result.report!.some((i) => i.kind === 'tags.missing')).toBe(false);
+  });
+
+  it('uses the category and tags the user chose', async () => {
+    const { sessionFetch, calls } = mockSession(draftRoutes());
+    const { result } = await publishDraft(sessionFetch, undefined, {
+      category_id: '6809637769959178254',
+      tag_ids: ['t1', 't2'],
+    });
+    expect(calls.some((c) => c.url.includes('query_tag_list'))).toBe(false);
+    const body = calls.find((c) => c.url.includes('article_draft/update'))!.init.json as Record<
+      string,
+      any
+    >;
+    expect(body).toMatchObject({ category_id: '6809637769959178254', tag_ids: ['t1', 't2'] });
+    expect(result.report!.some((i) => i.kind.endsWith('.missing'))).toBe(false);
+  });
+
+  it('does not take a near tag from the search: no exact match leaves the tags empty', async () => {
+    const { sessionFetch, calls } = mockSession(draftRoutes());
+    const { result } = await publishDraft(sessionFetch, { title: 'Vue 组件通信', tags: ['Vue'] });
+    const body = calls.find((c) => c.url.includes('article_draft/update'))!.init.json as Record<
+      string,
+      any
+    >;
+    expect(body.tag_ids).toEqual([]);
+    expect(result.report!.map((i) => i.kind)).toEqual(
+      expect.arrayContaining(['category.missing', 'tags.missing'])
+    );
   });
 
   it('falls back to the prefilled editor when the draft API fails', async () => {
@@ -160,12 +196,12 @@ describe('juejin default: a filled draft opened in the 发布台', () => {
 });
 
 describe('juejin fields and stats', () => {
-  it('guesses the category from title, tags and text', () => {
-    expect(guessJuejinCategory({ title: 'React Hooks 实战' })).toBe('前端');
-    expect(guessJuejinCategory({ title: '用 Claude 写 Agent', tags: ['大模型'] })).toBe('人工智能');
-    expect(guessJuejinCategory({ title: '我的 2026', text: '生活随笔' })).toBe('代码人生');
-    expect(tagKeywords(['#Vue'], '前端')).toEqual(['Vue', '前端']);
-    expect(tagKeywords(undefined, '代码人生')).toEqual([]);
+  it("looks up only the note's own tags, by exact name", () => {
+    expect(tagKeywords(['#Vue', ' '])).toEqual(['Vue']);
+    expect(tagKeywords(undefined)).toEqual([]);
+    expect(sameTag('Vue.js', 'vue.js')).toBe(true);
+    expect(sameTag('Vue.js', 'Vue')).toBe(false);
+    expect(sameTag('', '')).toBe(false);
   });
 
   it('reads the public article stats', async () => {
