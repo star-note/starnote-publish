@@ -42,7 +42,9 @@ const zhCN = {
   submitted: '已提交，等待掘金审核',
   draftFallback:
     '掘金草稿接口暂时不可用，改为打开编辑器预填标题和正文，分类、标签、摘要请在发布弹窗里选',
-  filledCategory: (name: string) => `分类「${name}」`,
+  categoryMissing: '你没有选掘金分类，草稿里的分类空着，请在掘金的发布弹窗里选分类',
+  tagsMissing:
+    '没有可用的掘金标签（你没选，笔记标签在掘金也没有同名的），请在掘金的发布弹窗里选标签',
   filledTag: (name: string) => `标签「${name}」`,
   filledBrief: (n: number) => `${n} 字摘要`,
   filledCover: '封面',
@@ -94,7 +96,9 @@ export const msg = defineMessages<typeof zhCN>({
     submitted: '已送出，等待掘金審核',
     draftFallback:
       '掘金草稿介面暫時無法使用，改為開啟編輯器預填標題和內文，分類、標籤、摘要請在發布彈出視窗裡選',
-    filledCategory: (name) => `分類「${name}」`,
+    categoryMissing: '你沒有選掘金分類，草稿裡的分類是空的，請在掘金的發布彈出視窗裡選分類',
+    tagsMissing:
+      '沒有可用的掘金標籤（你沒選，筆記標籤在掘金也沒有同名的），請在掘金的發布彈出視窗裡選標籤',
     filledTag: (name) => `標籤「${name}」`,
     filledBrief: (n) => `${n} 字摘要`,
     filledCover: '封面',
@@ -146,7 +150,10 @@ export const msg = defineMessages<typeof zhCN>({
     submitted: 'Submitted; waiting for Juejin’s review',
     draftFallback:
       'Juejin’s draft API is unavailable right now: the editor opens with the title and body, pick the category, tags and summary in the publish dialog',
-    filledCategory: (name) => `the category “${name}”`,
+    categoryMissing:
+      'You didn’t choose a Juejin category, so the draft has none: pick the category in Juejin’s publish dialog',
+    tagsMissing:
+      'No Juejin tags yet (none chosen, and no Juejin tag matches the note’s tags): pick the tags in Juejin’s publish dialog',
     filledTag: (name) => `the tag “${name}”`,
     filledBrief: (n) => `a ${n}-character summary`,
     filledCover: 'the cover',

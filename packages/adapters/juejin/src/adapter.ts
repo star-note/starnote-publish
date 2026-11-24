@@ -1,7 +1,7 @@
 /**
  * 页面操作层级（SPEC-r8「风控与真人化」）：默认 `draft`（SPEC-r15 §2）——用掘金网页自己的草稿接口建好草稿：标题、
- * Markdown（图片已转存）、分类、标签、50–100 字摘要、封面都填好（用户没选的由辰记预填，见 fields.ts），再在发布台里打开
- * 这篇草稿，你在掘金的发布弹窗里看到的已经是填好的，检查后点「发布」。草稿接口失败时退回 `prefill`：打开空白编辑器、
+ * Markdown（图片已转存）、50–100 字摘要、封面，以及你在辰记表单里选的分类、标签（分类不替你猜，没选就留空，
+ * 见 fields.ts），再在发布台里打开这篇草稿，检查、补选后点「发布」。草稿接口失败时退回 `prefill`：打开空白编辑器、
  * 预填标题和正文，分类、标签、摘要在弹窗里由你选。`review` / `publish` 是原有路径，保持原样。
  */
 import {
@@ -21,7 +21,7 @@ import {
   sessionPartition,
 } from '@starnote/publish-core';
 
-import { guessJuejinCategory, tagKeywords } from './fields';
+import { sameTag, tagKeywords } from './fields';
 import { msg } from './i18n';
 import { renderJuejin, withImages } from './render';
 import { juejinSchema, juejinSchemaFor } from './schema';
@@ -121,33 +121,28 @@ export function createJuejinAdapter(opts: JuejinAdapterOptions = {}): Adapter<ty
         if (client.has('csrfToken'))
           csrf = String((await client.call('csrfToken')).result.token ?? '');
         const vars = { csrf };
-        // 分类：表单选的，否则按内容猜（fields.ts）
-        let categoryId = form.category_id;
-        if (!categoryId && client.has('categories')) {
-          const guess = guessJuejinCategory({ title: r.title, tags: common.tags, text: doc.text });
-          const list = (await client.call('categories')).result.list;
-          const hit = (Array.isArray(list) ? list : []).find(
-            (c: any) => String(c.category_name ?? c.category?.category_name ?? '') === guess
-          );
-          if (hit) {
-            categoryId = String(hit.category_id ?? hit.category?.category_id);
-            filled.push(t.filledCategory(guess));
-          }
-        }
-        // 标签：表单选的，否则用笔记标签 / 分类名在掘金标签库里搜，预填 1 个
+        // 分类：只用表单里用户选的，不替用户猜；没选就留空，提醒在掘金发布弹窗里选
+        const categoryId = form.category_id;
+        const missing: ReportItem[] = [];
+        if (!categoryId)
+          missing.push({ kind: 'category.missing', text: t.categoryMissing, level: 'notice' });
+        // 标签：表单选的；没选时只用笔记自己的标签，在掘金标签库里找同名的（不取近似结果）
         let tags = tagIds;
         if (!tags.length && client.has('searchTags')) {
-          const guess = guessJuejinCategory({ title: r.title, tags: common.tags, text: doc.text });
-          for (const keyword of tagKeywords(common.tags, guess)) {
+          for (const keyword of tagKeywords(common.tags)) {
             const list = (await client.call('searchTags', { vars, data: { keyword } })).result.list;
-            const first = (Array.isArray(list) ? list : [])[0] as any;
-            if (first) {
-              tags = [String(first.tag_id)];
-              filled.push(t.filledTag(String(first.tag?.tag_name ?? first.tag_name ?? keyword)));
+            const same = (Array.isArray(list) ? list : []).find((x: any) =>
+              sameTag(String(x.tag?.tag_name ?? x.tag_name ?? ''), keyword)
+            ) as any;
+            if (same) {
+              tags = [String(same.tag_id)];
+              filled.push(t.filledTag(String(same.tag?.tag_name ?? same.tag_name)));
               break;
             }
           }
         }
+        if (!tags.length)
+          missing.push({ kind: 'tags.missing', text: t.tagsMissing, level: 'notice' });
         filled.push(t.filledBrief([...r.brief].length));
         const fields = {
           title: r.title,
@@ -201,7 +196,10 @@ export function createJuejinAdapter(opts: JuejinAdapterOptions = {}): Adapter<ty
           vars,
           data: { id, ...fields, markdown: withImages(r, map), ...(cover ? { cover } : {}) },
         });
-        report.push({ kind: 'fields.prefilled', text: t.fieldsPrefilled(filled), level: 'info' });
+        report.push(
+          { kind: 'fields.prefilled', text: t.fieldsPrefilled(filled), level: 'info' },
+          ...missing
+        );
         ctx.emit({ type: 'progress', percent: 85, text: t.openingEditor });
         const editUrl = fillTemplate(script.urls.edit!, { id });
         const res = await handOffEditor(ctx, run, LABEL, { editorUrl: editUrl });
